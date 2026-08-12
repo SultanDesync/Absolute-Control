@@ -1,0 +1,14 @@
+.xmake/
+build/
+vsxmake*/
+.vs/
+*.dll
+*.lib
+*.pdb
+*.exp
+*.ilk
+*.log
+*.swf
+*.ba2
+contrib/PluginDebug/
+contrib/PluginRelease/
