@@ -11,6 +11,7 @@
   ],
   "additionalPluginFiles": [],
   "processName": "Starfield",
+  "skipBuild": false,
   "launchTimeoutSeconds": 120,
   "titleScreenTimeoutSeconds": 120,
   "titleTransitionTimeoutSeconds": 45,

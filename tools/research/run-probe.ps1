@@ -675,6 +675,8 @@ try {
             [string]$_
         })
     }
+    $skipBuild = $manifest.PSObject.Properties.Name -contains 'skipBuild' -and
+        [bool]$manifest.skipBuild
     & (Join-Path $PSScriptRoot 'deploy-probe.ps1') `
         -ModPath $manifest.modPath `
         -RunId $runId `
@@ -685,6 +687,7 @@ try {
         -OpenDelayMilliseconds $manifest.openDelayMilliseconds `
         -VisibleMilliseconds $manifest.visibleMilliseconds `
         -AdditionalPluginFiles $additionalPluginFiles `
+        -SkipBuild:$skipBuild `
         -MenuFlags $manifest.menuFlags
     Write-RunnerEvent 'deploy_complete' "mod_path=$($manifest.modPath)"
 
