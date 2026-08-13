@@ -1,0 +1,8 @@
+{
+    "compiler":  "Apache Flex mxmlc 4.16.1 build 20171115",
+    "targetPlayer":  "11.5",
+    "swfVersion":  18,
+    "playerGlobalCommit":  "fef560243029214656d83fc673be0267a1ea0816",
+    "sourceSha256":  "1779FDF59E2FB8B70E3818E77B6C6E9F8C394F3E080098C226114C07DB176B17",
+    "outputSha256":  "001F8FDD709616A3C22F3B5051292489ACAAB35014584DE43EB97B9A1F5B341C"
+}

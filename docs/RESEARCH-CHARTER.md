@@ -2,9 +2,9 @@
 
 ## Question
 
-Can a standalone SFSE plugin host an Absolute control panel on Starfield's native menu stack,
-launch it from the vanilla main and pause menus, and approximate the utility of the current Dear
-ImGui implementations without assuming ownership of any daughter module?
+Can a standalone SFSE plugin host a shared SLOP configuration menu on Starfield's native menu
+stack, open it through a dedicated binding or additive PauseMenu interaction, and approximate
+the utility of current Dear ImGui implementations without assuming ownership of any provider?
 
 This repository exists to answer that question with executable evidence. It is not a rewrite of
 the suite and is not a place to develop flight, head-tracking, alignment, or power policy.
@@ -15,8 +15,9 @@ the suite and is not a place to develop flight, head-tracking, alignment, or pow
   sufficient for a custom menu on the supported Starfield runtime.
 - The menu can own focus, cursor visibility, input modality, pausing, and back-stack behavior
   without D3D12/DXGI/WndProc interception.
-- Vanilla launch entries can be composed at runtime. Direct replacement of `mainmenu.swf` or
-  `pausemenu.swf` is a fallback with a known UI-mod conflict cost, not the default design.
+- A product launch route can be composed at runtime through a dedicated binding or additive
+  PauseMenu interaction. Replacing `mainmenu.swf` or `pausemenu.swf`, or leaving the custom menu
+  layered over PauseMenu, is outside the accepted design.
 - Renderer-neutral snapshots and commands can express the existing workbench utility while
   daughter APIs retain validation, preview, persistence, and gameplay ownership.
 - Live HID telemetry and binding capture can cross the native UI boundary without visible lag or
@@ -26,17 +27,31 @@ the suite and is not a place to develop flight, head-tracking, alignment, or pow
 
 | Gate | Evidence required | Exit condition |
 |---|---|---|
-| R0 — Build | Recursive clean clone, plugin build, state tests | Reproducible locally and in CI |
-| R1 — Movie | Reproducible AS3/SWF toolchain and minimal root movie | Registered menu opens and closes repeatedly |
-| R2 — Bridge | Version negotiation, snapshot, command, error path | Bidirectional calls survive invalid input |
-| R3 — Input | Keyboard, mouse, Xbox-style controller, focus trace | No stuck focus, double input, or leaked gameplay command |
-| R4 — Launch | Main-menu and pause-menu entries | Both launch paths work without a global hotkey |
-| R5 — Utility | Representative slider, toggle, binding capture, live graph, dirty modal | One vertical slice matches the ImGui workflow |
-| R6 — Composition | Two fake providers discovered independently | Dynamic pages do not link module C++ objects |
-| R7 — Compatibility | Runtime/resolution/UI-mod matrix and failure injection | Failure leaves the game and daughters usable |
+| R0 - Build | Recursive clean clone, plugin build, state tests | Reproducible locally and in CI |
+| R1 - Movie | Pinned AS3/SWF build recipe and minimal root movie | Registered menu opens and closes repeatedly |
+| R2 - Bridge | Version negotiation, snapshot, command, error path | Bidirectional calls survive invalid input |
+| R3 - Input | Keyboard, mouse, Xbox-style controller, focus trace | No stuck focus, double input, or leaked gameplay command |
+| R4 - Composition | Two providers discovered through the C ABI | Dynamic pages do not link module C++ objects |
+| R5 - Launch | Dedicated binding or additive PauseMenu interaction | SLOP opens exclusively and returns to the correct prior state |
+| R6 - Utility | Representative slider, toggle, binding capture, live graph, dirty modal | One vertical slice matches the ImGui workflow |
+| R7 - Compatibility | Runtime/resolution/UI-mod matrix and failure injection | Failure leaves the game and providers usable |
 
 Every gate records runtime version, SFSE version, CommonLibSF commit, Address Library version,
 deployed files, reproduction steps, logs, screenshots/video where useful, and pass/fail notes.
+
+## Current result
+
+R1 is satisfied for Starfield 1.16.244. The dedicated movie constructs and draws, performs a
+native `ready(1)` bridge callback, enters the active render-order array, produces the required
+framebuffer sentinel, and closes through the watchdog without damaging vanilla PauseMenu.
+Repeated PauseMenu build/teardown cycles also pass in one retained save.
+
+The bridge has also completed keyboard command and immutable snapshot round-trips. A synthetic
+provider registers a toggle, slider, and binding through ABI version 1. A complete isolated run
+proved PauseMenu closed before SLOP opened, API-backed changes and persistence, enumerated vJoy
+button capture, and explicit close back to gameplay with PauseMenu still closed. Dynamic
+rendering from two independently compiled providers, full controller navigation, and a product
+invocation route remain open gates.
 
 ## Failure policy
 
@@ -50,7 +65,7 @@ deployed files, reproduction steps, logs, screenshots/video where useful, and pa
 
 ## Promotion criteria
 
-Research may propose integration into Absolute Workbench only after R0–R7 are evidenced and the
+Research may propose integration into the Absolute ecosystem only after R0-R7 are evidenced and the
 following decisions are explicit:
 
 - runtime support and update strategy;

@@ -1,5 +1,7 @@
 .xmake/
 build/
+.tools/
+artifacts/
 vsxmake*/
 .vs/
 *.dll
@@ -8,7 +10,9 @@ vsxmake*/
 *.exp
 *.ilk
 *.log
-*.swf
 *.ba2
+*.local.json
+__pycache__/
+*.pyc
 contrib/PluginDebug/
 contrib/PluginRelease/
