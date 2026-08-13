@@ -39,5 +39,8 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
 
     [[nodiscard]] std::optional<Page> FindPage(
         std::string_view a_moduleId, std::string_view a_pageId) noexcept;
+    // Returns a copied registry snapshot. Provider callbacks must only be invoked
+    // after this function returns, never while the registry mutex is held.
+    [[nodiscard]] std::vector<Page> Pages() noexcept;
     [[nodiscard]] std::uint64_t Revision() noexcept;
 }

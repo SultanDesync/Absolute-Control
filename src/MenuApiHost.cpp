@@ -177,6 +177,16 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
         }
     }
 
+    std::vector<Page> Pages() noexcept
+    {
+        try {
+            std::scoped_lock lock{ g_mutex };
+            return g_pages;
+        } catch (...) {
+            return {};
+        }
+    }
+
     std::uint64_t Revision() noexcept
     {
         return g_revision.load(std::memory_order_acquire);
