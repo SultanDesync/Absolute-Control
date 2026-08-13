@@ -656,7 +656,7 @@ if ($manifest.addressLibraryFile) {
 if ($manifest.profileModListPath) {
     $profile = & (Join-Path $PSScriptRoot 'prepare-test-profile.ps1') `
         -ManifestPath $resolvedManifest
-    if ($LASTEXITCODE -ne 0 -or -not $profile.ready) {
+    if (-not $profile.ready) {
         throw 'MO2 profile preparation failed.'
     }
     Write-RunnerEvent 'mo2_profile_ready' (
