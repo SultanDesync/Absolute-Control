@@ -2,8 +2,8 @@
 
 #include "EvidenceLog.h"
 #include "MenuApiHost.h"
+#include "MenuSession.h"
 #include "ProbeConfig.h"
-#include "ResearchInputCapture.h"
 #include "ResearchModule.h"
 
 namespace AbsoluteControlPanelResearch::NativeMenuProbe
@@ -51,9 +51,8 @@ namespace AbsoluteControlPanelResearch::NativeMenuProbe
         {
             Ready,
             Close,
-            DispatchCommand,
-            SnapshotApplied,
-            PollInputCapture
+            Dispatch,
+            ModelApplied
         };
 
         std::atomic<ProbePhase> g_phase{ ProbePhase::Cold };
@@ -611,15 +610,10 @@ namespace AbsoluteControlPanelResearch::NativeMenuProbe
                 RegisterNativeFunction(
                     "close", static_cast<std::uint64_t>(NativeFunction::Close));
                 RegisterNativeFunction(
-                    "dispatchCommand",
-                    static_cast<std::uint64_t>(NativeFunction::DispatchCommand));
+                    "dispatch", static_cast<std::uint64_t>(NativeFunction::Dispatch));
                 RegisterNativeFunction(
-                    "snapshotApplied",
-                    static_cast<std::uint64_t>(NativeFunction::SnapshotApplied));
-                RegisterNativeFunction(
-                    "pollInputCapture",
-                    static_cast<std::uint64_t>(NativeFunction::PollInputCapture));
-                EvidenceLog::Event("bridge_functions_mapped", "version=1 count=5");
+                    "modelApplied", static_cast<std::uint64_t>(NativeFunction::ModelApplied));
+                EvidenceLog::Event("bridge_functions_mapped", "version=1 count=4");
             }
 
             void LogMovieState(std::string_view a_phase)
@@ -659,145 +653,72 @@ namespace AbsoluteControlPanelResearch::NativeMenuProbe
                     reinterpret_cast<std::uintptr_t>(a_params.userData));
                 switch (function) {
                 case NativeFunction::Ready:
-                    ResearchInputCapture::Initialize();
-                    enumeratedDeviceCount = ResearchInputCapture::DeviceCount();
-                    RefreshProviderState();
-                    EvidenceLog::Event(
-                        "bridge_ready",
-                        std::format(
-                            "argument_count={} input_devices={}", a_params.argCount,
-                            enumeratedDeviceCount));
-                    PublishSnapshot("ready");
+                    EvidenceLog::Event("bridge_ready", std::format("argument_count={}", a_params.argCount));
+                    PublishModel(session.Snapshot());
                     break;
                 case NativeFunction::Close:
-                    EvidenceLog::Event("bridge_close", "ActionScript requested close");
-                    QueueMenuMessage(RE::UI_MESSAGE_TYPE::kHide, "bridge");
+                    CloseSession();
                     break;
-                case NativeFunction::DispatchCommand: {
-                    if (a_params.argCount < 2 || !a_params.args[1].IsString()) {
-                        EvidenceLog::Event(
-                            "bridge_command_rejected", "missing version or command");
-                        break;
-                    }
-
-                    const auto version = ReadUnsigned(a_params.args[0]);
-                    const std::string_view command = a_params.args[1].GetString();
-                    EvidenceLog::Event(
-                        "bridge_command",
-                        std::format("version={} command={}", version, command));
-                    if (version != 1) {
-                        EvidenceLog::Event(
-                            "bridge_command_rejected",
-                            std::format("version={} command={}", version, command));
-                        break;
-                    }
-
-                    if (!HandleUiCommand(command)) {
-                        EvidenceLog::Event(
-                            "bridge_command_rejected",
-                            std::format("version={} command={}", version, command));
-                    }
+                case NativeFunction::Dispatch:
+                    DispatchFlat(a_params);
                     break;
-                }
-                case NativeFunction::SnapshotApplied: {
+                case NativeFunction::ModelApplied: {
                     const auto generation = a_params.argCount >= 1 ?
                                                 ReadUnsigned(a_params.args[0]) :
                                                 std::numeric_limits<std::uint32_t>::max();
                     EvidenceLog::Event(
-                        "bridge_snapshot_applied",
-                        std::format(
-                            "generation={} expected={} matches={}", generation,
-                            snapshotGeneration, generation == snapshotGeneration));
-                    break;
-                }
-                case NativeFunction::PollInputCapture: {
-                    if (!captureActive) {
-                        break;
-                    }
-                    const auto result = ResearchInputCapture::Poll();
-                    if (result.state == ResearchInputCapture::PollResult::State::Captured) {
-                        captureActive = false;
-                        SlopApi::ValueV1 value;
-                        value.kind = SlopApi::ValueKind::String;
-                        std::memcpy(
-                            value.stringValue, result.binding.data(),
-                            std::min(
-                                result.binding.size(),
-                                SlopApi::kStringValueCapacity - 1));
-                        const bool accepted = WriteProviderValue(
-                            ResearchModule::kBindingId, value, "binding-captured");
-                        RefreshProviderState();
-                        ++snapshotGeneration;
-                        EvidenceLog::Event(
-                            "binding_capture_completed",
-                            std::format(
-                                "generation={} binding={} provider_accepted={}",
-                                snapshotGeneration, result.binding, accepted));
-                        PublishSnapshot("binding-captured");
-                    } else if (
-                        result.state == ResearchInputCapture::PollResult::State::TimedOut ||
-                        result.state == ResearchInputCapture::PollResult::State::Fault) {
-                        captureActive = false;
-                        ++snapshotGeneration;
-                        EvidenceLog::Event(
-                            "binding_capture_ended",
-                            result.state ==
-                                    ResearchInputCapture::PollResult::State::TimedOut ?
-                                "result=timeout" :
-                                "result=fault");
-                        PublishSnapshot("capture-ended");
-                    }
+                        "bridge_model_applied", std::format("revision={}", generation));
                     break;
                 }
                 }
             }
 
-            [[nodiscard]] bool HandleUiCommand(std::string_view a_command)
+            void DispatchFlat(const RE::Scaleform::GFx::FunctionHandler::Params& a_params)
             {
-                RefreshProviderState();
-                SlopApi::ValueV1 value;
-                std::string_view controlId;
-                if (a_command == "toggleFeature") {
-                    controlId = ResearchModule::kToggleId;
-                    value.kind = SlopApi::ValueKind::Boolean;
-                    value.booleanValue = featureEnabled ? 0U : 1U;
-                } else if (a_command == "incrementLevel") {
-                    controlId = ResearchModule::kSensitivityId;
-                    value.kind = SlopApi::ValueKind::Integer;
-                    value.integerValue = std::min(responseLevel + 5, 100);
-                } else if (a_command == "decrementLevel") {
-                    controlId = ResearchModule::kSensitivityId;
-                    value.kind = SlopApi::ValueKind::Integer;
-                    value.integerValue = std::max(responseLevel - 5, 0);
-                } else if (a_command == "beginBindingCapture") {
-                    captureActive = ResearchInputCapture::BeginButtonCapture();
-                    if (!captureActive) {
-                        EvidenceLog::Event(
-                            "bridge_command_rejected",
-                            "command=beginBindingCapture reason=capture-unavailable");
-                        PublishSnapshot("capture-unavailable");
-                        return true;
-                    }
-                } else {
-                    return false;
+                MenuSession::Command command;
+                if (a_params.argCount != 10 || !a_params.args[1].IsString() ||
+                    !a_params.args[2].IsString() || !a_params.args[3].IsString() ||
+                    !a_params.args[4].IsString() || !a_params.args[9].IsString() ||
+                    !ReadBoolean(a_params.args[6], command.value.booleanValue) ||
+                    !ReadInteger(a_params.args[7], command.value.integerValue) ||
+                    !ReadFiniteNumber(a_params.args[8], command.value.floatValue) ||
+                    strnlen_s(a_params.args[9].GetString(), SlopApi::kStringValueCapacity) >=
+                        SlopApi::kStringValueCapacity) {
+                    command.schemaVersion = 0;
+                    EvidenceLog::Event("bridge_command_rejected", "invalid flat dispatch arguments");
+                    PublishModel(session.Dispatch(command));
+                    return;
                 }
-
-                if (!controlId.empty() && !WriteProviderValue(controlId, value, a_command)) {
-                    EvidenceLog::Event(
-                        "bridge_command_rejected",
-                        std::format("command={} reason=provider-rejected", a_command));
-                    return true;
+                command.schemaVersion = ReadUnsigned(a_params.args[0]);
+                command.moduleId = a_params.args[2].GetString();
+                command.pageId = a_params.args[3].GetString();
+                command.controlId = a_params.args[4].GetString();
+                command.value.kind = static_cast<SlopApi::ValueKind>(ReadUnsigned(a_params.args[5]));
+                strcpy_s(command.value.stringValue, a_params.args[9].GetString());
+                const std::string_view name = a_params.args[1].GetString();
+                if (name == "selectPage") command.kind = MenuSession::CommandKind::SelectPage;
+                else if (name == "selectControl") command.kind = MenuSession::CommandKind::SelectControl;
+                else if (name == "write") command.kind = MenuSession::CommandKind::Write;
+                else if (name == "invoke") command.kind = MenuSession::CommandKind::Invoke;
+                else if (name == "apply") command.kind = MenuSession::CommandKind::Apply;
+                else if (name == "cancel") command.kind = MenuSession::CommandKind::Cancel;
+                else if (name == "close") command.kind = MenuSession::CommandKind::Close;
+                else command.schemaVersion = 0;
+                EvidenceLog::Event("bridge_command", std::format("command={}", name));
+                const auto model = session.Dispatch(command);
+                EvidenceLog::Event(model.error.empty() ? "bridge_command_accepted" : "bridge_command_rejected",
+                    std::format("command={} error={}", name, model.error));
+                PublishModel(model);
+                if (name == "close" && model.error.empty()) {
+                    QueueMenuMessage(RE::UI_MESSAGE_TYPE::kHide, "bridge");
                 }
-                RefreshProviderState();
+            }
 
-                ++snapshotGeneration;
-                EvidenceLog::Event(
-                    "bridge_command_accepted",
-                    std::format(
-                        "command={} generation={} enabled={} level={}", a_command,
-                        snapshotGeneration, featureEnabled, responseLevel));
-                PublishSnapshot(a_command);
-                return true;
+            void CloseSession()
+            {
+                const auto model = session.Dispatch(MenuSession::Command{ .kind = MenuSession::CommandKind::Close });
+                PublishModel(model);
+                if (model.error.empty()) QueueMenuMessage(RE::UI_MESSAGE_TYPE::kHide, "bridge");
             }
 
             [[nodiscard]] bool HandleButtonInput(const RE::ButtonEvent& a_event)
@@ -817,172 +738,90 @@ namespace AbsoluteControlPanelResearch::NativeMenuProbe
                 }
 
                 constexpr std::int32_t kEscape = VK_ESCAPE;
-                constexpr std::int32_t kAccept = 'E';
-                constexpr std::int32_t kUp = 'W';
-                constexpr std::int32_t kDown = 'S';
-                constexpr std::int32_t kLeft = 'A';
-                constexpr std::int32_t kRight = 'D';
-
                 if (a_event.idCode == kEscape) {
                     EvidenceLog::Event("bridge_close", "native keyboard requested close");
-                    QueueMenuMessage(RE::UI_MESSAGE_TYPE::kHide, "native-keyboard");
-                } else if (a_event.idCode == kUp || a_event.idCode == kDown) {
-                    selectedControl = a_event.idCode == kUp ?
-                                          (selectedControl + 2) % 3 :
-                                          (selectedControl + 1) % 3;
-                    PublishFocus();
-                } else if (a_event.idCode == kAccept) {
-                    constexpr std::array<std::string_view, 3> commands{
-                        "toggleFeature", "incrementLevel", "beginBindingCapture"
-                    };
-                    (void)HandleUiCommand(commands[selectedControl]);
-                } else if (a_event.idCode == kLeft && selectedControl == 1) {
-                    (void)HandleUiCommand("decrementLevel");
-                } else if (a_event.idCode == kRight && selectedControl == 1) {
-                    (void)HandleUiCommand("incrementLevel");
+                    CloseSession();
                 } else {
                     return false;
                 }
                 return true;
             }
 
-            void PublishFocus()
+            [[nodiscard]] bool SetString(RE::Scaleform::GFx::Value& a_object,
+                const char* a_name, std::string_view a_value) const
             {
-                const RE::Scaleform::GFx::Value focus(selectedControl);
-                const bool invoked = menuObj.IsObject() &&
-                                     menuObj.Invoke("applyFocus", nullptr, &focus, 1);
-                EvidenceLog::Event(
-                    "menu_focus_published",
-                    std::format("index={} invoked={}", selectedControl, invoked));
+                RE::Scaleform::GFx::Value text;
+                uiMovie->asMovieRoot->CreateString(&text, std::string(a_value).c_str());
+                return a_object.SetMember(a_name, text);
             }
 
-            void PublishSnapshot(std::string_view a_source)
+            [[nodiscard]] bool SerializeControl(RE::Scaleform::GFx::Value& a_target,
+                const MenuSession::Control& a_control) const
             {
-                RefreshProviderState();
+                const auto& descriptor = a_control.descriptor;
+                return SetString(a_target, "controlId", descriptor.controlId) &&
+                    a_target.SetMember("kind", RE::Scaleform::GFx::Value(static_cast<std::uint32_t>(descriptor.kind))) &&
+                    a_target.SetMember("flags", RE::Scaleform::GFx::Value(descriptor.flags)) &&
+                    SetString(a_target, "label", descriptor.label) && SetString(a_target, "description", descriptor.description) &&
+                    a_target.SetMember("minimum", RE::Scaleform::GFx::Value(descriptor.minimumValue)) &&
+                    a_target.SetMember("maximum", RE::Scaleform::GFx::Value(descriptor.maximumValue)) &&
+                    a_target.SetMember("step", RE::Scaleform::GFx::Value(descriptor.stepValue)) &&
+                    a_target.SetMember("available", RE::Scaleform::GFx::Value(a_control.available)) &&
+                    a_target.SetMember("valueKind", RE::Scaleform::GFx::Value(static_cast<std::uint32_t>(a_control.value.kind))) &&
+                    a_target.SetMember("booleanValue", RE::Scaleform::GFx::Value(a_control.value.booleanValue != 0)) &&
+                    a_target.SetMember("integerValue", RE::Scaleform::GFx::Value(static_cast<double>(a_control.value.integerValue))) &&
+                    a_target.SetMember("floatValue", RE::Scaleform::GFx::Value(a_control.value.floatValue)) &&
+                    SetString(a_target, "stringValue", a_control.value.stringValue) && SetString(a_target, "error", a_control.error);
+            }
+
+            void PublishModel(const MenuSession::Model& a_model)
+            {
                 if (!uiMovie || !uiMovie->asMovieRoot || !menuObj.IsObject()) {
-                    EvidenceLog::Event(
-                        "bridge_snapshot_publish_failed", "movie root unavailable");
+                    EvidenceLog::Event("bridge_model_publish_failed", "movie root unavailable");
                     return;
                 }
-
-                RE::Scaleform::GFx::Value snapshot;
-                RE::Scaleform::GFx::Value binding;
-                uiMovie->asMovieRoot->CreateObject(&snapshot);
-                uiMovie->asMovieRoot->CreateString(&binding, capturedBinding.c_str());
-                const bool populated = snapshot.IsObject() &&
-                                       snapshot.SetMember(
-                                           "generation",
-                                           RE::Scaleform::GFx::Value(snapshotGeneration)) &&
-                                       snapshot.SetMember(
-                                           "enabled",
-                                           RE::Scaleform::GFx::Value(featureEnabled)) &&
-                                       snapshot.SetMember(
-                                           "level",
-                                           RE::Scaleform::GFx::Value(responseLevel)) &&
-                                       snapshot.SetMember(
-                                           "deviceCount",
-                                           RE::Scaleform::GFx::Value(enumeratedDeviceCount)) &&
-                                       snapshot.SetMember(
-                                           "captureActive",
-                                           RE::Scaleform::GFx::Value(captureActive)) &&
-                                       snapshot.SetMember("binding", binding);
-                const bool invoked = populated &&
-                                     menuObj.Invoke("applySnapshot", nullptr, &snapshot, 1);
-                EvidenceLog::Event(
-                    "bridge_snapshot_published",
-                    std::format(
-                        "source={} generation={} enabled={} level={} devices={} "
-                        "capture_active={} binding={} populated={} invoked={}",
-                        a_source, snapshotGeneration, featureEnabled, responseLevel,
-                        enumeratedDeviceCount, captureActive, capturedBinding, populated,
-                        invoked));
-            }
-
-            [[nodiscard]] bool EnsureProvider()
-            {
-                if (!providerPage) {
-                    providerPage = MenuApiHost::FindPage(
-                        ResearchModule::kModuleId, ResearchModule::kPageId);
-                    EvidenceLog::Event(
-                        providerPage ? "api_page_selected" : "api_page_selection_failed",
-                        std::format(
-                            "module={} page={} revision={}", ResearchModule::kModuleId,
-                            ResearchModule::kPageId, MenuApiHost::Revision()));
+                auto* root = uiMovie->asMovieRoot.get();
+                RE::Scaleform::GFx::Value model, pages;
+                root->CreateObject(&model); root->CreateArray(&pages);
+                std::uint32_t activePage{};
+                std::uint32_t selectedControl{};
+                for (std::uint32_t i = 0; i < a_model.pages.size(); ++i) {
+                    if (a_model.pages[i].moduleId == a_model.activeModuleId &&
+                        a_model.pages[i].pageId == a_model.activePageId) {
+                        activePage = i;
+                        for (std::uint32_t j = 0; j < a_model.pages[i].controls.size(); ++j) {
+                            if (a_model.pages[i].controls[j].descriptor.controlId == a_model.selectedControlId) {
+                                selectedControl = j; break;
+                            }
+                        }
+                        break;
+                    }
                 }
-                return providerPage.has_value();
-            }
-
-            void RefreshProviderState()
-            {
-                if (!EnsureProvider() || !providerPage->readValue) {
-                    return;
+                bool populated = model.IsObject() && pages.IsArray() &&
+                    model.SetMember("schemaVersion", RE::Scaleform::GFx::Value(a_model.schemaVersion)) &&
+                    model.SetMember("revision", RE::Scaleform::GFx::Value(static_cast<double>(a_model.revision))) &&
+                    model.SetMember("activePage", RE::Scaleform::GFx::Value(activePage)) &&
+                    model.SetMember("selectedControl", RE::Scaleform::GFx::Value(selectedControl)) &&
+                    model.SetMember("dirty", RE::Scaleform::GFx::Value(a_model.dirty)) &&
+                    SetString(model, "error", a_model.error);
+                for (std::uint32_t pageIndex = 0; populated && pageIndex < a_model.pages.size(); ++pageIndex) {
+                    const auto& source = a_model.pages[pageIndex];
+                    RE::Scaleform::GFx::Value page, controls;
+                    root->CreateObject(&page); root->CreateArray(&controls);
+                    populated = page.IsObject() && controls.IsArray() &&
+                        SetString(page, "moduleId", source.moduleId) && SetString(page, "pageId", source.pageId) &&
+                        SetString(page, "title", source.title) && SetString(page, "description", source.description);
+                    for (std::uint32_t controlIndex = 0; populated && controlIndex < source.controls.size(); ++controlIndex) {
+                        RE::Scaleform::GFx::Value control;
+                        root->CreateObject(&control);
+                        populated = control.IsObject() && SerializeControl(control, source.controls[controlIndex]) &&
+                            controls.PushBack(control);
+                    }
+                    populated = populated && page.SetMember("controls", controls) && pages.PushBack(page);
                 }
-
-                SlopApi::ValueV1 value;
-                auto result = providerPage->readValue(
-                    providerPage->context, ResearchModule::kToggleId.data(), &value);
-                if (result == SlopApi::Result::Ok &&
-                    value.kind == SlopApi::ValueKind::Boolean) {
-                    featureEnabled = value.booleanValue != 0;
-                }
-
-                value = {};
-                result = providerPage->readValue(
-                    providerPage->context, ResearchModule::kSensitivityId.data(), &value);
-                if (result == SlopApi::Result::Ok &&
-                    value.kind == SlopApi::ValueKind::Integer) {
-                    responseLevel = static_cast<std::int32_t>(value.integerValue);
-                }
-
-                value = {};
-                result = providerPage->readValue(
-                    providerPage->context, ResearchModule::kBindingId.data(), &value);
-                if (result == SlopApi::Result::Ok &&
-                    value.kind == SlopApi::ValueKind::String &&
-                    std::memchr(
-                        value.stringValue, '\0',
-                        SlopApi::kStringValueCapacity)) {
-                    capturedBinding = value.stringValue;
-                }
-            }
-
-            [[nodiscard]] bool WriteProviderValue(
-                std::string_view a_controlId,
-                const SlopApi::ValueV1& a_value,
-                std::string_view a_source)
-            {
-                if (!EnsureProvider() || !providerPage->writeDraft) {
-                    return false;
-                }
-                const std::string controlId{ a_controlId };
-                auto result = providerPage->writeDraft(
-                    providerPage->context, controlId.c_str(), &a_value);
-                EvidenceLog::Event(
-                    "api_draft_write",
-                    std::format(
-                        "module={} page={} control={} source={} result={}",
-                        providerPage->moduleId, providerPage->pageId, controlId, a_source,
-                        static_cast<std::uint32_t>(result)));
-                if (result != SlopApi::Result::Ok) {
-                    return false;
-                }
-                if (providerPage->apply) {
-                    result = providerPage->apply(providerPage->context);
-                    EvidenceLog::Event(
-                        "api_page_apply",
-                        std::format(
-                            "module={} page={} source={} result={}",
-                            providerPage->moduleId, providerPage->pageId, a_source,
-                            static_cast<std::uint32_t>(result)));
-                }
-                const auto* api = SLOP_QueryApi(
-                    SlopApi::kAbiVersion);
-                if (result == SlopApi::Result::Ok && api &&
-                    api->requestRefresh) {
-                    (void)api->requestRefresh(
-                        providerPage->moduleId.c_str(), providerPage->pageId.c_str());
-                }
-                return result == SlopApi::Result::Ok;
+                populated = populated && model.SetMember("pages", pages);
+                const bool invoked = populated && menuObj.Invoke("applyModel", nullptr, &model, 1);
+                EvidenceLog::Event("bridge_model_published", std::format("revision={} populated={} invoked={}", a_model.revision, populated, invoked));
             }
 
             [[nodiscard]] static std::uint32_t ReadUnsigned(
@@ -994,10 +833,43 @@ namespace AbsoluteControlPanelResearch::NativeMenuProbe
                 if (a_value.IsInt() && a_value.GetInt() >= 0) {
                     return static_cast<std::uint32_t>(a_value.GetInt());
                 }
-                if (a_value.IsNumber() && a_value.GetNumber() >= 0.0) {
+                if (a_value.IsNumber() && std::isfinite(a_value.GetNumber()) &&
+                    std::trunc(a_value.GetNumber()) == a_value.GetNumber() &&
+                    a_value.GetNumber() >= 0.0 &&
+                    a_value.GetNumber() <= static_cast<double>(std::numeric_limits<std::uint32_t>::max())) {
                     return static_cast<std::uint32_t>(a_value.GetNumber());
                 }
                 return std::numeric_limits<std::uint32_t>::max();
+            }
+
+            [[nodiscard]] static bool ReadBoolean(const RE::Scaleform::GFx::Value& a_value,
+                std::uint32_t& a_result) noexcept
+            {
+                if (!a_value.IsBoolean()) return false;
+                a_result = a_value.GetBoolean() ? 1U : 0U;
+                return true;
+            }
+
+            [[nodiscard]] static bool ReadInteger(const RE::Scaleform::GFx::Value& a_value,
+                std::int64_t& a_result) noexcept
+            {
+                constexpr double kMaximumExactInteger = 9007199254740991.0;
+                if (a_value.IsInt()) { a_result = a_value.GetInt(); return true; }
+                if (a_value.IsUInt()) { a_result = a_value.GetUInt(); return true; }
+                if (!a_value.IsNumber() || !std::isfinite(a_value.GetNumber()) ||
+                    std::trunc(a_value.GetNumber()) != a_value.GetNumber() ||
+                    a_value.GetNumber() < -kMaximumExactInteger ||
+                    a_value.GetNumber() > kMaximumExactInteger) return false;
+                a_result = static_cast<std::int64_t>(a_value.GetNumber());
+                return true;
+            }
+
+            [[nodiscard]] static bool ReadFiniteNumber(const RE::Scaleform::GFx::Value& a_value,
+                double& a_result) noexcept
+            {
+                if (!a_value.IsNumber() || !std::isfinite(a_value.GetNumber())) return false;
+                a_result = a_value.GetNumber();
+                return true;
             }
 
             [[nodiscard]] std::int32_t RefCountForEvidence() const noexcept
@@ -1006,15 +878,8 @@ namespace AbsoluteControlPanelResearch::NativeMenuProbe
             }
 
         private:
-            bool featureEnabled{ false };
-            std::int32_t responseLevel{ 50 };
-            std::uint32_t snapshotGeneration{ 0 };
-            std::uint32_t enumeratedDeviceCount{ 0 };
-            bool captureActive{ false };
-            std::string capturedBinding{ "(unbound)" };
-            std::int32_t selectedControl{ 0 };
+            MenuSession::Session session;
             std::array<bool, 256> keyDown{};
-            std::optional<MenuApiHost::Page> providerPage;
         };
 
         RE::Scaleform::Ptr<RE::IMenu>* CreateMenu(RE::Scaleform::Ptr<RE::IMenu>* a_result)

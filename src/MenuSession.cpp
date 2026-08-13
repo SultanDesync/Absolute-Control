@@ -206,11 +206,16 @@ namespace AbsoluteControlPanelResearch::MenuSession
             if (page->writeDraft(page->context, control.controlId.c_str(), &a_command.value) != SlopApi::Result::Ok) {
                 SetError("Write failed"); return BuildSnapshot();
             }
+            activeModuleId_ = page->moduleId; activePageId_ = page->pageId;
+            selectedControlId_ = control.controlId;
             dirtyModuleId_ = page->moduleId; dirtyPageId_ = page->pageId;
         } else if (a_command.kind == CommandKind::Invoke) {
             if (control.kind != SlopApi::ControlKind::Action || !page->invokeAction ||
                 page->invokeAction(page->context, control.controlId.c_str()) != SlopApi::Result::Ok) {
                 SetError("Action unavailable");
+            } else {
+                activeModuleId_ = page->moduleId; activePageId_ = page->pageId;
+                selectedControlId_ = control.controlId;
             }
         } else {
             SetError("Unknown command");

@@ -158,7 +158,7 @@ int main()
     write.value.kind = ValueKind::Integer; write.value.integerValue = 11;
     model = session.Dispatch(write); CHECK(!model.error.empty() && generalProvider.writes == 0);
     write.value.integerValue = 7;
-    model = session.Dispatch(write); CHECK(model.dirty && generalProvider.writes == 1);
+    model = session.Dispatch(write); CHECK(model.dirty && generalProvider.writes == 1 && model.selectedControlId == "count");
 
     // Every route to a different page is refused while this page owns the transaction.
     CHECK(!session.Dispatch(MakeCommand(CommandKind::SelectPage, "bindings")).error.empty());
@@ -169,7 +169,8 @@ int main()
     CHECK(!session.Dispatch(MakeCommand(CommandKind::Cancel, "bindings")).error.empty());
 
     CHECK(session.Dispatch(MakeCommand(CommandKind::Invoke, "general", "enabled")).error.size() > 0 && generalProvider.invokes == 0);
-    CHECK(session.Dispatch(MakeCommand(CommandKind::Invoke, "general", "run")).error.empty() && generalProvider.invokes == 1);
+    model = session.Dispatch(MakeCommand(CommandKind::Invoke, "general", "run"));
+    CHECK(model.error.empty() && generalProvider.invokes == 1 && model.selectedControlId == "run");
     CHECK(session.Dispatch(MakeCommand(CommandKind::Apply, "general")).dirty == false && generalProvider.applies == 1);
 
     auto nonFinite = MakeCommand(CommandKind::Write, "general", "scale");

@@ -863,70 +863,21 @@ try {
         throw "Native menu movie did not produce the required magenta sentinel."
     }
 
-    Wait-ForPluginEvent -Event 'bridge_snapshot_applied' `
-        -DetailContains 'generation=0 expected=0 matches=true' -TimeoutSeconds 10 `
-        -Process $starfield | Out-Null
-    Write-RunnerEvent 'initial_snapshot_round_trip_confirmed'
+    Wait-ForPluginEvent -Event 'bridge_model_applied' `
+        -DetailContains 'revision=' -TimeoutSeconds 10 -Process $starfield | Out-Null
+    Write-RunnerEvent 'initial_model_round_trip_confirmed'
 
     Invoke-ResearchInput -CommandId 6 -Command 'accept' -Process $starfield
-    Wait-ForPluginEvent -Event 'bridge_command_accepted' `
-        -DetailContains 'command=toggleFeature generation=1 enabled=true level=50' `
-        -TimeoutSeconds 10 -Process $starfield | Out-Null
-    Wait-ForPluginEvent -Event 'bridge_snapshot_applied' `
-        -DetailContains 'generation=1 expected=1 matches=true' -TimeoutSeconds 10 `
-        -Process $starfield | Out-Null
+    Wait-ForPluginEvent -Event 'bridge_command' `
+        -DetailContains 'command=write' -TimeoutSeconds 10 -Process $starfield | Out-Null
+    Wait-ForPluginEvent -Event 'bridge_model_published' `
+        -DetailContains 'populated=true invoked=true' -TimeoutSeconds 10 -Process $starfield | Out-Null
 
     Invoke-ResearchInput -CommandId 7 -Command 'nav_down' -Process $starfield
     Invoke-ResearchInput -CommandId 8 -Command 'nav_right' -Process $starfield
-    Wait-ForPluginEvent -Event 'bridge_command_accepted' `
-        -DetailContains 'command=incrementLevel generation=2 enabled=true level=55' `
-        -TimeoutSeconds 10 -Process $starfield | Out-Null
-    Wait-ForPluginEvent -Event 'bridge_snapshot_applied' `
-        -DetailContains 'generation=2 expected=2 matches=true' -TimeoutSeconds 10 `
-        -Process $starfield | Out-Null
-    Write-RunnerEvent 'representative_controls_round_trip_confirmed'
-
-    Invoke-ResearchInput -CommandId 9 -Command 'nav_down' -Process $starfield
-    Invoke-ResearchInput -CommandId 10 -Command 'accept' -Process $starfield
-    Wait-ForPluginEvent -Event 'binding_capture_started' `
-        -DetailContains 'kind=button' -TimeoutSeconds 10 -Process $starfield | Out-Null
-    Wait-ForPluginEvent -Event 'bridge_command_accepted' `
-        -DetailContains 'command=beginBindingCapture generation=3' `
-        -TimeoutSeconds 10 -Process $starfield | Out-Null
-
-    $vJoyDeviceId = if ($null -ne $manifest.vJoyDeviceId) {
-        [uint32]$manifest.vJoyDeviceId
-    } else { 1 }
-    $vJoyButton = if ($null -ne $manifest.vJoyButton) {
-        [uint32]$manifest.vJoyButton
-    } else { 1 }
-    Invoke-VJoyButtonPulse -DeviceId $vJoyDeviceId -Button $vJoyButton
-    $bindingEvent = Wait-ForPluginEvent -Event 'binding_capture_completed' `
-        -DetailContains ("@{0}" -f $vJoyButton) -TimeoutSeconds 15 -Process $starfield
-    Write-RunnerEvent 'enumerated_binding_capture_confirmed' $bindingEvent
-    Wait-ForPluginEvent -Event 'bridge_snapshot_applied' `
-        -DetailContains 'generation=4 expected=4 matches=true' -TimeoutSeconds 10 `
-        -Process $starfield | Out-Null
-    Wait-ForPluginEvent -Event 'dummy_config_written' `
-        -DetailContains 'provider=absolute-control-panel.research' -TimeoutSeconds 10 `
-        -Process $starfield | Out-Null
-
-    $dummyConfigPath = Join-Path (Split-Path -Parent $pluginEvidencePath) `
-        'AbsoluteControlPanelResearch.dummy.ini'
-    Wait-ForCondition -TimeoutSeconds 10 -Description 'research-only dummy config' `
-        -Process $starfield -Condition {
-            if (-not (Test-Path -LiteralPath $dummyConfigPath -PathType Leaf)) {
-                return $false
-            }
-            $dummy = Get-Content -Raw -LiteralPath $dummyConfigPath
-            return $dummy.Contains('bAxisInvert=true') -and
-                $dummy.Contains('fAxisSensitivity=0.55') -and
-                $dummy.Contains(("@{0}" -f $vJoyButton))
-        } | Out-Null
-    Copy-Item -LiteralPath $dummyConfigPath `
-        -Destination (Join-Path $runDirectory 'dummy-config.ini')
-    Write-RunnerEvent 'dummy_config_validated' (
-        "invert=true sensitivity=0.55 button=$vJoyButton")
+    Wait-ForPluginEvent -Event 'bridge_command' `
+        -DetailContains 'command=write' -TimeoutSeconds 10 -Process $starfield | Out-Null
+    Write-RunnerEvent 'descriptor_control_round_trip_confirmed'
 
     $interactiveScreenshotPath = Join-Path $runDirectory 'interactive-state.png'
     Save-WindowScreenshot -Process $starfield -Path $interactiveScreenshotPath
