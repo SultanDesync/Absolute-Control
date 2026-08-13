@@ -654,18 +654,13 @@ if ($manifest.addressLibraryFile) {
 }
 
 if ($manifest.profileModListPath) {
-    if (-not (Test-Path -LiteralPath $manifest.profileModListPath -PathType Leaf)) {
-        throw "MO2 profile preflight failed: missing $($manifest.profileModListPath)"
+    $profile = & (Join-Path $PSScriptRoot 'prepare-test-profile.ps1') `
+        -ManifestPath $resolvedManifest
+    if ($LASTEXITCODE -ne 0 -or -not $profile.ready) {
+        throw 'MO2 profile preparation failed.'
     }
-    $enabledMods = Get-Content -LiteralPath $manifest.profileModListPath |
-        Where-Object { $_.StartsWith('+') }
-    foreach ($requiredMod in @('SFSE', 'AbsoluteControlPanel-Research',
-            'Address Library for SFSE Plugins')) {
-        if ($enabledMods -notcontains "+$requiredMod") {
-            throw "MO2 profile preflight failed: $requiredMod is not enabled."
-        }
-    }
-    Write-RunnerEvent 'mo2_profile_ready' "modlist=$($manifest.profileModListPath)"
+    Write-RunnerEvent 'mo2_profile_ready' (
+        "modlist=$($profile.profileModListPath) required=$($profile.requiredMods -join ',')")
 }
 
 $starfield = $null

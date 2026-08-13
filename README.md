@@ -78,6 +78,8 @@ graphics overlay hook:
 See [the research charter](docs/RESEARCH-CHARTER.md),
 [SLOP module API](docs/MODULE-API.md),
 [AI integration harness](docs/AI-INTEGRATION-HARNESS.md),
+[builder evaluation runbook](docs/BUILDER-RUNBOOK.md),
+[disposable builder-iteration policy](docs/process/DISPOSABLE-ITERATIONS.md),
 [native menu contract](docs/NATIVE-MENU-CONTRACT.md), and
 [ImGui parity matrix](docs/IMGUI-PARITY-MATRIX.md) for the complete definition.
 

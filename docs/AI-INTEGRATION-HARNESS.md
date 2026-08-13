@@ -4,6 +4,11 @@ This workflow is designed so an AI coding agent can add SLOP configuration suppo
 existing SFSE module with minimal user intervention.  The gameplay module must remain fully
 usable if SLOP is missing, incompatible, or fails to render.
 
+For an autonomous first-implementation run, use
+[the builder runbook](BUILDER-RUNBOOK.md) as the single entry point. The broader document below
+describes the long-term integration policy; it is not intended to be pasted wholesale into every
+builder prompt.
+
 AI generation is a declared project method, not an embarrassing implementation detail.  The
 harness exists to turn fast generation into reviewable evidence: stable contracts, negative
 tests, isolated game runs, visual oracles, preserved failure diagnostics, and privacy gates.
@@ -36,6 +41,11 @@ The agent identifies each existing setting, its stable ID, type, range, step, cu
 validation rule, persistence owner, restart requirement, and any preview or reset behavior.  It
 does not copy ImGui rendering code into the provider adapter.  It maps existing module state to
 renderer-neutral descriptors and callbacks.
+
+The inventory also records the module's known-good compiler environment, configure/build preset
+or command, test command, and artifact path. The builder reuses that recipe by default. SLOP's
+documented MSVC/xmake/CMake baseline is a recommended fallback, not a requirement that a working
+project replace its own build system.
 
 ### 2. Add a fail-optional adapter
 

@@ -32,6 +32,19 @@ The Continue luminance test and direct PauseMenu state checks are synchronizatio
 They are not reverse-engineering targets and do not depend on an AbsoluteHOTAS control-cluster
 offset.
 
+## MO2 test-profile preparation
+
+`tools/research/prepare-test-profile.cmd` verifies that the explicitly named test mod and every
+`requiredProfileMods` entry are installed beneath the same MO2 mods directory and enabled in the
+explicitly named profile. With `-CreateTestMod -EnableRequiredMods`, it may create the SLOP
+deployment mod and enable already-installed requirements while MO2 is closed. It makes a
+timestamped backup before changing `modlist.txt`.
+
+The harness does not download or silently choose an SFSE, Address Library, or other third-party
+version. Missing prerequisites belong to the pinned test baseline or must be supplied
+deliberately. The normal run performs this preparation in verification-only mode before building
+or launching Starfield.
+
 ## Render oracle and diagnostics
 
 The movie contains an opaque 96x96 `#FF00FF` block. The final frame must contain a sufficiently

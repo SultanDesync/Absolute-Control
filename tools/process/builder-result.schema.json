@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SLOP builder evaluation result",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "runId",
+    "model",
+    "baselines",
+    "documentsRead",
+    "interventions",
+    "gates",
+    "commands",
+    "changedFiles",
+    "assumptions",
+    "blockers",
+    "reproducible"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "runId": { "type": "string", "minLength": 1 },
+    "model": { "type": "string", "minLength": 1 },
+    "baselines": {
+      "type": "object",
+      "required": ["host", "subscriber"],
+      "properties": {
+        "host": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "subscriber": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+      }
+    },
+    "documentsRead": { "type": "array", "items": { "type": "string" } },
+    "interventions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["category", "summary"],
+        "properties": {
+          "category": {
+            "enum": ["permission", "environment", "scope", "design", "user"]
+          },
+          "summary": { "type": "string" }
+        }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": {
+        "enum": ["passed", "failed", "blocked", "not_run"]
+      }
+    },
+    "commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["command", "outcome"],
+        "properties": {
+          "command": { "type": "string" },
+          "outcome": { "type": "string" }
+        }
+      }
+    },
+    "changedFiles": {
+      "type": "object",
+      "required": ["host", "subscriber"],
+      "properties": {
+        "host": { "type": "array", "items": { "type": "string" } },
+        "subscriber": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "assumptions": { "type": "array", "items": { "type": "string" } },
+    "blockers": { "type": "array", "items": { "type": "string" } },
+    "reproducible": { "type": "boolean" }
+  },
+  "additionalProperties": false
+}
