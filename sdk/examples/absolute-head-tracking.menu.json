@@ -1,0 +1,79 @@
+{
+  "$schema": "../menu-definition.schema.json",
+  "schemaVersion": 1,
+  "targetAbiVersion": 1,
+  "module": {
+    "id": "absolute.head_tracking",
+    "title": "Absolute Head Tracking",
+    "description": "Configure FreeTrack head pose mapping and recenter input."
+  },
+  "pages": [
+    {
+      "id": "general",
+      "title": "General",
+      "description": "Global tracking behavior.",
+      "sections": [
+        {
+          "id": "tracking",
+          "title": "Tracking",
+          "options": [
+            { "id": "tracking.enabled", "type": "toggle", "label": "Enable tracking", "description": "Apply FreeTrack head pose to the camera." },
+            { "id": "tracking.poll_rate", "type": "integer", "widget": "slider", "label": "Poll rate", "description": "Target samples per second.", "minimum": 30, "maximum": 240, "step": 10, "flags": ["advanced"] }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "axes",
+      "title": "Axes",
+      "description": "Yaw, pitch, and roll response settings in one scrollable workspace.",
+      "sections": [
+        {
+          "id": "yaw",
+          "title": "Yaw",
+          "options": [
+            { "id": "yaw.enabled", "type": "toggle", "label": "Enable yaw" },
+            { "id": "yaw.inverted", "type": "toggle", "label": "Invert yaw" },
+            { "id": "yaw.sensitivity", "type": "float", "widget": "slider", "label": "Yaw sensitivity", "minimum": 0.05, "maximum": 10.0, "step": 0.05 },
+            { "id": "yaw.maximum", "type": "float", "widget": "slider", "label": "Maximum yaw", "minimum": 1.0, "maximum": 180.0, "step": 1.0 }
+          ]
+        },
+        {
+          "id": "pitch",
+          "title": "Pitch",
+          "options": [
+            { "id": "pitch.enabled", "type": "toggle", "label": "Enable pitch" },
+            { "id": "pitch.inverted", "type": "toggle", "label": "Invert pitch", "description": "Convert FreeTrack pitch to Starfield camera coordinates." },
+            { "id": "pitch.sensitivity", "type": "float", "widget": "slider", "label": "Pitch sensitivity", "minimum": 0.05, "maximum": 10.0, "step": 0.05 },
+            { "id": "pitch.maximum", "type": "float", "widget": "slider", "label": "Maximum pitch", "minimum": 1.0, "maximum": 180.0, "step": 1.0 }
+          ]
+        },
+        {
+          "id": "roll",
+          "title": "Roll",
+          "options": [
+            { "id": "roll.enabled", "type": "toggle", "label": "Enable roll" },
+            { "id": "roll.inverted", "type": "toggle", "label": "Invert roll" },
+            { "id": "roll.sensitivity", "type": "float", "widget": "slider", "label": "Roll sensitivity", "minimum": 0.05, "maximum": 10.0, "step": 0.05 },
+            { "id": "roll.maximum", "type": "float", "widget": "slider", "label": "Maximum roll", "minimum": 1.0, "maximum": 180.0, "step": 1.0 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bindings",
+      "title": "Bindings",
+      "description": "Capture controls without exposing input polling to the provider.",
+      "sections": [
+        {
+          "id": "recenter",
+          "title": "Recenter",
+          "options": [
+            { "id": "bindings.recenter", "type": "inputBinding", "label": "Recenter view", "description": "Record a keyboard key or modifier chord.", "capabilities": { "keyboard": true, "modifiers": true, "clearable": true } },
+            { "id": "bindings.recenter_now", "type": "action", "label": "Recenter now", "description": "Invoke the provider-owned recenter action." }
+          ]
+        }
+      ]
+    }
+  ]
+}

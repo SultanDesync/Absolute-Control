@@ -22,6 +22,68 @@ Providers own domain semantics:
 The research plugin must not parse another module's INI or receive STL/ImGui objects across a DLL
 boundary.
 
+## Presentation and workspace schema
+
+- Subscriber mods occupy one vertical sidebar row each. Provider pages never render in that
+  sidebar.
+- The sidebar contains no page buttons, setting controls, or permanent action cluster. Its width
+  is determined only by readable mod names and navigation affordances.
+- The selected mod's pages occupy a horizontal tab row across the top of the workspace.
+- The center workspace is reserved for the active page's controls and selected-control help.
+- The shell must use the 1920x1080 design canvas efficiently: control rows, headings, gutters,
+  and actions are sized from a shared density scale rather than independently oversized boxes.
+- Mouse hit regions are generated from the same layout constants used to draw each element. A
+  movie/router revision mismatch must be rejected during packaging rather than shipped.
+- Wheel input scrolls the region under the pointer. In the control workspace it moves the
+  control viewport and selection, never silently changes a setting value. Sidebar and overflowing
+  tab regions scroll only their own navigation collection.
+- The native menu translates Starfield's direction-specific mouse `ButtonEvent`s (`0x800/+120`
+  up and `0x900/-120` down) into the movie's pointer-wheel method. Flash `MOUSE_WHEEL` remains
+  only a fallback because the
+  current game path does not dispatch it to this custom movie. Duplicate native delivery of the
+  same notch is suppressed before the movie is invoked.
+
+The intended direction is Skyrim MCM's proven information architecture expressed in a
+source-built Starfield/Absolute visual language, with one deliberate refinement: the compact mod
+sidebar remains visible while browsing and editing. Selecting a mod replaces the horizontal page
+tabs and workspace without entering another nested navigation level. This preserves one-click
+switching between mods while retaining pages scoped to the selected mod, dense settings rows, a
+scrolling options workspace, persistent focus, and contextual help for the selected setting. It
+does not mean copying Bethesda/SkyUI assets or private implementation details merely to imitate
+their artwork.
+
+The density target is functional rather than decorative: at 1080p the workspace should normally
+show roughly ten simple setting rows, with label and value aligned on one row. Long descriptions
+belong in a selected-setting help region instead of making every option a tall card. Apply/Cancel
+are compact footer actions or a dirty-state bar, not a permanent right-side column consuming
+workspace.
+
+The footer is an input-aware command bar, not a permanent keyboard tutorial. Apply, Cancel, and
+Close/Back display the active device's standard glyph or short prompt and the entire displayed
+prompt is a clickable pointer target. Apply and Cancel communicate their disabled/clean state;
+Close/Back remains reachable. Routine movement instructions such as W/S and A/D are omitted once
+standard menu navigation works. Context-specific prompts such as rebind, clear, dropdown open, or
+slider adjustment appear only while their relevant control has focus.
+
+Controls render as widgets appropriate to their semantics rather than uniform full-width cards:
+
+- booleans use compact, clearly styled toggle switches;
+- bounded integers and floats use a slider with an aligned numeric value/editor;
+- enumerated values use a dropdown with provider-supplied labels;
+- free-form bounded strings use a text box;
+- bindings use a focused capture field with clear/rebind affordances;
+- actions use content-sized buttons; and
+- headers, dividers, help, and validation messages participate in measured flow layout without
+  pretending to be editable settings.
+
+The workspace lays these widgets out from measured content and shared spacing rules. Simple rows
+may share label/value columns, while sliders, long text, binding fields, and grouped controls may
+span available width. Fixed card heights and one-size-fits-all hitboxes are not part of the
+release layout contract.
+
+The component and authoring boundary is defined in
+[the menu definition language](MENU-DEFINITION-LANGUAGE.md).
+
 ## Proposed flow
 
 ```text

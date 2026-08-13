@@ -24,6 +24,6 @@ SFSE_PLUGIN_LOAD(const SFSE::LoadInterface* a_sfse)
         return false;
     }
 
-    REX::INFO("Absolute Control Panel Research loaded; waiting for post-data-load.");
+    REX::INFO("Absolute Control Panel loaded; waiting for post-data-load.");
     return true;
 }

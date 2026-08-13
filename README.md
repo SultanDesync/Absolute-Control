@@ -1,8 +1,8 @@
-# Starfield Local Options Panel (SLOP)
+# Absolute Control Panel
 
-SLOP - the **Starfield Local Options Panel** - is a standalone Starfield/SFSE research project
-for proving a native Mod Configuration Menu host.  Its first target is moving the modular
-Absolute control suite from Dear ImGui overlays to one shared native Starfield menu.
+Absolute Control Panel is a standalone Starfield/SFSE development project for a native shared
+configuration-menu host. Its first target is moving the modular Absolute control suite from
+Dear ImGui overlays to one native Starfield menu. It is not release-ready.
 
 ## AI-forward development
 
@@ -30,8 +30,8 @@ The repository deliberately starts with the risky seam rather than product funct
 
 ## Current state
 
-This branch contains a proven native-menu probe and the first SLOP provider ABI, not a supported
-MCM release.
+This branch contains a proven native-menu host and the first Absolute Control Panel provider ABI,
+not a supported release.
 It includes:
 
 - a pinned maintained CommonLibSF submodule;
@@ -40,27 +40,27 @@ It includes:
 - a source-built minimal ActionScript movie with a pinned compiler recipe;
 - a bounded deploy/launch/evidence/screenshot/watchdog harness;
 - guarded title, Continue, save-load, and PauseMenu automation performed through game tasks;
-- a high-signal magenta framebuffer oracle and repeatable PauseMenu build/teardown loop;
+- a repeatable PauseMenu build/teardown and readiness trace;
 - a copied-descriptor C ABI and synthetic subscriber with toggle, slider, and binding controls;
 - an ImGui parity inventory and acceptance matrix; and
 - staged research gates, failure policy, and promotion criteria.
 
-The plugin registers only after SFSE post-data-load.  The verified rendering probe opens a
-dedicated Scaleform movie, completes a versioned ActionScript/native bridge handshake, and
-force-closes through a native watchdog.  The active harness now requires PauseMenu to be closed
-before SLOP opens; the earlier overlay arrangement is not an accepted product design.  It does not
-inject buttons into vanilla menus, replace a vanilla SWF, or own gameplay/configuration state.
+The plugin registers after SFSE post-data-load. The verified host adds an entry to the populated
+PauseMenu list at runtime, closes PauseMenu when selected, and opens a dedicated Scaleform movie.
+It does not replace a vanilla SWF or own subscriber gameplay/configuration state. F2 remains the
+fallback entry point.
 See [the harness contract](docs/RESEARCH-HARNESS.md) for the evidence workflow.
 The Starfield 1.16.244 relocation bridge needed by the current CommonLibSF snapshot is
 documented in
 [the compatibility note](docs/COMMONLIBSF-COMPATIBILITY.md).
 
-The current vertical slice is evidenced on Starfield 1.16.244. The movie and native bridge
-executed, the screenshot contained 16,384 sentinel pixels, and SLOP opened only after the runner
-proved PauseMenu was closed. The synthetic module registered three controls through ABI version
-1; native keyboard commands changed the toggle and level, vJoy device 1 supplied an enumerated
-button binding, provider-owned persistence matched, and explicit close returned directly to
-gameplay with PauseMenu still closed. No ESM/ESP is required for the DLL-to-menu-to-SWF path.
+The current vertical slice is evidenced on Starfield 1.16.244, including repeated first-open
+PauseMenu population in a heavily modified profile and a 25-open lifecycle regression on the
+isolated baseline with no timeout, rejection, crash, or new dump. Dynamic subscriber pages, keyboard and mouse
+navigation, draft/apply/cancel transactions, and provider-owned persistence cross the native and
+Scaleform bridge. The first host-owned keyboard chord capture and all five Absolute Head Tracking
+pages are runtime-verified. Mods occupy the vertical sidebar and each selected mod's pages occupy
+the horizontal tab row. No ESM/ESP is required.
 
 ## Research outcome
 
@@ -76,12 +76,18 @@ graphics overlay hook:
 7. a version-resilient failure mode that cannot disable daughter gameplay.
 
 See [the research charter](docs/RESEARCH-CHARTER.md),
-[SLOP module API](docs/MODULE-API.md),
+[Absolute Control Panel module API](docs/MODULE-API.md),
 [AI integration harness](docs/AI-INTEGRATION-HARNESS.md),
 [builder evaluation runbook](docs/BUILDER-RUNBOOK.md),
 [disposable builder-iteration policy](docs/process/DISPOSABLE-ITERATIONS.md),
 [native menu contract](docs/NATIVE-MENU-CONTRACT.md), and
+[menu definition language](docs/MENU-DEFINITION-LANGUAGE.md),
+[live and compound components](docs/LIVE-COMPONENTS.md),
+[SDK status and release checklist](docs/SDK-STATUS.md),
 [ImGui parity matrix](docs/IMGUI-PARITY-MATRIX.md) for the complete definition.
+
+The machine-readable development catalogue and local MCP server live in
+[`catalog`](catalog/README.md).
 
 ## Build and test
 

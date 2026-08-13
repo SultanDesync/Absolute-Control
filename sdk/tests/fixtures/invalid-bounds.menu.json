@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "targetAbiVersion": 1,
+  "module": { "id": "example.mod", "title": "Example" },
+  "pages": [{ "id": "general", "title": "General", "sections": [{ "id": "main", "title": "Main", "options": [{ "id": "gain", "type": "float", "widget": "slider", "label": "Gain", "minimum": 4.0, "maximum": 1.0, "step": 0.1 }] }] }]
+}

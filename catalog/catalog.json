@@ -1,0 +1,290 @@
+{
+  "schemaVersion": 1,
+  "catalogVersion": "0.1.0",
+  "product": "Absolute Control Panel",
+  "runtime": {
+    "game": "Starfield",
+    "verifiedVersions": ["1.16.244.0"],
+    "menuMovie": "Interface/AbsoluteControlPanelMenu.swf",
+    "hostModule": "SFSE/Plugins/AbsoluteControlPanel.dll",
+    "publicQuery": "AbsoluteControlPanel_QueryApi",
+    "abiVersion": 1
+  },
+  "entries": [
+    {
+      "id": "control.toggle",
+      "kind": "control",
+      "name": "Toggle",
+      "status": "implemented",
+      "confidence": "verified",
+      "valueKind": "Boolean",
+      "interaction": ["activate", "pointer-click"],
+      "notes": "Provider receives a draft Boolean and retains validation and persistence ownership.",
+      "tags": ["configuration", "dynamic", "abi-v1"]
+    },
+    {
+      "id": "control.integer-slider",
+      "kind": "control",
+      "name": "Integer slider",
+      "status": "implemented",
+      "confidence": "verified",
+      "valueKind": "Integer",
+      "interaction": ["decrease", "increase", "pointer-click", "pointer-drag"],
+      "notes": "Minimum, maximum, and step are descriptor-owned and host-validated. Click-to-position and continuous held dragging are runtime-verified.",
+      "tags": ["configuration", "dynamic", "abi-v1"]
+    },
+    {
+      "id": "control.float-slider",
+      "kind": "control",
+      "name": "Floating-point slider",
+      "status": "implemented",
+      "confidence": "verified",
+      "valueKind": "Float",
+      "interaction": ["decrease", "increase", "pointer-click", "pointer-drag"],
+      "notes": "Finite range and step values are required by the host. Click-to-position and continuous held dragging are runtime-verified.",
+      "tags": ["configuration", "dynamic", "abi-v1"]
+    },
+    {
+      "id": "control.choice",
+      "kind": "control",
+      "name": "Choice",
+      "status": "host-model-only",
+      "confidence": "incomplete",
+      "valueKind": "Integer",
+      "interaction": [],
+      "notes": "The ABI and native session validate choices, but the current SWF deliberately labels them unsupported until labels/options are added to the descriptor contract.",
+      "tags": ["configuration", "dynamic", "abi-v1", "roadmap"]
+    },
+    {
+      "id": "control.text-input",
+      "kind": "control",
+      "name": "Bounded text input",
+      "status": "schema-required",
+      "confidence": "design-approved",
+      "valueKind": "String",
+      "interaction": ["focus", "edit", "commit", "cancel"],
+      "notes": "Required before the public SDK freezes. Provider supplies length and validation bounds; the host owns editing and rendering.",
+      "tags": ["configuration", "dynamic", "sdk-roadmap"]
+    },
+    {
+      "id": "layout.semantic-widgets",
+      "kind": "layout",
+      "name": "Semantic dynamic widget layout",
+      "status": "schema-required",
+      "confidence": "design-approved",
+      "notes": "Toggles, sliders with numeric editors, dropdowns, text fields, bindings, and actions use measured type-appropriate geometry instead of uniform full-width cards.",
+      "tags": ["layout", "widgets", "responsive", "sdk-roadmap"]
+    },
+    {
+      "id": "asset.standard-widget-library",
+      "kind": "asset",
+      "name": "Host-owned standard widget library",
+      "status": "design-approved",
+      "confidence": "specified",
+      "components": ["mod-sidebar", "page-tabs", "option-workspace", "toggle", "numeric-slider", "dropdown", "text-input", "binding-field", "action", "command-footer", "modal"],
+      "notes": "Each component owns rendering, measured layout, focus, pointer hit regions, wheel behavior, and semantic event emission. Subscriber-specific SWFs and native duplicate pixel hitboxes are prohibited.",
+      "tags": ["scaleform", "components", "sdk-roadmap"]
+    },
+    {
+      "id": "visualization.range-meter",
+      "kind": "visualization",
+      "name": "Live range and detent meter",
+      "status": "specified",
+      "confidence": "source-mapped",
+      "features": ["live-marker", "colored-bands", "detents", "deadzone", "saturation", "stale-state", "editable-marker-roadmap"],
+      "notes": "Covers AbsoluteHOTAS throttle/bipolar graphs and Absolute Head Tracking output bars without requiring a general time-series plot.",
+      "tags": ["telemetry", "axis", "hotas", "head-tracking"]
+    },
+    {
+      "id": "visualization.telemetry-plot",
+      "kind": "visualization",
+      "name": "Bounded telemetry plot",
+      "status": "specified",
+      "confidence": "design-approved",
+      "features": ["bounded-series", "host-ring-buffer", "downsampling", "bands", "markers", "stale-state"],
+      "notes": "Used only when history over time is useful; current-sample axis displays use the cheaper range meter.",
+      "tags": ["telemetry", "graph", "bounded"]
+    },
+    {
+      "id": "control.segmented-allocation-grid",
+      "kind": "compound-control",
+      "name": "Segmented allocation grid",
+      "status": "specified",
+      "confidence": "source-mapped",
+      "bounds": { "columns": 8, "segmentsPerColumn": 32 },
+      "notes": "Covers Absolute Power's six-system tiered pip editor with live current state, target preview, and semantic add/trim interactions.",
+      "tags": ["power", "grid", "compound", "interactive"]
+    },
+    {
+      "id": "protocol.live-channel-v1",
+      "kind": "protocol",
+      "name": "Bounded live component channel",
+      "status": "specified",
+      "confidence": "design-approved",
+      "path": "docs/LIVE-COMPONENTS.md",
+      "notes": "Separates immutable configuration snapshots from targeted live frames, caps cadence and payloads, marks stale data, and suspends hidden channels.",
+      "tags": ["telemetry", "abi-roadmap", "scaleform", "performance"]
+    },
+    {
+      "id": "control.action",
+      "kind": "control",
+      "name": "Action",
+      "status": "implemented",
+      "confidence": "verified",
+      "valueKind": "String",
+      "interaction": ["activate", "pointer-click"],
+      "notes": "Invokes a provider-owned callback without creating a dirty configuration draft.",
+      "tags": ["command", "dynamic", "abi-v1"]
+    },
+    {
+      "id": "control.input-binding",
+      "kind": "control",
+      "name": "Input binding",
+      "status": "implemented",
+      "confidence": "runtime-verified",
+      "valueKind": "String",
+      "interaction": ["begin-capture", "escape-cancel", "backspace-clear"],
+      "capabilityFlags": ["keyboard", "mouse", "controller", "modifiers", "clearable"],
+      "implementedCapabilities": ["keyboard", "modifiers", "clearable"],
+      "encoding": "keyboard:0xHH;ctrl=0|1;alt=0|1;shift=0|1",
+      "notes": "Keyboard activation waits for its initiating key to be released; pointer activation arms immediately so the first intended modifier is retained. Capture uses the native game/UI event stream and submits the encoded result through writeDraft. Single keys and modifier chords are runtime-verified.",
+      "tags": ["input", "capture", "dynamic", "abi-v1"]
+    },
+    {
+      "id": "layout.module-sidebar",
+      "kind": "layout",
+      "name": "Mod sidebar",
+      "status": "implemented",
+      "confidence": "runtime-verified",
+      "capacity": 32,
+      "notes": "One compact vertical row per subscriber mod; thirteen mods are visible at once with selection-following overflow.",
+      "tags": ["navigation", "scaleform", "dynamic"]
+    },
+    {
+      "id": "layout.page-tabs",
+      "kind": "layout",
+      "name": "Horizontal page tabs",
+      "status": "implemented",
+      "confidence": "runtime-verified",
+      "capacity": 32,
+      "notes": "Only the selected mod's pages appear across the workspace top; six tabs are visible at once with selection-following overflow and Q/R navigation.",
+      "tags": ["navigation", "scaleform", "dynamic"]
+    },
+    {
+      "id": "layout.control-list",
+      "kind": "layout",
+      "name": "Control list",
+      "status": "implemented",
+      "confidence": "runtime-verified",
+      "capacity": 128,
+      "notes": "Ten compact controls are visible at once with selection-following scrolling; overflowing pages expose a workspace scrollbar.",
+      "tags": ["navigation", "scaleform", "dynamic"]
+    },
+    {
+      "id": "layout.page-actions",
+      "kind": "layout",
+      "name": "Input-aware command footer",
+      "status": "implemented",
+      "confidence": "runtime-verified",
+      "notes": "Apply, Cancel, and Close/Back are compact device-aware prompts and clickable footer targets. Dirty pages still block cross-page navigation; Cancel rolls provider state back and Close safely resolves dirty state.",
+      "tags": ["transactions", "scaleform", "safety"]
+    },
+    {
+      "id": "asset.control-panel-swf",
+      "kind": "asset",
+      "name": "Absolute Control Panel Scaleform movie",
+      "status": "implemented",
+      "confidence": "runtime-verified",
+      "path": "interface/dist/AbsoluteControlPanelMenu.swf",
+      "source": "interface/src/AbsoluteControlPanelMenu.as",
+      "buildMetadata": "interface/dist/AbsoluteControlPanelMenu.build.json",
+      "provenance": "Source-built with pinned Apache Flex 4.16.1 and playerglobal commit recorded in build metadata.",
+      "tags": ["scaleform", "swf", "source-built"]
+    },
+    {
+      "id": "asset.pixel-glyphs",
+      "kind": "asset",
+      "name": "Embedded pixel glyph set",
+      "status": "temporary",
+      "confidence": "runtime-verified",
+      "path": "interface/src/AbsoluteControlPanelMenu.as",
+      "notes": "Code-defined uppercase glyphs avoid external font dependencies but have known alignment and typography limits.",
+      "tags": ["font", "scaleform", "roadmap"]
+    },
+    {
+      "id": "surface.pause-menu-entry",
+      "kind": "runtime-surface",
+      "name": "Additive PauseMenu entry",
+      "status": "implemented",
+      "confidence": "broad-compatibility-verified",
+      "rootPath": "_root.Menu_mc.MainPanel_mc.MainList_mc",
+      "readiness": "After Starfield completes active-menu insertion, install an enterFrame callback on that PauseMenu movie. The callback waits for entryCount to be greater than zero and no more than 32, then clones the vanilla entries and appends one Control Panel action on Scaleform's advance path.",
+      "observedPopulationMilliseconds": [75, 102],
+      "failurePolicy": "Bounded 180-frame event-driven wait, fail closed, F2 fallback; no background Scaleform polling.",
+      "notes": "Validated without replacing pausemenu.swf in both a heavily modified profile and the isolated baseline. The lifecycle-owned revision completed 25 consecutive opens on one retained save, including a Control Panel show/hide followed by five more cycles: 25/25 boundaries, listeners, injections, and completions; one Scaleform thread; zero timeouts, rejections, errors, crashes, or new dumps.",
+      "tags": ["pause-menu", "runtime-injection", "compatibility"]
+    },
+    {
+      "id": "surface.native-menu-registration",
+      "kind": "runtime-surface",
+      "name": "Native GameMenuBase registration",
+      "status": "implemented",
+      "confidence": "runtime-verified",
+      "menuName": "AbsoluteControlPanelMenu",
+      "rootPath": "root1.AbsoluteControlPanelMenu",
+      "notes": "Dedicated native menu owns its Scaleform movie and does not replace the vanilla pause menu.",
+      "tags": ["native-menu", "scaleform", "sfse"]
+    },
+    {
+      "id": "subscriber.absolute-head-tracking",
+      "kind": "subscriber-example",
+      "name": "Absolute Head Tracking",
+      "status": "implemented",
+      "confidence": "runtime-verified",
+      "moduleId": "absolute.head_tracking",
+      "pages": ["general", "axes", "bindings"],
+      "controlKinds": ["Toggle", "IntegerSlider", "FloatSlider", "Action", "InputBinding"],
+      "notes": "First public-API subscriber; its runtime-verified settings are now arranged as General, a twelve-control scrollable Axes page, and Bindings. Host-owned single-key and modifier-chord capture remain unchanged.",
+      "tags": ["subscriber", "integration", "bindings"]
+    },
+    {
+      "id": "subscriber.absolute-zero",
+      "kind": "subscriber-example",
+      "name": "AbsoluteZero",
+      "status": "implemented",
+      "confidence": "build-verified",
+      "moduleId": "AbsoluteZero",
+      "pages": ["mouse-alignment"],
+      "controlKinds": ["Toggle", "IntegerSlider", "FloatSlider"],
+      "notes": "Independent one-page subscriber used with Absolute Head Tracking to validate multi-mod discovery, vertical sidebar navigation, and page-tab isolation.",
+      "tags": ["subscriber", "integration", "multi-module"]
+    },
+    {
+      "id": "protocol.binding.keyboard-v1",
+      "kind": "protocol",
+      "name": "Keyboard chord encoding",
+      "status": "implemented",
+      "confidence": "unit-tested",
+      "grammar": "keyboard:0xHH;ctrl=0|1;alt=0|1;shift=0|1",
+      "examples": [
+        "keyboard:0x48;ctrl=1;alt=1;shift=0",
+        "keyboard:0x70;ctrl=0;alt=0;shift=0"
+      ],
+      "notes": "An empty string clears a binding when the descriptor is marked clearable.",
+      "tags": ["input", "protocol", "abi-v1"]
+    },
+    {
+      "id": "protocol.menu-definition-json-v1",
+      "kind": "protocol",
+      "name": "Declarative menu definition",
+      "status": "implemented",
+      "confidence": "compile-verified",
+      "path": "docs/MENU-DEFINITION-LANGUAGE.md",
+      "schema": "sdk/menu-definition.schema.json",
+      "generator": "sdk/tools/menu_codegen.py",
+      "example": "sdk/examples/absolute-head-tracking.menu.json",
+      "notes": "Strict ABI-v1 JSON generates deterministic module, page, and control descriptors plus provider callback mapping. Unknown presentation fields fail; provider callbacks and persistence remain authoritative. Unsupported future semantics are rejected instead of degraded.",
+      "tags": ["sdk", "codegen", "json", "harness"]
+    }
+  ]
+}

@@ -50,8 +50,9 @@ byte `+0x110`. Shipped derived constructors also clear the tail byte at `+0x130`
 - In observed runs, PauseMenu used priority 11 and CursorMenu priority 20. The research overlay
   uses 19, placing it above PauseMenu while preserving the cursor layer.
 - PauseMenu's observed runtime flags were `0x0800071B`; its constructor initially ORs
-  `0x08000713`, with the cursor bit added by the lifecycle path. The research configuration uses
-  the constructor mask.
+  `0x08000713`, with the cursor bit added by the lifecycle path. SLOP now requests the full
+  `0x0800071B` runtime mask explicitly because its custom registration path does not reliably
+  receive PauseMenu's later cursor-bit mutation.
 
 The plugin installs a fail-closed trace only after validating both the rel32 call opcode and its
 expected target. It logs vanilla and research insertions before and after the engine routine; it

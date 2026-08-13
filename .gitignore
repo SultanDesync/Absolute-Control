@@ -16,3 +16,5 @@ __pycache__/
 *.pyc
 contrib/PluginDebug/
 contrib/PluginRelease/
+references/vanilla-interface/*
+!references/vanilla-interface/README.md

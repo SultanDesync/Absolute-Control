@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "targetAbiVersion": 1,
+  "module": { "id": "example.mod", "title": "Example", "color": "magenta" },
+  "pages": [{ "id": "general", "title": "General", "sections": [{ "id": "main", "title": "Main", "options": [{ "id": "enabled", "type": "toggle", "label": "Enabled", "x": 42 }] }] }]
+}

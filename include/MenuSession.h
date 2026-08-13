@@ -16,6 +16,7 @@ namespace AbsoluteControlPanelResearch::MenuSession
         SelectControl,
         Write,
         Invoke,
+        BeginBindingCapture,
         Apply,
         Cancel,
         Close
@@ -32,6 +33,7 @@ namespace AbsoluteControlPanelResearch::MenuSession
     struct Page
     {
         std::string moduleId;
+        std::string moduleTitle;
         std::string pageId;
         std::string title;
         std::string description;
@@ -46,6 +48,10 @@ namespace AbsoluteControlPanelResearch::MenuSession
         std::string activePageId;
         std::string selectedControlId;
         bool dirty{};
+        bool bindingCaptureActive{};
+        std::string captureModuleId;
+        std::string capturePageId;
+        std::string captureControlId;
         std::string error;
         std::vector<Page> pages;
     };
@@ -65,6 +71,10 @@ namespace AbsoluteControlPanelResearch::MenuSession
     public:
         [[nodiscard]] Model Snapshot();
         [[nodiscard]] Model Dispatch(const Command& a_command);
+        [[nodiscard]] Model CompleteBindingCapture(std::string_view a_binding);
+        [[nodiscard]] Model CancelBindingCapture(std::string_view a_reason = {});
+        [[nodiscard]] bool IsBindingCaptureActive() const noexcept;
+        [[nodiscard]] std::uint32_t BindingCaptureFlags() const noexcept;
 
     private:
         std::string activeModuleId_;
@@ -72,6 +82,10 @@ namespace AbsoluteControlPanelResearch::MenuSession
         std::string selectedControlId_;
         std::string dirtyModuleId_;
         std::string dirtyPageId_;
+        std::string captureModuleId_;
+        std::string capturePageId_;
+        std::string captureControlId_;
+        std::uint32_t captureFlags_{};
         std::string error_;
 
         [[nodiscard]] Model BuildSnapshot();

@@ -27,8 +27,9 @@
   "sentinelBlueMinimum": 240,
   "sentinelMinimumPixels": 512,
   "sentinelPollMilliseconds": 1000,
-  "vJoyDeviceId": 1,
-  "vJoyButton": 1,
+  "openHotkey": 113,
+  "enablePauseMenuEntry": false,
+  "manualValidation": false,
   "keepGameRunning": false,
-  "menuFlags": 134219539
+  "menuFlags": 134219547
 }

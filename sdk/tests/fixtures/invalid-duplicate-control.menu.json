@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "targetAbiVersion": 1,
+  "module": { "id": "example.mod", "title": "Example" },
+  "pages": [
+    { "id": "one", "title": "One", "sections": [{ "id": "main", "title": "Main", "options": [{ "id": "shared.enabled", "type": "toggle", "label": "Enabled" }] }] },
+    { "id": "two", "title": "Two", "sections": [{ "id": "main", "title": "Main", "options": [{ "id": "shared.enabled", "type": "toggle", "label": "Also enabled" }] }] }
+  ]
+}

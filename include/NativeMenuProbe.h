@@ -8,7 +8,7 @@ namespace AbsoluteControlPanelResearch::NativeMenuProbe
     inline constexpr std::string_view kMoviePath = "AbsoluteControlPanelMenu";
     inline constexpr std::string_view kRootPath = "_root";
     inline const std::filesystem::path kConfigPath =
-        "Data/SFSE/Plugins/AbsoluteControlPanelResearch.ini";
+        "Data/SFSE/Plugins/AbsoluteControlPanel.ini";
 
     void OnDataReady() noexcept;
     [[nodiscard]] ProbePhase Phase() noexcept;

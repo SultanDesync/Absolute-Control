@@ -495,108 +495,6 @@ function Wait-ForPluginEvent {
         }
 }
 
-function Invoke-VJoyButtonPulse {
-    param(
-        [uint32]$DeviceId = 1,
-        [uint32]$Button = 1
-    )
-
-    $programFiles = [Environment]::GetFolderPath('ProgramFiles')
-    $nativeCandidates = @(
-        (Join-Path $programFiles 'vJoy\x64\vJoyInterface.dll'),
-        (Join-Path $programFiles 'vJoy\SDK\lib\amd64\vJoyInterface.dll')
-    )
-    $nativePath = $nativeCandidates |
-        Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
-        Select-Object -First 1
-    if ($null -eq $nativePath) {
-        throw 'The vJoy 64-bit native interface was not found.'
-    }
-    if ($null -eq ('AbsoluteControlPanelVJoy' -as [type])) {
-        Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-
-public static class AbsoluteControlPanelVJoy
-{
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool SetDllDirectory(string path);
-
-    [DllImport("vJoyInterface.dll", CallingConvention = CallingConvention.Cdecl)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool vJoyEnabled();
-
-    [DllImport("vJoyInterface.dll", CallingConvention = CallingConvention.Cdecl)]
-    public static extern int GetVJDStatus(uint deviceId);
-
-    [DllImport("vJoyInterface.dll", CallingConvention = CallingConvention.Cdecl)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool AcquireVJD(uint deviceId);
-
-    [DllImport("vJoyInterface.dll", CallingConvention = CallingConvention.Cdecl)]
-    public static extern void RelinquishVJD(uint deviceId);
-
-    [DllImport("vJoyInterface.dll", CallingConvention = CallingConvention.Cdecl)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool ResetVJD(uint deviceId);
-
-    [DllImport("vJoyInterface.dll", CallingConvention = CallingConvention.Cdecl)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool SetBtn(
-        [MarshalAs(UnmanagedType.Bool)] bool pressed, uint deviceId, byte button);
-}
-'@
-    }
-    if (-not [AbsoluteControlPanelVJoy]::SetDllDirectory(
-            (Split-Path -Parent $nativePath))) {
-        throw 'Could not configure the vJoy native-library search path.'
-    }
-    if (-not [AbsoluteControlPanelVJoy]::vJoyEnabled()) {
-        throw 'The vJoy driver is not enabled.'
-    }
-    $status = [AbsoluteControlPanelVJoy]::GetVJDStatus($DeviceId)
-    if ($status -eq 2 -or $status -eq 3 -or $status -eq 4) {
-        throw "vJoy device $DeviceId cannot be driven: $status"
-    }
-
-    $acquired = $status -eq 0
-    $acquiredHere = $false
-    if (-not $acquired) {
-        $acquired = [AbsoluteControlPanelVJoy]::AcquireVJD($DeviceId)
-        $acquiredHere = $acquired
-    }
-    if (-not $acquired) {
-        throw "Could not acquire vJoy device $DeviceId."
-    }
-
-    try {
-        if (-not [AbsoluteControlPanelVJoy]::ResetVJD($DeviceId)) {
-            throw "Could not reset vJoy device $DeviceId."
-        }
-        [void][AbsoluteControlPanelVJoy]::SetBtn($false, $DeviceId, [byte]$Button)
-        Start-Sleep -Milliseconds 300
-        if (-not [AbsoluteControlPanelVJoy]::SetBtn(
-                $true, $DeviceId, [byte]$Button)) {
-            throw "Could not press vJoy device $DeviceId button $Button."
-        }
-        Write-RunnerEvent 'vjoy_button_pressed' (
-            "device=$DeviceId button=$Button")
-        Start-Sleep -Milliseconds 500
-        if (-not [AbsoluteControlPanelVJoy]::SetBtn(
-                $false, $DeviceId, [byte]$Button)) {
-            throw "Could not release vJoy device $DeviceId button $Button."
-        }
-        Write-RunnerEvent 'vjoy_button_released' (
-            "device=$DeviceId button=$Button")
-    } finally {
-        [void][AbsoluteControlPanelVJoy]::SetBtn($false, $DeviceId, [byte]$Button)
-        if ($acquiredHere) {
-            [AbsoluteControlPanelVJoy]::RelinquishVJD($DeviceId)
-        }
-    }
-}
-
 function Invoke-StepTone {
     param([int]$Frequency)
     try {
@@ -639,6 +537,11 @@ $script:SentinelPollMilliseconds = if ($null -ne $manifest.sentinelPollMilliseco
 } else { 1000 }
 $keepGameRunning = $null -ne $manifest.keepGameRunning -and
     [bool]$manifest.keepGameRunning
+$manualValidation = $null -ne $manifest.manualValidation -and
+    [bool]$manifest.manualValidation
+if ($manualValidation -and -not $keepGameRunning) {
+    throw 'manualValidation requires keepGameRunning so the game remains available to the tester.'
+}
 
 Copy-Item -LiteralPath $resolvedManifest -Destination (Join-Path $runDirectory 'manifest.json')
 Write-RunnerEvent 'run_created' "run_id=$runId"
@@ -677,6 +580,9 @@ try {
     }
     $skipBuild = $manifest.PSObject.Properties.Name -contains 'skipBuild' -and
         [bool]$manifest.skipBuild
+    $enablePauseMenuEntry =
+        $manifest.PSObject.Properties.Name -contains 'enablePauseMenuEntry' -and
+        [bool]$manifest.enablePauseMenuEntry
     & (Join-Path $PSScriptRoot 'deploy-probe.ps1') `
         -ModPath $manifest.modPath `
         -RunId $runId `
@@ -686,6 +592,8 @@ try {
             $titleTransitionTimeoutSeconds + 60) * 1000) `
         -OpenDelayMilliseconds $manifest.openDelayMilliseconds `
         -VisibleMilliseconds $manifest.visibleMilliseconds `
+        -OpenHotkey $manifest.openHotkey `
+        -EnablePauseMenuEntry $enablePauseMenuEntry `
         -AdditionalPluginFiles $additionalPluginFiles `
         -SkipBuild:$skipBuild `
         -MenuFlags $manifest.menuFlags
@@ -869,6 +777,13 @@ try {
     Wait-ForPluginEvent -Event 'bridge_model_applied' `
         -DetailContains 'revision=' -TimeoutSeconds 10 -Process $starfield | Out-Null
     Write-RunnerEvent 'initial_model_round_trip_confirmed'
+
+    if ($manualValidation) {
+        Write-RunnerEvent 'manual_validation_ready' (
+            'SLOP is populated; Q/R page, W/S row, E activate, A/D adjust, F apply, X cancel, Esc close')
+        Invoke-StepTone -Frequency 1320
+        return
+    }
 
     Invoke-ResearchInput -CommandId 6 -Command 'accept' -Process $starfield
     Wait-ForPluginEvent -Event 'bridge_command' `

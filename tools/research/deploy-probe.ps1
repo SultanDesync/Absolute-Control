@@ -7,7 +7,9 @@ param(
     [uint32]$OpenDelayMilliseconds = 15000,
     [uint32]$ArmTimeoutMilliseconds = 180000,
     [uint32]$VisibleMilliseconds = 12000,
-    [uint32]$MenuFlags = 0x08000713,
+    [uint32]$OpenHotkey = 0x71,
+    [uint32]$MenuFlags = 0x0800071B,
+    [bool]$EnablePauseMenuEntry = $false,
     [string[]]$AdditionalPluginFiles = @(),
     [switch]$RequireArm,
     [switch]$AdvanceTitleWithSendInput,
@@ -40,6 +42,8 @@ if (-not $SkipBuild) {
 
 $pluginSource = Join-Path $repositoryRoot 'build\windows\x64\releasedbg\AbsoluteControlPanelResearch.dll'
 $movieSource = Join-Path $repositoryRoot 'interface\dist\AbsoluteControlPanelMenu.swf'
+$movieMetadata = Join-Path $repositoryRoot 'interface\dist\AbsoluteControlPanelMenu.build.json'
+$movieSourceCode = Join-Path $repositoryRoot 'interface\src\AbsoluteControlPanelMenu.as'
 $pluginDirectory = Join-Path $ModPath 'SFSE\Plugins'
 $interfaceDirectory = Join-Path $ModPath 'Interface'
 $configPath = Join-Path $pluginDirectory 'AbsoluteControlPanelResearch.ini'
@@ -64,6 +68,19 @@ foreach ($requiredFile in @($pluginSource, $movieSource) + $resolvedAdditionalPl
     }
 }
 
+foreach ($requiredInterfaceFile in @($movieMetadata, $movieSourceCode)) {
+    if (-not (Test-Path -LiteralPath $requiredInterfaceFile -PathType Leaf)) {
+        throw "Required interface provenance file is missing: $requiredInterfaceFile"
+    }
+}
+$interfaceBuild = Get-Content -LiteralPath $movieMetadata -Raw | ConvertFrom-Json
+$currentSourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $movieSourceCode).Hash
+$currentMovieHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $movieSource).Hash
+if ($interfaceBuild.sourceSha256 -ne $currentSourceHash -or
+    $interfaceBuild.outputSha256 -ne $currentMovieHash) {
+    throw 'Refusing to deploy a stale or unrecorded Scaleform movie. Rebuild the interface first.'
+}
+
 New-Item -ItemType Directory -Force -Path $pluginDirectory, $interfaceDirectory | Out-Null
 Copy-Item -LiteralPath $pluginSource -Destination $pluginDirectory -Force
 Copy-Item -LiteralPath $movieSource -Destination $interfaceDirectory -Force
@@ -76,11 +93,13 @@ $configLines = @(
     "RunId=$RunId",
     'EnableRegistration=true',
     'AutoOpen=true',
+    "EnablePauseMenuEntry=$($EnablePauseMenuEntry.ToString().ToLowerInvariant())",
     "RequireArm=$($RequireArm.IsPresent.ToString().ToLowerInvariant())",
     "AdvanceTitleWithSendInput=$($AdvanceTitleWithSendInput.IsPresent.ToString().ToLowerInvariant())",
     "ArmTimeoutMilliseconds=$ArmTimeoutMilliseconds",
     "OpenDelayMilliseconds=$OpenDelayMilliseconds",
     "VisibleMilliseconds=$VisibleMilliseconds",
+    ('OpenHotkey=0x{0:X2}' -f $OpenHotkey),
     ('MenuFlags=0x{0:X8}' -f $MenuFlags)
 )
 [System.IO.File]::WriteAllLines(

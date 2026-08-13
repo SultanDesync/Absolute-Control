@@ -1,4 +1,4 @@
-# SLOP Scaleform boundary
+# Absolute Control Panel Scaleform boundary
 
 This directory reserves the source and compiled-asset boundary for the native menu.
 
@@ -15,8 +15,26 @@ assets, fonts, or components. The plugin scans and records plausible root paths 
 deployed run has proven the visual movie, `_root` bridge object, `ready(1)` callback, active-menu
 insertion, and watchdog close.
 
-A 96x96 opaque `#FF00FF` block is a deliberate R1 smoke-test sentinel. The research harness
-counts near-magenta pixels and records the count and bounding box, giving visual population a
-cheap binary oracle that does not require general-purpose screenshot interpretation.
+The earlier magenta framebuffer sentinel has been removed. Current validation uses bridge model
+acknowledgements, menu lifecycle evidence, and direct inspection during focused runtime passes.
+
+The stable navigation schema is one persistent compact sidebar row per subscriber mod and
+horizontal page tabs across the selected mod's workspace. The source-built component foundation
+renders measured semantic rows for toggles, sliders, choices, actions, and bindings, plus
+selected-setting help and a compact input-aware command footer. Ten ordinary rows fit at 1080p.
+
+Pointer button transitions and coalesced held movement are forwarded to
+`handlePointerDown(stageX, stageY)`, `handlePointerMove(stageX, stageY)`, and
+`handlePointerUp(stageX, stageY)`. The movie resolves those coordinates against the actual
+rendered sprites and emits semantic commands; native code keeps no parallel pixel-hitbox table.
+Sliders retain their semantic module/page/control identity across model redraws, so dragging keeps
+working after each draft write replaces the rendered row. Clicking the track still positions the
+value, and held movement continuously updates it until release. Starfield does not deliver a Flash
+`MOUSE_WHEEL` event to this menu:
+it publishes direction-specific mouse `ButtonEvent`s, `0x800/+120` for up and `0x900/-120` for
+down. Native code
+deduplicates that delivery, samples the cursor, and forwards
+`handlePointerWheel(stageX, stageY, direction)`. The movie still owns region selection and scrolls
+the hovered sidebar, tab strip, or settings viewport without changing values.
 
 The project must not commit a manually edited opaque SWF as its only source of truth.

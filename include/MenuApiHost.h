@@ -25,6 +25,7 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
     struct Page
     {
         std::string moduleId;
+        std::string moduleDisplayName;
         std::string pageId;
         std::string displayName;
         std::string description;
@@ -43,4 +44,8 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
     // after this function returns, never while the registry mutex is held.
     [[nodiscard]] std::vector<Page> Pages() noexcept;
     [[nodiscard]] std::uint64_t Revision() noexcept;
+    void SetMenuOpen(bool a_open) noexcept;
+    void SetInputCaptureActive(bool a_active) noexcept;
+    [[nodiscard]] bool IsMenuOpen() noexcept;
+    [[nodiscard]] bool IsInputCaptureActive() noexcept;
 }

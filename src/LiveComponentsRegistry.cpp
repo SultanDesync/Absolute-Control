@@ -1,0 +1,555 @@
+#include "LiveComponentsRegistry.h"
+
+#include <algorithm>
+#include <cctype>
+#include <cmath>
+#include <cstring>
+#include <ranges>
+#include <span>
+#include <string_view>
+
+namespace AbsoluteControlPanelResearch::LiveComponents
+{
+    namespace
+    {
+        template <std::size_t N>
+        [[nodiscard]] bool IsTerminated(const char (&value)[N]) noexcept
+        {
+            return std::memchr(value, '\0', N) != nullptr;
+        }
+
+        template <std::size_t N>
+        [[nodiscard]] std::string_view View(const char (&value)[N]) noexcept
+        {
+            const auto* end = static_cast<const char*>(std::memchr(value, '\0', N));
+            return end ? std::string_view{ value, static_cast<std::size_t>(end - value) } : std::string_view{};
+        }
+
+        [[nodiscard]] bool IsIdentifier(std::string_view value, bool allowEmpty = false) noexcept
+        {
+            if (value.empty()) return allowEmpty;
+            return std::ranges::all_of(value, [](unsigned char character) {
+                return std::isalnum(character) != 0 || character == '.' ||
+                       character == '_' || character == '-';
+            });
+        }
+
+        template <std::size_t N>
+        [[nodiscard]] bool IsIdentifier(const char (&value)[N], bool allowEmpty = false) noexcept
+        {
+            return IsTerminated(value) && IsIdentifier(View(value), allowEmpty);
+        }
+
+        template <std::size_t N>
+        [[nodiscard]] bool IsLabel(const char (&value)[N], bool allowEmpty = false) noexcept
+        {
+            return IsTerminated(value) && (allowEmpty || !View(value).empty());
+        }
+
+        [[nodiscard]] bool IsComponentKind(ComponentKind kind) noexcept
+        {
+            return kind >= ComponentKind::RangeMeter && kind <= ComponentKind::SegmentedAllocationGrid;
+        }
+
+        [[nodiscard]] bool IsBandSemantic(RangeBandSemantic semantic) noexcept
+        {
+            return semantic >= RangeBandSemantic::Custom && semantic <= RangeBandSemantic::Boost;
+        }
+
+        [[nodiscard]] bool IsMarkerSemantic(RangeMarkerSemantic semantic) noexcept
+        {
+            return semantic >= RangeMarkerSemantic::Custom && semantic <= RangeMarkerSemantic::Detent;
+        }
+
+        [[nodiscard]] bool IsVisualRole(VisualRole role) noexcept
+        {
+            return role >= VisualRole::Neutral && role <= VisualRole::Tier3;
+        }
+
+        template <class Value, class Id>
+        [[nodiscard]] bool HasDuplicateId(const Value* values, std::size_t count, Id id) noexcept
+        {
+            for (std::size_t left = 0; left < count; ++left) {
+                for (std::size_t right = left + 1; right < count; ++right) {
+                    if (View(values[left].*id) == View(values[right].*id)) return true;
+                }
+            }
+            return false;
+        }
+
+        [[nodiscard]] bool ValidateBandsAndMarkers(
+            const RangeBandV1* bands, std::size_t bandCount,
+            const RangeMarkerV1* markers, std::size_t markerCount,
+            double minimumValue, double maximumValue, bool enforceDomain) noexcept
+        {
+            for (std::size_t index = 0; index < bandCount; ++index) {
+                const auto& band = bands[index];
+                if (band.structSize < sizeof(RangeBandV1) || !IsBandSemantic(band.semantic) ||
+                    !IsVisualRole(band.visualRole) ||
+                    !std::isfinite(band.minimumValue) || !std::isfinite(band.maximumValue) ||
+                    band.minimumValue > band.maximumValue || !IsLabel(band.label, true) ||
+                    (enforceDomain && (band.minimumValue < minimumValue || band.maximumValue > maximumValue))) {
+                    return false;
+                }
+            }
+            for (std::size_t index = 0; index < markerCount; ++index) {
+                const auto& marker = markers[index];
+                if (marker.structSize < sizeof(RangeMarkerV1) || !IsMarkerSemantic(marker.semantic) ||
+                    !IsVisualRole(marker.visualRole) ||
+                    !std::isfinite(marker.value) || !IsIdentifier(marker.markerId) ||
+                    !IsLabel(marker.label, true) || !IsIdentifier(marker.controlId, true) ||
+                    (enforceDomain && (marker.value < minimumValue || marker.value > maximumValue))) {
+                    return false;
+                }
+            }
+            return !HasDuplicateId(markers, markerCount, &RangeMarkerV1::markerId);
+        }
+
+        [[nodiscard]] bool ValidateRange(const RangeMeterDescriptorV1& descriptor) noexcept
+        {
+            return descriptor.structSize >= sizeof(RangeMeterDescriptorV1) &&
+                   std::isfinite(descriptor.minimumValue) && std::isfinite(descriptor.maximumValue) &&
+                   descriptor.minimumValue < descriptor.maximumValue &&
+                   descriptor.bandCount <= kMaximumRangeBands &&
+                   descriptor.markerCount <= kMaximumRangeMarkers &&
+                   IsTerminated(descriptor.valueFormat) &&
+                   ValidateBandsAndMarkers(descriptor.bands, descriptor.bandCount,
+                       descriptor.markers, descriptor.markerCount,
+                       descriptor.minimumValue, descriptor.maximumValue, true);
+        }
+
+        [[nodiscard]] bool ValidatePlot(const TelemetryPlotDescriptorV1& descriptor) noexcept
+        {
+            if (descriptor.structSize < sizeof(TelemetryPlotDescriptorV1) ||
+                descriptor.seriesCount == 0 || descriptor.seriesCount > kMaximumPlotSeries ||
+                descriptor.historyCapacity == 0 || descriptor.historyCapacity > kMaximumPlotSamples ||
+                descriptor.autoRange > 1 || !std::isfinite(descriptor.minimumValue) ||
+                !std::isfinite(descriptor.maximumValue) || descriptor.minimumValue >= descriptor.maximumValue ||
+                descriptor.bandCount > kMaximumRangeBands || descriptor.markerCount > kMaximumRangeMarkers) {
+                return false;
+            }
+            for (std::size_t index = 0; index < descriptor.seriesCount; ++index) {
+                const auto& series = descriptor.series[index];
+                if (series.structSize < sizeof(PlotSeriesDescriptorV1) ||
+                    !IsVisualRole(series.visualRole) ||
+                    !IsIdentifier(series.seriesId) || !IsLabel(series.label)) return false;
+            }
+            return !HasDuplicateId(descriptor.series, descriptor.seriesCount, &PlotSeriesDescriptorV1::seriesId) &&
+                   ValidateBandsAndMarkers(descriptor.bands, descriptor.bandCount,
+                       descriptor.markers, descriptor.markerCount,
+                       descriptor.minimumValue, descriptor.maximumValue, descriptor.autoRange == 0);
+        }
+
+        [[nodiscard]] bool ValidateGrid(const SegmentedGridDescriptorV1& descriptor) noexcept
+        {
+            if (descriptor.structSize < sizeof(SegmentedGridDescriptorV1) ||
+                !IsIdentifier(descriptor.controlId) || descriptor.columnCount == 0 ||
+                descriptor.columnCount > kMaximumGridColumns || descriptor.tierCount == 0 ||
+                descriptor.tierCount > kMaximumGridTiers) return false;
+            for (std::size_t index = 0; index < descriptor.columnCount; ++index) {
+                const auto& column = descriptor.columns[index];
+                if (column.structSize < sizeof(GridColumnDescriptorV1) ||
+                    !IsIdentifier(column.columnId) || !IsLabel(column.label) ||
+                    column.maximumSegments == 0 || column.maximumSegments > kMaximumGridSegments) return false;
+            }
+            for (std::size_t index = 0; index < descriptor.tierCount; ++index) {
+                const auto& tier = descriptor.tiers[index];
+                if (tier.structSize < sizeof(GridTierDescriptorV1) ||
+                    !IsVisualRole(tier.visualRole) ||
+                    !IsIdentifier(tier.tierId) || !IsLabel(tier.label)) return false;
+            }
+            return !HasDuplicateId(descriptor.columns, descriptor.columnCount, &GridColumnDescriptorV1::columnId) &&
+                   !HasDuplicateId(descriptor.tiers, descriptor.tierCount, &GridTierDescriptorV1::tierId);
+        }
+
+        [[nodiscard]] bool ValidateDescriptor(const LiveChannelDescriptorV1& descriptor) noexcept
+        {
+            if (descriptor.structSize < sizeof(LiveChannelDescriptorV1) ||
+                descriptor.abiVersion != kAbiVersion || !IsComponentKind(descriptor.kind) ||
+                !IsIdentifier(descriptor.moduleId) || !IsIdentifier(descriptor.pageId) ||
+                !IsIdentifier(descriptor.channelId) || !IsLabel(descriptor.title) ||
+                !descriptor.readLiveFrame) return false;
+            switch (descriptor.kind) {
+            case ComponentKind::RangeMeter: return ValidateRange(descriptor.rangeMeter);
+            case ComponentKind::TelemetryPlot: return ValidatePlot(descriptor.telemetryPlot);
+            case ComponentKind::SegmentedAllocationGrid: return ValidateGrid(descriptor.segmentedGrid);
+            }
+            return false;
+        }
+
+        [[nodiscard]] LiveChannelModelV1 CopyModel(const LiveChannelDescriptorV1& descriptor) noexcept
+        {
+            LiveChannelModelV1 model;
+            std::memcpy(model.moduleId, descriptor.moduleId, sizeof(model.moduleId));
+            std::memcpy(model.pageId, descriptor.pageId, sizeof(model.pageId));
+            std::memcpy(model.channelId, descriptor.channelId, sizeof(model.channelId));
+            std::memcpy(model.title, descriptor.title, sizeof(model.title));
+            model.kind = descriptor.kind;
+            switch (descriptor.kind) {
+            case ComponentKind::RangeMeter: model.rangeMeter = descriptor.rangeMeter; break;
+            case ComponentKind::TelemetryPlot: model.telemetryPlot = descriptor.telemetryPlot; break;
+            case ComponentKind::SegmentedAllocationGrid: model.segmentedGrid = descriptor.segmentedGrid; break;
+            }
+            return model;
+        }
+
+        [[nodiscard]] bool SameKey(const LiveChannelDescriptorV1& descriptor,
+            std::string_view moduleId, std::string_view pageId, std::string_view channelId) noexcept
+        {
+            return View(descriptor.moduleId) == moduleId && View(descriptor.pageId) == pageId &&
+                   View(descriptor.channelId) == channelId;
+        }
+
+        [[nodiscard]] bool ValidateGridFrame(const SegmentedGridFrameV1& frame,
+            const SegmentedGridDescriptorV1& descriptor) noexcept
+        {
+            if (frame.structSize < sizeof(SegmentedGridFrameV1) || frame.columnCount != descriptor.columnCount) return false;
+            for (std::size_t columnIndex = 0; columnIndex < frame.columnCount; ++columnIndex) {
+                const auto& column = frame.columns[columnIndex];
+                const auto maximum = descriptor.columns[columnIndex].maximumSegments;
+                if (column.structSize < sizeof(GridColumnFrameV1) || column.segmentCount > maximum ||
+                    column.currentCount > maximum || column.maximumCount > maximum || column.targetCount > maximum) return false;
+                for (std::size_t segmentIndex = 0; segmentIndex < column.segmentCount; ++segmentIndex) {
+                    const auto& segment = column.segments[segmentIndex];
+                    if (segment.tierIndex >= descriptor.tierCount || segment.live > 1 ||
+                        segment.preview > 1 || segment.interactive > 1) return false;
+                }
+            }
+            return true;
+        }
+
+        [[nodiscard]] bool ValidateFrame(const LiveFrameV1& frame,
+            const LiveChannelDescriptorV1& descriptor) noexcept
+        {
+            if (frame.structSize < sizeof(LiveFrameV1) || frame.abiVersion != kAbiVersion ||
+                frame.kind != descriptor.kind || frame.sequence == 0 || frame.monotonicTimestampUs == 0 ||
+                (frame.flags & ~(kFrameStale | kFrameUnavailable | kFrameSuspended)) != 0) return false;
+            switch (frame.kind) {
+            case ComponentKind::RangeMeter:
+                return frame.rangeMeter.structSize >= sizeof(RangeMeterFrameV1) && frame.rangeMeter.available <= 1 &&
+                       std::isfinite(frame.rangeMeter.liveValue) &&
+                       (!frame.rangeMeter.available || (frame.rangeMeter.liveValue >= descriptor.rangeMeter.minimumValue &&
+                           frame.rangeMeter.liveValue <= descriptor.rangeMeter.maximumValue));
+            case ComponentKind::TelemetryPlot:
+                if (frame.telemetryPlot.structSize < sizeof(TelemetrySampleV1) ||
+                    frame.telemetryPlot.seriesCount != descriptor.telemetryPlot.seriesCount ||
+                    (frame.telemetryPlot.availableMask >> frame.telemetryPlot.seriesCount) != 0) return false;
+                for (std::size_t index = 0; index < frame.telemetryPlot.seriesCount; ++index) {
+                    if (!std::isfinite(frame.telemetryPlot.values[index])) return false;
+                }
+                return true;
+            case ComponentKind::SegmentedAllocationGrid:
+                return ValidateGridFrame(frame.segmentedGrid, descriptor.segmentedGrid);
+            }
+            return false;
+        }
+
+        [[nodiscard]] bool ValidKeyArguments(const char* moduleId, const char* pageId, const char* channelId) noexcept
+        {
+            if (!moduleId || !pageId || !channelId) return false;
+            return IsIdentifier(std::string_view{ moduleId }) && IsIdentifier(std::string_view{ pageId }) &&
+                   IsIdentifier(std::string_view{ channelId });
+        }
+
+        [[nodiscard]] bool ContainsId(const GridTierDescriptorV1* tiers, std::size_t count,
+            std::string_view value) noexcept
+        {
+            return std::ranges::any_of(std::span{ tiers, count }, [&](const auto& tier) {
+                return View(tier.tierId) == value;
+            });
+        }
+
+        [[nodiscard]] const GridColumnDescriptorV1* FindColumn(
+            const SegmentedGridDescriptorV1& descriptor, std::string_view columnId) noexcept
+        {
+            for (std::size_t index = 0; index < descriptor.columnCount; ++index) {
+                if (View(descriptor.columns[index].columnId) == columnId) return &descriptor.columns[index];
+            }
+            return nullptr;
+        }
+
+        [[nodiscard]] bool ValidateOperation(const CompoundOperationV1& operation,
+            const SegmentedGridDescriptorV1& descriptor) noexcept
+        {
+            if (operation.structSize < sizeof(CompoundOperationV1) || operation.abiVersion != kAbiVersion ||
+                !IsIdentifier(operation.moduleId) || !IsIdentifier(operation.pageId) ||
+                !IsIdentifier(operation.channelId) || !IsIdentifier(operation.controlId) ||
+                !IsIdentifier(operation.columnId, true) || !IsIdentifier(operation.tierId, true) ||
+                View(operation.controlId) != View(descriptor.controlId)) return false;
+            const auto columnId = View(operation.columnId);
+            const auto tierId = View(operation.tierId);
+            switch (operation.kind) {
+            case CompoundOperationKind::SetSegmentCount: {
+                const auto* column = FindColumn(descriptor, columnId);
+                return column && ContainsId(descriptor.tiers, descriptor.tierCount, tierId) &&
+                       operation.count <= column->maximumSegments;
+            }
+            case CompoundOperationKind::TrimColumn: {
+                const auto* column = FindColumn(descriptor, columnId);
+                return column && tierId.empty() && operation.count <= column->maximumSegments;
+            }
+            case CompoundOperationKind::SetTier:
+                return columnId.empty() && operation.count == 0 &&
+                       ContainsId(descriptor.tiers, descriptor.tierCount, tierId);
+            }
+            return false;
+        }
+
+        [[nodiscard]] Result __cdecl RegisterChannel(const LiveChannelDescriptorV1* descriptor) noexcept
+        {
+            return descriptor ? HostRegistry().Register(*descriptor) : Result::InvalidArgument;
+        }
+
+        [[nodiscard]] Result __cdecl UnregisterModuleApi(const char* moduleId) noexcept
+        {
+            return HostRegistry().UnregisterModule(moduleId);
+        }
+
+        [[nodiscard]] Result __cdecl RequestImmediateRefreshApi(
+            const char* moduleId, const char* pageId, const char* channelId) noexcept
+        {
+            return HostRegistry().RequestImmediateRefresh(moduleId, pageId, channelId);
+        }
+    }
+
+    Result Registry::Register(const LiveChannelDescriptorV1& descriptor) noexcept
+    {
+        if (!ValidateDescriptor(descriptor)) return Result::InvalidArgument;
+        const auto duplicate = std::ranges::find_if(slots_, [&](const Slot& slot) {
+            return slot.occupied && SameKey(slot.descriptor, View(descriptor.moduleId),
+                View(descriptor.pageId), View(descriptor.channelId));
+        });
+        if (duplicate != slots_.end()) return Result::Duplicate;
+        const auto empty = std::ranges::find_if(slots_, [](const Slot& slot) { return !slot.occupied; });
+        if (empty == slots_.end()) return Result::CapacityExceeded;
+        *empty = Slot{};
+        empty->occupied = true;
+        empty->descriptor = descriptor;
+        empty->model = CopyModel(descriptor);
+        return Result::Ok;
+    }
+
+    Result Registry::UnregisterModule(const char* moduleId) noexcept
+    {
+        if (!moduleId || !IsIdentifier(std::string_view{ moduleId })) return Result::InvalidArgument;
+        bool erased{};
+        for (auto& slot : slots_) {
+            if (slot.occupied && View(slot.descriptor.moduleId) == moduleId) {
+                slot = Slot{};
+                erased = true;
+            }
+        }
+        return erased ? Result::Ok : Result::NotFound;
+    }
+
+    Result Registry::RequestImmediateRefresh(
+        const char* moduleId, const char* pageId, const char* channelId) noexcept
+    {
+        if (!ValidKeyArguments(moduleId, pageId, channelId)) return Result::InvalidArgument;
+        const auto found = std::ranges::find_if(slots_, [&](const Slot& slot) {
+            return slot.occupied && SameKey(slot.descriptor, moduleId, pageId, channelId);
+        });
+        if (found == slots_.end()) return Result::NotFound;
+        found->refreshRequested = true;
+        return Result::Ok;
+    }
+
+    Result Registry::TakeImmediateRefreshRequest(
+        const char* moduleId, const char* pageId, const char* channelId,
+        std::uint32_t& requested) noexcept
+    {
+        requested = 0;
+        if (!ValidKeyArguments(moduleId, pageId, channelId)) return Result::InvalidArgument;
+        const auto found = std::ranges::find_if(slots_, [&](const Slot& slot) {
+            return slot.occupied && SameKey(slot.descriptor, moduleId, pageId, channelId);
+        });
+        if (found == slots_.end()) return Result::NotFound;
+        requested = found->refreshRequested ? 1U : 0U;
+        found->refreshRequested = false;
+        return Result::Ok;
+    }
+
+    void Registry::SetMenuActive(bool active) noexcept { menuActive_ = active; }
+
+    Result Registry::SetVisiblePage(const char* moduleId, const char* pageId) noexcept
+    {
+        if (!moduleId || !pageId || !IsIdentifier(std::string_view{ moduleId }) ||
+            !IsIdentifier(std::string_view{ pageId }) || strlen(moduleId) >= kIdentifierCapacity ||
+            strlen(pageId) >= kIdentifierCapacity) return Result::InvalidArgument;
+        strcpy_s(visibleModuleId_, moduleId);
+        strcpy_s(visiblePageId_, pageId);
+        return Result::Ok;
+    }
+
+    PollPublication Registry::Poll(const char* moduleId, const char* pageId, const char* channelId) noexcept
+    {
+        PollPublication publication;
+        if (!ValidKeyArguments(moduleId, pageId, channelId)) {
+            publication.result = Result::InvalidArgument;
+            return publication;
+        }
+        const auto found = std::ranges::find_if(slots_, [&](const Slot& slot) {
+            return slot.occupied && SameKey(slot.descriptor, moduleId, pageId, channelId);
+        });
+        if (found == slots_.end()) {
+            publication.result = Result::NotFound;
+            return publication;
+        }
+        publication.channel = found->model;
+        if (!menuActive_ || std::string_view{ visibleModuleId_ } != moduleId ||
+            std::string_view{ visiblePageId_ } != pageId) {
+            publication.result = Result::Suspended;
+            if (found->hasFrame) {
+                publication.publish = 1;
+                publication.frame = found->latestFrame;
+                publication.frame.flags |= kFrameSuspended | kFrameStale;
+            }
+            return publication;
+        }
+
+        LiveFrameV1 candidate;
+        const auto callbackResult = found->descriptor.readLiveFrame(found->descriptor.context, &candidate);
+        if (callbackResult != Result::Ok) {
+            publication.result = callbackResult;
+            if (found->hasFrame) {
+                publication.publish = 1;
+                publication.frame = found->latestFrame;
+                publication.frame.flags |= kFrameStale;
+            }
+            return publication;
+        }
+        if (!ValidateFrame(candidate, found->descriptor)) {
+            publication.result = Result::InvalidArgument;
+            return publication;
+        }
+
+        const bool didNotAdvance = found->hasFrame &&
+            (candidate.sequence <= found->lastSequence || candidate.monotonicTimestampUs <= found->lastTimestampUs);
+        const bool stale = didNotAdvance || (candidate.flags & kFrameStale) != 0;
+        if (!candidate.rangeMeter.available && candidate.kind == ComponentKind::RangeMeter)
+            candidate.flags |= kFrameUnavailable;
+        if (stale) candidate.flags |= kFrameStale;
+
+        found->latestFrame = candidate;
+        found->hasFrame = true;
+        found->refreshRequested = false;
+        publication.publish = 1;
+        publication.frame = candidate;
+        publication.result = stale ? Result::Stale : Result::Ok;
+        if (!stale) {
+            found->lastSequence = candidate.sequence;
+            found->lastTimestampUs = candidate.monotonicTimestampUs;
+            if (candidate.kind == ComponentKind::TelemetryPlot) {
+                const auto capacity = found->descriptor.telemetryPlot.historyCapacity;
+                auto& history = found->telemetryHistory;
+                history.samples[history.writeIndex] = candidate.telemetryPlot;
+                history.writeIndex = (history.writeIndex + 1) % capacity;
+                history.count = std::min<std::uint32_t>(history.count + 1, capacity);
+            }
+        }
+        return publication;
+    }
+
+    CompoundPublication Registry::Apply(const CompoundOperationV1& operation) noexcept
+    {
+        CompoundPublication publication;
+        if (operation.structSize < sizeof(CompoundOperationV1) || operation.abiVersion != kAbiVersion ||
+            !IsIdentifier(operation.moduleId) || !IsIdentifier(operation.pageId) ||
+            !IsIdentifier(operation.channelId)) {
+            publication.result = Result::InvalidArgument;
+            return publication;
+        }
+        const auto found = std::ranges::find_if(slots_, [&](const Slot& slot) {
+            return slot.occupied && SameKey(slot.descriptor, View(operation.moduleId),
+                View(operation.pageId), View(operation.channelId));
+        });
+        if (found == slots_.end()) {
+            publication.result = Result::NotFound;
+            return publication;
+        }
+        publication.channel = found->model;
+        if (!menuActive_ || View(operation.moduleId) != std::string_view{ visibleModuleId_ } ||
+            View(operation.pageId) != std::string_view{ visiblePageId_ }) {
+            publication.result = Result::Suspended;
+            return publication;
+        }
+        if (found->descriptor.kind != ComponentKind::SegmentedAllocationGrid ||
+            !found->descriptor.applyCompoundOperation ||
+            !ValidateOperation(operation, found->descriptor.segmentedGrid)) {
+            publication.result = Result::InvalidArgument;
+            return publication;
+        }
+        CompoundSnapshotV1 replacement;
+        const auto callbackResult = found->descriptor.applyCompoundOperation(
+            found->descriptor.context, &operation, &replacement);
+        if (callbackResult != Result::Ok) {
+            publication.result = callbackResult;
+            return publication;
+        }
+        if (replacement.structSize < sizeof(CompoundSnapshotV1) || replacement.revision == 0 ||
+            replacement.revision <= found->compoundRevision ||
+            !ValidateGridFrame(replacement.segmentedGrid, found->descriptor.segmentedGrid)) {
+            publication.result = Result::InvalidArgument;
+            return publication;
+        }
+        found->compoundRevision = replacement.revision;
+        publication.snapshot = replacement;
+        publication.publish = 1;
+        publication.result = Result::Ok;
+        return publication;
+    }
+
+    Result Registry::Describe(const char* moduleId, const char* pageId, const char* channelId,
+        LiveChannelModelV1& model) const noexcept
+    {
+        if (!ValidKeyArguments(moduleId, pageId, channelId)) return Result::InvalidArgument;
+        const auto found = std::ranges::find_if(slots_, [&](const Slot& slot) {
+            return slot.occupied && SameKey(slot.descriptor, moduleId, pageId, channelId);
+        });
+        if (found == slots_.end()) return Result::NotFound;
+        model = found->model;
+        return Result::Ok;
+    }
+
+    Result Registry::TelemetryHistory(const char* moduleId, const char* pageId, const char* channelId,
+        TelemetryHistoryV1& history) const noexcept
+    {
+        if (!ValidKeyArguments(moduleId, pageId, channelId)) return Result::InvalidArgument;
+        const auto found = std::ranges::find_if(slots_, [&](const Slot& slot) {
+            return slot.occupied && SameKey(slot.descriptor, moduleId, pageId, channelId);
+        });
+        if (found == slots_.end()) return Result::NotFound;
+        if (found->descriptor.kind != ComponentKind::TelemetryPlot) return Result::InvalidArgument;
+        history = found->telemetryHistory;
+        return Result::Ok;
+    }
+
+    std::size_t Registry::ChannelCount() const noexcept
+    {
+        return static_cast<std::size_t>(std::ranges::count_if(slots_, [](const Slot& slot) {
+            return slot.occupied;
+        }));
+    }
+
+    Registry& HostRegistry() noexcept
+    {
+        static Registry registry;
+        return registry;
+    }
+
+    const ExperimentalApiV1 g_experimentalApi{
+        sizeof(ExperimentalApiV1),
+        kAbiVersion,
+        &RegisterChannel,
+        &UnregisterModuleApi,
+        &RequestImmediateRefreshApi
+    };
+}
+
+extern "C" ABSOLUTE_CONTROL_PANEL_EXPERIMENTAL_API
+const AbsoluteControlPanelExperimental::ExperimentalApiV1*
+AbsoluteControlPanel_QueryLiveComponentsExperimental(std::uint32_t requestedAbiVersion) noexcept
+{
+    if (requestedAbiVersion != AbsoluteControlPanelExperimental::kAbiVersion) return nullptr;
+    return &AbsoluteControlPanelResearch::LiveComponents::g_experimentalApi;
+}

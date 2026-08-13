@@ -9,7 +9,15 @@ set_warnings("allextra")
 set_encodings("utf-8")
 set_defaultmode("releasedbg")
 
-add_rules("mode.debug", "mode.releasedbg")
+add_rules("mode.debug", "mode.release", "mode.releasedbg")
+
+-- Keep compiler-expanded source paths and PE debug records portable in any
+-- distributable build. This maps the checkout root to a stable relative path
+-- without hard-coding a developer name or workstation layout.
+add_cxflags("/experimental:deterministic", "/pathmap:" .. os.projectdir() .. "=.", {
+    tools = "cl",
+    force = true
+})
 
 local commonlibsf_menu_compat_include = "build/.compat/commonlibsf-1.16.244"
 
@@ -53,12 +61,13 @@ end)
 includes("external/commonlibsf")
 
 target("AbsoluteControlPanelResearch", function()
-    add_defines("SLOP_EXPORTS")
+    set_basename("AbsoluteControlPanel")
+    add_defines("SLOP_EXPORTS", "ABSOLUTE_CONTROL_PANEL_EXPORTS")
     add_rules("commonlibsf.menu.compat")
     add_rules("commonlibsf.plugin", {
-        name = "AbsoluteControlPanelResearch",
-        author = "Absolute Control Panel Research contributors",
-        description = "Standalone native Starfield menu research probe",
+        name = "AbsoluteControlPanel",
+        author = "Absolute Control suite contributors",
+        description = "Native shared configuration menu for Starfield SFSE plugins",
         options = {
             address_library = true,
             layout_dependent = true,
@@ -81,13 +90,14 @@ target("AbsoluteControlPanelResearch", function()
     add_installfiles("docs/MODULE-API.md", "docs/AI-INTEGRATION-HARNESS.md", {
         prefixdir = "Documentation"
     })
-    add_installfiles("include/SlopAPI.h", {
+    add_installfiles("include/AbsoluteControlPanelAPI.h", "include/SlopAPI.h",
+        "include/LiveComponentsExperimentalAPI.h", {
         prefixdir = "SDK"
     })
     add_installfiles("interface/dist/AbsoluteControlPanelMenu.swf", {
         prefixdir = "Interface"
     })
-    add_installfiles("config/AbsoluteControlPanelResearch.ini", {
+    add_installfiles("config/AbsoluteControlPanel.ini", {
         prefixdir = "SFSE/Plugins"
     })
 end)
@@ -104,9 +114,9 @@ target("slop_api_test", function()
     set_kind("binary")
     set_default(false)
     add_tests("contract")
-    add_defines("SLOP_EXPORTS")
+    add_defines("SLOP_EXPORTS", "ABSOLUTE_CONTROL_PANEL_EXPORTS")
     add_includedirs("include")
-    add_files("src/MenuApiHost.cpp", "src/MenuSession.cpp", "tests/SlopApiTests.cpp")
+    add_files("src/MenuApiHost.cpp", "src/MenuInputRouter.cpp", "src/MenuSession.cpp", "tests/SlopApiTests.cpp")
 end)
 
 target("scaleform_bridge_source_test", function()
@@ -114,4 +124,13 @@ target("scaleform_bridge_source_test", function()
     set_default(false)
     add_tests("source_contract")
     add_files("tests/ScaleformBridgeSourceTests.cpp")
+end)
+
+target("live_components_test", function()
+    set_kind("binary")
+    set_default(false)
+    add_tests("experimental_contract")
+    add_defines("ABSOLUTE_CONTROL_PANEL_EXPORTS")
+    add_includedirs("include")
+    add_files("src/LiveComponentsRegistry.cpp", "tests/LiveComponentsTests.cpp")
 end)

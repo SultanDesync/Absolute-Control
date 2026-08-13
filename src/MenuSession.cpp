@@ -91,6 +91,16 @@ namespace AbsoluteControlPanelResearch::MenuSession
 
     bool Session::IsDirty() const noexcept { return !dirtyPageId_.empty(); }
 
+    bool Session::IsBindingCaptureActive() const noexcept
+    {
+        return !captureControlId_.empty();
+    }
+
+    std::uint32_t Session::BindingCaptureFlags() const noexcept
+    {
+        return captureFlags_;
+    }
+
     bool Session::IsDirtyOtherPage(const Command& a_command) const noexcept
     {
         return IsDirty() && (a_command.moduleId != dirtyModuleId_ || a_command.pageId != dirtyPageId_);
@@ -108,7 +118,8 @@ namespace AbsoluteControlPanelResearch::MenuSession
                 SetError("Menu model capacity exceeded");
                 break;
             }
-            Page page{ source.moduleId, source.pageId, source.displayName, source.description };
+            Page page{ source.moduleId, source.moduleDisplayName, source.pageId,
+                source.displayName, source.description };
             for (const auto& descriptor : source.controls) {
                 Control control{ descriptor };
                 control.value.kind = ExpectedValueKind(descriptor.kind);
@@ -143,6 +154,10 @@ namespace AbsoluteControlPanelResearch::MenuSession
         model.activePageId = activePageId_;
         model.selectedControlId = selectedControlId_;
         model.dirty = IsDirty();
+        model.bindingCaptureActive = IsBindingCaptureActive();
+        model.captureModuleId = captureModuleId_;
+        model.capturePageId = capturePageId_;
+        model.captureControlId = captureControlId_;
         model.error = error_;
         return model;
     }
@@ -154,6 +169,11 @@ namespace AbsoluteControlPanelResearch::MenuSession
         error_.clear();
         if (a_command.schemaVersion != kSchemaVersion) {
             SetError("Unsupported command schema"); return BuildSnapshot();
+        }
+        if (IsBindingCaptureActive() &&
+            a_command.kind != CommandKind::BeginBindingCapture) {
+            SetError("Finish or cancel input capture first");
+            return BuildSnapshot();
         }
         const auto pages = MenuApiHost::Pages();
         const auto* page = Find(pages, a_command.moduleId, a_command.pageId);
@@ -209,6 +229,22 @@ namespace AbsoluteControlPanelResearch::MenuSession
             activeModuleId_ = page->moduleId; activePageId_ = page->pageId;
             selectedControlId_ = control.controlId;
             dirtyModuleId_ = page->moduleId; dirtyPageId_ = page->pageId;
+        } else if (a_command.kind == CommandKind::BeginBindingCapture) {
+            constexpr auto kDeviceMask = SlopApi::kBindingKeyboard |
+                SlopApi::kBindingMouse | SlopApi::kBindingController;
+            if (control.kind != SlopApi::ControlKind::ButtonBinding ||
+                (control.flags & SlopApi::kControlReadOnly) != 0 ||
+                (control.flags & kDeviceMask) == 0) {
+                SetError("Input capture unavailable");
+                return BuildSnapshot();
+            }
+            activeModuleId_ = page->moduleId;
+            activePageId_ = page->pageId;
+            selectedControlId_ = control.controlId;
+            captureModuleId_ = page->moduleId;
+            capturePageId_ = page->pageId;
+            captureControlId_ = control.controlId;
+            captureFlags_ = control.flags;
         } else if (a_command.kind == CommandKind::Invoke) {
             if (control.kind != SlopApi::ControlKind::Action || !page->invokeAction ||
                 page->invokeAction(page->context, control.controlId.c_str()) != SlopApi::Result::Ok) {
@@ -219,6 +255,41 @@ namespace AbsoluteControlPanelResearch::MenuSession
             }
         } else {
             SetError("Unknown command");
+        }
+        return BuildSnapshot();
+    }
+
+    Model Session::CompleteBindingCapture(std::string_view a_binding)
+    {
+        if (!IsBindingCaptureActive() ||
+            a_binding.size() >= SlopApi::kStringValueCapacity) {
+            SetError("No active input capture");
+            return BuildSnapshot();
+        }
+        Command command;
+        command.kind = CommandKind::Write;
+        command.moduleId = captureModuleId_;
+        command.pageId = capturePageId_;
+        command.controlId = captureControlId_;
+        command.value.kind = SlopApi::ValueKind::String;
+        std::memcpy(command.value.stringValue, a_binding.data(), a_binding.size());
+        command.value.stringValue[a_binding.size()] = '\0';
+        captureModuleId_.clear();
+        capturePageId_.clear();
+        captureControlId_.clear();
+        captureFlags_ = 0;
+        return Dispatch(command);
+    }
+
+    Model Session::CancelBindingCapture(std::string_view a_reason)
+    {
+        captureModuleId_.clear();
+        capturePageId_.clear();
+        captureControlId_.clear();
+        captureFlags_ = 0;
+        error_.clear();
+        if (!a_reason.empty()) {
+            SetError(a_reason);
         }
         return BuildSnapshot();
     }

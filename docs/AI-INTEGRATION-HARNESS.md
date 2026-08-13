@@ -1,8 +1,8 @@
 # AI-assisted provider integration harness
 
-This workflow is designed so an AI coding agent can add SLOP configuration support to an
-existing SFSE module with minimal user intervention.  The gameplay module must remain fully
-usable if SLOP is missing, incompatible, or fails to render.
+This workflow is designed so an AI coding agent can add Absolute Control Panel configuration
+support to an existing SFSE module with minimal user intervention. The gameplay module must
+remain fully usable if Absolute Control Panel is missing, incompatible, or fails to render.
 
 For an autonomous first-implementation run, use
 [the builder runbook](BUILDER-RUNBOOK.md) as the single entry point. The broader document below
@@ -23,7 +23,7 @@ The user supplies only environment facts that must stay local:
 - the SFSE launcher shortcut;
 - the matching Address Library file;
 - a save that can be continued safely; and
-- optionally, vJoy device 1 for deterministic button-capture tests.
+- optionally, a known test device when controller binding capture is under development.
 
 These values belong in an ignored `*.local.json` manifest.  They must never appear in source,
 documentation, screenshots committed to Git, or a pull-request description.  The harness
@@ -43,16 +43,16 @@ does not copy ImGui rendering code into the provider adapter.  It maps existing 
 renderer-neutral descriptors and callbacks.
 
 The inventory also records the module's known-good compiler environment, configure/build preset
-or command, test command, and artifact path. The builder reuses that recipe by default. SLOP's
-documented MSVC/xmake/CMake baseline is a recommended fallback, not a requirement that a working
-project replace its own build system.
+or command, test command, and artifact path. The builder reuses that recipe by default. Absolute
+Control Panel's documented MSVC/xmake/CMake baseline is a recommended fallback, not a requirement
+that a working project replace its own build system.
 
 ### 2. Add a fail-optional adapter
 
-The agent includes the public API header, dynamically resolves `SLOP_QueryApi`, registers pages,
-and preserves the existing configuration path.  SLOP absence is a normal state, not a plugin
-load failure.  Callback code catches all internal failures and returns an API `Result`; no C++
-exception crosses the DLL boundary.
+The agent includes `AbsoluteControlPanelAPI.h`, dynamically resolves
+`AbsoluteControlPanel_QueryApi`, registers pages, and preserves the existing configuration path.
+Host absence is a normal state, not a plugin load failure. Callback code catches all internal
+failures and returns an API `Result`; no C++ exception crosses the DLL boundary.
 
 ### 3. Run headless contract checks
 
@@ -64,7 +64,7 @@ Before launching Starfield, the agent verifies:
 - invalid IDs, invalid types, and out-of-range writes are rejected;
 - cancel restores the committed snapshot;
 - apply reaches the module's existing persistence layer; and
-- the module still builds and starts with no SLOP binary present.
+- the module still builds and starts with no Absolute Control Panel binary present.
 
 The test should use a temporary configuration location and compare semantic values, not
 machine-specific absolute paths.
@@ -77,13 +77,21 @@ The existing bounded runner performs the expensive validation:
 2. launch through SFSE;
 3. use guarded game-thread input to continue the last save;
 4. open and close PauseMenu as a synchronization check;
-5. require PauseMenu to be closed before showing SLOP;
-6. require the magenta pixel sentinel and bridge snapshot acknowledgement;
-7. exercise representative controls through native keyboard input;
-8. pulse vJoy and require the enumerated binding to round-trip;
+5. require PauseMenu to be closed before showing Absolute Control Panel;
+6. require bridge-model and menu-lifecycle acknowledgements;
+7. exercise representative controls through native keyboard and mouse input;
+8. record a keyboard chord and require the normalized binding to round-trip;
 9. validate provider-owned persisted values;
-10. close SLOP and require gameplay to resume with PauseMenu still closed; and
+10. close Absolute Control Panel and require gameplay to resume with PauseMenu still closed; and
 11. preserve ignored logs and screenshots on both success and failure.
+
+The runtime input mailbox is independent from automatic menu opening and lives in SFSE's resolved
+log directory so it remains writable and visible after MO2 has launched. Use
+`tools/research/invoke-runtime-input.ps1` to write an atomic command and require both acceptance
+and completion evidence. The evidence stream includes an ordered sequence, monotonic timestamp,
+and Windows thread ID. PauseMenu mutation is permitted only after the engine's active-menu
+insertion boundary and from that movie's own Scaleform advance callback; no worker may poll a
+foreign movie.
 
 Pixel thresholds and structured plugin events are pass/fail authorities.  A vision model is
 reserved for failure screenshots, layout review, and unexpected dialogs; routine success does
@@ -91,7 +99,7 @@ not spend vision-model tokens.
 
 ### 5. Prove isolation and privacy
 
-The agent disables or removes SLOP from the isolated profile and confirms the provider gameplay
+The agent disables or removes Absolute Control Panel from the isolated profile and confirms the provider gameplay
 plugin still loads.  Before commit it scans staged text for usernames, drive-qualified local
 paths, process IDs, screenshot paths, device serials, tokens, and generated research artifacts.
 Only placeholder manifests may be committed.

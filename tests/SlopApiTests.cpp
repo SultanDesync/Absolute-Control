@@ -1,5 +1,7 @@
 #include "MenuApiHost.h"
+#include "MenuInputRouter.h"
 #include "MenuSession.h"
+#include "AbsoluteControlPanelAPI.h"
 #include "SlopAPI.h"
 
 #include <cmath>
@@ -110,6 +112,19 @@ int main()
     const auto* api = SLOP_QueryApi(kAbiVersion);
     CHECK(api && api->abiVersion == kAbiVersion && api->structSize >= sizeof(ApiV1));
     CHECK(api->registerPage(nullptr) == Result::InvalidArgument);
+    CHECK(api->registerModule != nullptr);
+    CHECK(AbsoluteControlPanel_QueryApi(AbsoluteControlPanelApi::kAbiVersion + 1) == nullptr);
+    const auto* publicApi =
+        AbsoluteControlPanel_QueryApi(AbsoluteControlPanelApi::kAbiVersion);
+    CHECK(publicApi && publicApi->moduleId &&
+        std::string_view(publicApi->moduleId) == AbsoluteControlPanelApi::kModuleId &&
+        publicApi->isOpen && publicApi->isInputCaptureActive);
+
+    ModuleDescriptorV1 module;
+    strcpy_s(module.moduleId, "test.module");
+    strcpy_s(module.displayName, "Test Plugin");
+    strcpy_s(module.description, "A subscriber with more than one options page.");
+    CHECK(api->registerModule(&module) == Result::Ok);
 
     Provider generalProvider, bindingsProvider, noRollbackProvider;
     ControlDescriptorV1 generalControls[]{
@@ -120,6 +135,7 @@ int main()
         MakeDescriptor(ControlKind::Action, "run"),
         MakeDescriptor(ControlKind::IntegerSlider, "broken", 0, 10, 1)
     };
+    generalControls[3].flags = kBindingKeyboard | kBindingModifiers | kBindingClearable;
     PageDescriptorV1 general;
     strcpy_s(general.moduleId, "test.module"); strcpy_s(general.pageId, "general"); strcpy_s(general.displayName, "General");
     general.controlCount = static_cast<std::uint32_t>(std::size(generalControls)); general.controls = generalControls;
@@ -142,10 +158,74 @@ int main()
     Session session;
     auto model = session.Snapshot();
     CHECK(model.pages.size() == 2 && model.pages[0].controls.size() == 6);
+    CHECK(model.pages[0].moduleTitle == "Test Plugin" &&
+        model.pages[1].moduleTitle == "Test Plugin");
     CHECK(model.pages[0].controls[0].available && model.pages[0].controls[0].value.booleanValue == 1);
     CHECK(model.pages[0].controls[1].value.integerValue == 3 && model.pages[0].controls[2].value.floatValue == 1.5);
     CHECK(model.pages[0].controls[5].available == false);  // failed/wrong-kind reads are isolated to the row
     CHECK(model.pages[0].controls[4].available && generalProvider.reads == 5);  // Action never reads
+
+    // The UI schema is mods vertically, with the selected mod's pages as horizontal tabs.
+    auto navigationModel = model;
+    auto otherPage = model.pages[0];
+    otherPage.moduleId = "other.module";
+    otherPage.moduleTitle = "Other Plugin";
+    otherPage.pageId = "other";
+    otherPage.title = "Other";
+    navigationModel.pages.push_back(std::move(otherPage));
+
+    // The game-thread router must be sufficient even when Scaleform keyboard events are absent.
+    CHECK(MenuInputRouter::IsMenuKey(MenuInputRouter::kAccept));
+    CHECK(!MenuInputRouter::IsMenuKey('V'));
+    auto routed = MenuInputRouter::Route(model, MenuInputRouter::kAccept);
+    CHECK(routed.command && routed.command->kind == CommandKind::Write &&
+        routed.command->controlId == "enabled" &&
+        routed.command->value.kind == ValueKind::Boolean &&
+        routed.command->value.booleanValue == 0);
+    routed = MenuInputRouter::Route(model, MenuInputRouter::kDown);
+    CHECK(routed.command && routed.command->kind == CommandKind::SelectControl &&
+        routed.command->controlId == "count");
+    routed = MenuInputRouter::Route(model, MenuInputRouter::kUp);
+    CHECK(routed.command && routed.command->kind == CommandKind::SelectControl &&
+        routed.command->controlId == "broken");
+    routed = MenuInputRouter::Route(navigationModel, MenuInputRouter::kNextPage);
+    CHECK(routed.command && routed.command->kind == CommandKind::SelectPage &&
+        routed.command->moduleId == "test.module" && routed.command->pageId == "bindings");
+    auto bindingsModel = navigationModel;
+    bindingsModel.activePageId = "bindings";
+    routed = MenuInputRouter::Route(bindingsModel, MenuInputRouter::kNextPage);
+    CHECK(routed.command && routed.command->kind == CommandKind::SelectPage &&
+        routed.command->moduleId == "test.module" && routed.command->pageId == "general");
+    routed = MenuInputRouter::Route(model, MenuInputRouter::kApply);
+    CHECK(routed.command && routed.command->kind == CommandKind::Apply &&
+        routed.command->pageId == "general" && routed.command->controlId.empty());
+    routed = MenuInputRouter::Route(model, MenuInputRouter::kCancel);
+    CHECK(routed.command && routed.command->kind == CommandKind::Cancel &&
+        routed.command->pageId == "general");
+    model.selectedControlId = "count";
+    routed = MenuInputRouter::Route(model, MenuInputRouter::kIncrease);
+    CHECK(routed.command && routed.command->kind == CommandKind::Write &&
+        routed.command->value.integerValue == 4);
+    routed = MenuInputRouter::Route(model, MenuInputRouter::kRight);
+    CHECK(routed.handled && !routed.command &&
+        routed.focus.region == MenuInputRouter::FocusRegion::Actions &&
+        routed.focus.actionIndex == 0);
+    routed = MenuInputRouter::Route(model, MenuInputRouter::kAccept, routed.focus);
+    CHECK(routed.command && routed.command->kind == CommandKind::Apply);
+    routed = MenuInputRouter::Route(model, MenuInputRouter::kLeft);
+    routed = MenuInputRouter::Route(model, MenuInputRouter::kLeft, routed.focus);
+    CHECK(routed.handled && !routed.command &&
+        routed.focus.region == MenuInputRouter::FocusRegion::Modules);
+    routed = MenuInputRouter::Route(navigationModel, MenuInputRouter::kDown, routed.focus);
+    CHECK(routed.command && routed.command->kind == CommandKind::SelectPage &&
+        routed.command->moduleId == "other.module" && routed.command->pageId == "other");
+    model.selectedControlId = "broken";
+    CHECK(!MenuInputRouter::Route(model, MenuInputRouter::kAccept).command);
+    model.selectedControlId = "enabled";
+    Model emptyModel;
+    routed = MenuInputRouter::Route(emptyModel, MenuInputRouter::kEscape);
+    CHECK(routed.command && routed.command->kind == CommandKind::Close);
+    model = session.Snapshot();
 
     model = session.Dispatch(MakeCommand(CommandKind::SelectControl, "general", "missing"));
     CHECK(!model.error.empty());
@@ -182,9 +262,27 @@ int main()
     CHECK(session.Dispatch(binding).dirty && generalProvider.lastWrite.kind == ValueKind::String);
     CHECK(session.Dispatch(MakeCommand(CommandKind::Cancel, "general")).dirty == false && generalProvider.cancels == 1);
 
+    auto beginCapture = MakeCommand(CommandKind::BeginBindingCapture, "general", "bind");
+    model = session.Dispatch(beginCapture);
+    CHECK(model.bindingCaptureActive && model.captureControlId == "bind" &&
+        session.BindingCaptureFlags() == generalControls[3].flags);
+    CHECK(!session.Dispatch(MakeCommand(CommandKind::SelectPage, "bindings")).error.empty());
+    model = session.CompleteBindingCapture(
+        "keyboard:0x48;ctrl=1;alt=1;shift=0");
+    CHECK(!model.bindingCaptureActive && model.dirty && generalProvider.writes == 3 &&
+        std::strcmp(generalProvider.lastWrite.stringValue,
+            "keyboard:0x48;ctrl=1;alt=1;shift=0") == 0);
+    CHECK(session.Dispatch(MakeCommand(CommandKind::Cancel, "general")).dirty == false &&
+        generalProvider.cancels == 2);
+
+    model = session.Dispatch(beginCapture);
+    CHECK(model.bindingCaptureActive);
+    model = session.CancelBindingCapture();
+    CHECK(!model.bindingCaptureActive && model.error.empty());
+
     write.value.kind = ValueKind::Integer; write.value.integerValue = 4;
     CHECK(session.Dispatch(write).dirty);
-    CHECK(session.Dispatch(MakeCommand(CommandKind::Close, "")).dirty == false && generalProvider.cancels == 2);
+    CHECK(session.Dispatch(MakeCommand(CommandKind::Close, "")).dirty == false && generalProvider.cancels == 3);
 
     ControlDescriptorV1 noRollbackControls[]{ MakeDescriptor(ControlKind::Toggle, "unsafe") };
     PageDescriptorV1 noRollback;

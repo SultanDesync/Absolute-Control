@@ -9,6 +9,7 @@ namespace AbsoluteControlPanelResearch::ResearchModule
     {
         using SlopApi::ControlDescriptorV1;
         using SlopApi::ControlKind;
+        using SlopApi::ModuleDescriptorV1;
         using SlopApi::PageDescriptorV1;
         using SlopApi::Result;
         using SlopApi::ValueKind;
@@ -176,9 +177,11 @@ namespace AbsoluteControlPanelResearch::ResearchModule
                 0.0, 100.0, 5.0 },
             ControlDescriptorV1{
                 sizeof(ControlDescriptorV1), ControlKind::ButtonBinding,
-                SlopApi::kControlNone, "test-button-binding",
+                SlopApi::kBindingKeyboard | SlopApi::kBindingModifiers |
+                    SlopApi::kBindingClearable,
+                "test-button-binding",
                 "Test button binding",
-                "Representative enumerated DirectInput binding captured by the menu host.",
+                "Representative keyboard chord captured by the menu host.",
                 0.0, 0.0, 0.0 }
         };
     }
@@ -192,29 +195,69 @@ namespace AbsoluteControlPanelResearch::ResearchModule
             return false;
         }
 
-        const PageDescriptorV1 page{
-            sizeof(PageDescriptorV1),
-            "absolute-control-panel.research",
-            "representative-controls",
-            "Research controls",
-            "Synthetic provider used to validate the native MCM host contract.",
-            static_cast<std::uint32_t>(kControls.size()),
-            kControls.data(),
-            &g_state,
-            &ReadValue,
-            &WriteDraft,
-            nullptr,
-            &Apply,
-            &Cancel
+        constexpr auto registerModuleOffset = offsetof(SlopApi::ApiV1, registerModule) +
+            sizeof(((SlopApi::ApiV1*)nullptr)->registerModule);
+        if (api->structSize >= registerModuleOffset && api->registerModule) {
+            const ModuleDescriptorV1 module{
+                sizeof(ModuleDescriptorV1),
+                "absolute-control-panel.research",
+                "Control Panel Research",
+                "Built-in validation provider for the Absolute Control Panel host and SDK."
+            };
+            const auto moduleResult = api->registerModule(&module);
+            if (moduleResult != Result::Ok && moduleResult != Result::Duplicate) {
+                EvidenceLog::Event("api_module_registration_failed",
+                    std::format("module={} result={}", module.moduleId,
+                        static_cast<std::uint32_t>(moduleResult)));
+                return false;
+            }
+        }
+
+        const PageDescriptorV1 pages[]{
+            {
+                sizeof(PageDescriptorV1),
+                "absolute-control-panel.research",
+                "representative-controls",
+                "Research Controls",
+                "Synthetic values used to validate the native MCM host contract.",
+                2,
+                kControls.data(),
+                &g_state,
+                &ReadValue,
+                &WriteDraft,
+                nullptr,
+                &Apply,
+                &Cancel
+            },
+            {
+                sizeof(PageDescriptorV1),
+                "absolute-control-panel.research",
+                "input-bindings",
+                "Input Bindings",
+                "Synthetic binding page used to validate multi-page subscribers.",
+                1,
+                kControls.data() + 2,
+                &g_state,
+                &ReadValue,
+                &WriteDraft,
+                nullptr,
+                &Apply,
+                &Cancel
+            }
         };
-        const auto result = api->registerPage(&page);
-        EvidenceLog::Event(
-            result == Result::Ok ? "api_provider_registered" :
-                                   "api_provider_registration_failed",
-            std::format(
-                "abi={} module={} page={} controls={} result={}", api->abiVersion,
-                page.moduleId, page.pageId, page.controlCount,
-                static_cast<std::uint32_t>(result)));
-        return result == Result::Ok;
+        for (const auto& page : pages) {
+            const auto result = api->registerPage(&page);
+            EvidenceLog::Event(
+                result == Result::Ok ? "api_provider_registered" :
+                                       "api_provider_registration_failed",
+                std::format(
+                    "abi={} module={} page={} controls={} result={}", api->abiVersion,
+                    page.moduleId, page.pageId, page.controlCount,
+                    static_cast<std::uint32_t>(result)));
+            if (result != Result::Ok) {
+                return false;
+            }
+        }
+        return true;
     }
 }

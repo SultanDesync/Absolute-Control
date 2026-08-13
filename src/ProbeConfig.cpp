@@ -88,6 +88,9 @@ namespace AbsoluteControlPanelResearch
                 config.enableRegistration = ParseBool(value, config.enableRegistration);
             } else if (key == "AutoOpen") {
                 config.autoOpen = ParseBool(value, config.autoOpen);
+            } else if (key == "EnablePauseMenuEntry") {
+                config.enablePauseMenuEntry =
+                    ParseBool(value, config.enablePauseMenuEntry);
             } else if (key == "RequireArm") {
                 config.requireArm = ParseBool(value, config.requireArm);
             } else if (key == "AdvanceTitleWithSendInput") {
@@ -101,6 +104,8 @@ namespace AbsoluteControlPanelResearch
                     ParseUnsigned(value, config.openDelayMilliseconds);
             } else if (key == "VisibleMilliseconds") {
                 config.visibleMilliseconds = ParseUnsigned(value, config.visibleMilliseconds);
+            } else if (key == "OpenHotkey") {
+                config.openHotkey = ParseUnsigned(value, config.openHotkey);
             } else if (key == "MenuFlags") {
                 config.menuFlags = ParseUnsigned(value, config.menuFlags);
             }
@@ -111,6 +116,7 @@ namespace AbsoluteControlPanelResearch
         config.armTimeoutMilliseconds =
             std::clamp(config.armTimeoutMilliseconds, 1000u, 600000u);
         config.visibleMilliseconds = std::clamp(config.visibleMilliseconds, 2000u, 30000u);
+        config.openHotkey = std::min(config.openHotkey, 255u);
         if (config.runId.empty()) {
             config.runId = "manual";
         }

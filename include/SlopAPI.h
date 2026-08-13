@@ -51,7 +51,12 @@ namespace SlopApi
         kControlNone = 0,
         kControlReadOnly = 1U << 0,
         kControlRequiresRestart = 1U << 1,
-        kControlAdvanced = 1U << 2
+        kControlAdvanced = 1U << 2,
+        kBindingKeyboard = 1U << 8,
+        kBindingMouse = 1U << 9,
+        kBindingController = 1U << 10,
+        kBindingModifiers = 1U << 11,
+        kBindingClearable = 1U << 12
     };
 
     struct ValueV1
@@ -86,6 +91,14 @@ namespace SlopApi
     using ApplyCallback = Result(__cdecl*)(void* context) noexcept;
     using CancelCallback = void(__cdecl*)(void* context) noexcept;
 
+    struct ModuleDescriptorV1
+    {
+        std::uint32_t structSize{ sizeof(ModuleDescriptorV1) };
+        char moduleId[kIdentifierCapacity]{};
+        char displayName[kLabelCapacity]{};
+        char description[kDescriptionCapacity]{};
+    };
+
     struct PageDescriptorV1
     {
         std::uint32_t structSize{ sizeof(PageDescriptorV1) };
@@ -115,12 +128,18 @@ namespace SlopApi
         Result(__cdecl* unregisterModule)(const char* moduleId) noexcept{};
         Result(__cdecl* requestRefresh)(
             const char* moduleId, const char* pageId) noexcept{};
+
+        // Optional forward-compatible extension. Providers must check structSize
+        // before reading this field; older hosts and providers remain ABI-safe.
+        Result(__cdecl* registerModule)(const ModuleDescriptorV1*) noexcept{};
     };
 
     static_assert(std::is_standard_layout_v<ValueV1>);
     static_assert(std::is_trivially_copyable_v<ValueV1>);
     static_assert(std::is_standard_layout_v<ControlDescriptorV1>);
     static_assert(std::is_trivially_copyable_v<ControlDescriptorV1>);
+    static_assert(std::is_standard_layout_v<ModuleDescriptorV1>);
+    static_assert(std::is_trivially_copyable_v<ModuleDescriptorV1>);
     static_assert(std::is_standard_layout_v<PageDescriptorV1>);
     static_assert(std::is_standard_layout_v<ApiV1>);
 }

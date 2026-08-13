@@ -1,4 +1,11 @@
-# Builder runbook: first external SLOP page
+# Historical builder run: first external SLOP page
+
+> This document preserves the disposable experiment that produced the first external subscriber.
+> It is evidence, not current SDK guidance. New integrations use
+> [`AbsoluteControlPanelAPI.h`](../include/AbsoluteControlPanelAPI.h), the
+> [AI integration harness](AI-INTEGRATION-HARNESS.md), and the
+> [menu-definition SDK](../sdk/README.md). Legacy SLOP names below are retained so the recorded
+> experiment remains reproducible.
 
 This is the single entry point for an autonomous builder. Do not begin by reading every research
 document. Follow the phases below and open a referenced document only when that phase needs it.

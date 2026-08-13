@@ -1,0 +1,57 @@
+# Absolute Control Panel menu-definition SDK
+
+Subscriber developers can either handwrite ABI v1 descriptors or generate the same descriptors
+from strict JSON. Both routes use `AbsoluteControlPanelAPI.h`; neither transfers configuration
+ownership to the host.
+
+## Generate descriptors
+
+Start from `examples/absolute-head-tracking.menu.json`, then validate and generate:
+
+```powershell
+python sdk/tools/menu_codegen.py validate sdk/examples/my-mod.menu.json
+python sdk/tools/menu_codegen.py generate sdk/examples/my-mod.menu.json include/MyModMenu.generated.h
+```
+
+Check generated files in with the subscriber source. CI can detect drift without rewriting files:
+
+```powershell
+python sdk/tools/menu_codegen.py generate sdk/examples/my-mod.menu.json include/MyModMenu.generated.h --check
+```
+
+The generated header provides:
+
+- immutable `ModuleDescriptorV1` and per-page `ControlDescriptorV1` tables;
+- a `ControlId` enum and `ParseControlId` helper for provider callback dispatch;
+- `ProviderCallbacks`, which accepts the provider's existing ABI callbacks and context; and
+- `MakePages`, which wires those callbacks into `PageDescriptorV1` values for registration.
+
+The provider still implements reads, draft writes, validation, Apply, Cancel, actions, and config
+persistence. Generate descriptors once during the build; JSON is not parsed in Starfield.
+
+## Handwrite descriptors
+
+Existing integrations may continue constructing `ModuleDescriptorV1`, `ControlDescriptorV1`, and
+`PageDescriptorV1` directly. The generator is optional and does not create a second runtime API.
+Handwritten and generated integrations must obey the same capacity, stable-ID, and callback rules.
+
+## Deliberate ABI v1 limits
+
+The schema is closed: unknown properties fail. Coordinates, dimensions, colors, fonts, textures,
+CSS, ActionScript, and native drawing callbacks are therefore not expressible. The host owns layout
+and style.
+
+Sections preserve authoring order, but ABI v1 has no section descriptor, so section headings are not
+emitted. Choice labels, text editors, presentation hints, and advanced live components require a
+future ABI and are rejected rather than silently degraded. Control IDs must be unique across the
+whole module because ABI v1 callbacks receive `controlId`, not a page-qualified key.
+
+## Tests
+
+```powershell
+python -m unittest discover -s sdk/tests -v
+xmake -P sdk/tests/compile
+xmake run -P sdk/tests/compile generated_menu_compile_test
+```
+
+Negative fixtures cover forbidden presentation fields, duplicate callback IDs, and invalid ranges.
