@@ -8,6 +8,7 @@ param(
     [uint32]$ArmTimeoutMilliseconds = 180000,
     [uint32]$VisibleMilliseconds = 12000,
     [uint32]$MenuFlags = 0x08000713,
+    [string[]]$AdditionalPluginFiles = @(),
     [switch]$RequireArm,
     [switch]$AdvanceTitleWithSendInput,
     [switch]$SkipBuild
@@ -43,7 +44,21 @@ $pluginDirectory = Join-Path $ModPath 'SFSE\Plugins'
 $interfaceDirectory = Join-Path $ModPath 'Interface'
 $configPath = Join-Path $pluginDirectory 'AbsoluteControlPanelResearch.ini'
 
-foreach ($requiredFile in @($pluginSource, $movieSource)) {
+$resolvedAdditionalPlugins = @($AdditionalPluginFiles | ForEach-Object {
+    $resolved = (Resolve-Path -LiteralPath $_).Path
+    if (-not (Test-Path -LiteralPath $resolved -PathType Leaf) -or
+        [System.IO.Path]::GetExtension($resolved) -ine '.dll') {
+        throw "Additional plugin must be an existing DLL: $_"
+    }
+    $resolved
+})
+$destinationNames = @('AbsoluteControlPanelResearch.dll') +
+    @($resolvedAdditionalPlugins | ForEach-Object { Split-Path -Leaf $_ })
+if (@($destinationNames | Select-Object -Unique).Count -ne $destinationNames.Count) {
+    throw 'Additional plugin filenames must be unique and cannot replace the SLOP host DLL.'
+}
+
+foreach ($requiredFile in @($pluginSource, $movieSource) + $resolvedAdditionalPlugins) {
     if (-not (Test-Path -LiteralPath $requiredFile -PathType Leaf)) {
         throw "Required build output is missing: $requiredFile"
     }
@@ -52,6 +67,9 @@ foreach ($requiredFile in @($pluginSource, $movieSource)) {
 New-Item -ItemType Directory -Force -Path $pluginDirectory, $interfaceDirectory | Out-Null
 Copy-Item -LiteralPath $pluginSource -Destination $pluginDirectory -Force
 Copy-Item -LiteralPath $movieSource -Destination $interfaceDirectory -Force
+foreach ($additionalPlugin in $resolvedAdditionalPlugins) {
+    Copy-Item -LiteralPath $additionalPlugin -Destination $pluginDirectory -Force
+}
 
 $configLines = @(
     '[Probe]',
@@ -68,6 +86,10 @@ $configLines = @(
 [System.IO.File]::WriteAllLines(
     $configPath, $configLines, [System.Text.UTF8Encoding]::new($false))
 
-Get-FileHash -Algorithm SHA256 -LiteralPath (
-    Join-Path $pluginDirectory 'AbsoluteControlPanelResearch.dll'), (
-    Join-Path $interfaceDirectory 'AbsoluteControlPanelMenu.swf')
+$deployedFiles = @(
+    Join-Path $pluginDirectory 'AbsoluteControlPanelResearch.dll'
+    Join-Path $interfaceDirectory 'AbsoluteControlPanelMenu.swf'
+) + @($resolvedAdditionalPlugins | ForEach-Object {
+    Join-Path $pluginDirectory (Split-Path -Leaf $_)
+})
+Get-FileHash -Algorithm SHA256 -LiteralPath $deployedFiles

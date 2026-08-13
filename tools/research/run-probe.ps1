@@ -669,6 +669,12 @@ $armPath = $null
 $advancePath = $null
 $inputPath = $null
 try {
+    $additionalPluginFiles = @()
+    if ($manifest.PSObject.Properties.Name -contains 'additionalPluginFiles') {
+        $additionalPluginFiles = @($manifest.additionalPluginFiles | ForEach-Object {
+            [string]$_
+        })
+    }
     & (Join-Path $PSScriptRoot 'deploy-probe.ps1') `
         -ModPath $manifest.modPath `
         -RunId $runId `
@@ -678,6 +684,7 @@ try {
             $titleTransitionTimeoutSeconds + 60) * 1000) `
         -OpenDelayMilliseconds $manifest.openDelayMilliseconds `
         -VisibleMilliseconds $manifest.visibleMilliseconds `
+        -AdditionalPluginFiles $additionalPluginFiles `
         -MenuFlags $manifest.menuFlags
     Write-RunnerEvent 'deploy_complete' "mod_path=$($manifest.modPath)"
 

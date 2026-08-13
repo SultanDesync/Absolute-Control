@@ -60,6 +60,13 @@ foreach ($candidate in @(
         throw "$($candidate.Label) directory is not a registered worktree; refusing to remove it."
     }
 
+    $reparsePoints = @(Get-ChildItem -LiteralPath $candidate.Worktree -Recurse -Force `
+            -Attributes ReparsePoint -ErrorAction Stop)
+    if ($reparsePoints.Count -ne 0) {
+        $names = @($reparsePoints | ForEach-Object { $_.FullName }) -join ', '
+        throw "Worktree contains filesystem links; remove them explicitly before disposal: $names"
+    }
+
     if ($PSCmdlet.ShouldProcess($candidate.Worktree, 'Remove disposable Git worktree and all candidate changes')) {
         & git -C $candidate.Source worktree remove --force $candidate.Worktree
         if ($LASTEXITCODE -ne 0) {

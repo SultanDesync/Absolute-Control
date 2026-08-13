@@ -79,8 +79,10 @@ $specSources = [ordered]@{
     'builder-result.schema.json' = Join-Path $hostSource 'tools\process\builder-result.schema.json'
     'build-host.ps1' = Join-Path $hostSource 'tools\process\build-host.ps1'
     'build-subscriber.ps1' = Join-Path $hostSource 'tools\process\build-subscriber.ps1'
+    'build-interface.ps1' = Join-Path $hostSource 'tools\process\build-interface.ps1'
     'build-host.cmd' = Join-Path $hostSource 'tools\process\build-host.cmd'
     'build-subscriber.cmd' = Join-Path $hostSource 'tools\process\build-subscriber.cmd'
+    'build-interface.cmd' = Join-Path $hostSource 'tools\process\build-interface.cmd'
     'phases\01-SUBSCRIBER.md' = Join-Path $hostSource 'docs\process\phases\01-SUBSCRIBER.md'
     'phases\02-HOST-CORE.md' = Join-Path $hostSource 'docs\process\phases\02-HOST-CORE.md'
     'phases\03-SCALEFORM.md' = Join-Path $hostSource 'docs\process\phases\03-SCALEFORM.md'
@@ -117,15 +119,18 @@ if ($LASTEXITCODE -ne 0) {
     throw 'Could not initialize the detached subscriber dependencies.'
 }
 
-$candidateTools = Join-Path $hostWorktree '.tools'
-New-Item -ItemType Directory -Path $candidateTools -Force | Out-Null
 foreach ($toolDirectory in @('apache-flex-sdk-4.16.1', 'playerglobal-repo')) {
     $sourceTool = Join-Path (Join-Path $hostSource '.tools') $toolDirectory
     if (-not (Test-Path -LiteralPath $sourceTool -PathType Container)) {
         throw "Pinned interface toolchain is missing: $sourceTool"
     }
-    New-Item -ItemType Junction -Path (Join-Path $candidateTools $toolDirectory) `
-        -Target $sourceTool | Out-Null
+}
+$compilerPath = Join-Path $hostSource '.tools\apache-flex-sdk-4.16.1\bin\mxmlc.bat'
+$playerGlobalPath = Join-Path $hostSource '.tools\playerglobal-repo\11.5\playerglobal.swc'
+foreach ($requiredTool in @($compilerPath, $playerGlobalPath)) {
+    if (-not (Test-Path -LiteralPath $requiredTool -PathType Leaf)) {
+        throw "Pinned interface toolchain file is missing: $requiredTool"
+    }
 }
 
 $run = [ordered]@{

@@ -48,6 +48,9 @@ Both clean baseline builds passed before dispatch. Use the .cmd build wrappers i
 specification directory. Work through the implementation and mechanical proof; an audit-only
 report is not completion. Do not commit, push, promote, edit either source repository, consult
 another candidate, or search for private environment values.
+
+For phase 03, build the SWF without creating links inside the disposable worktree:
+$($run.specification.directory)\build-interface.cmd -Repository $($run.host.worktree) -ToolRoot $($run.host.source)\.tools
 "@
 [System.IO.File]::WriteAllText(
     $promptPath, $prompt, [System.Text.UTF8Encoding]::new($false))

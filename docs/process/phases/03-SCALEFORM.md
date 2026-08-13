@@ -26,6 +26,7 @@ The runtime native and AS sources must contain none of `toggleFeature`, `increme
 
 ## Mechanical proof
 
-Build the SWF with the pinned interface toolchain and run the host wrapper. Add source/contract
+Build the SWF with the supplied `build-interface.cmd` wrapper, which uses the maintainer-pinned
+tool root without linking it into the disposable worktree, then run the host wrapper. Add source/contract
 tests proving `applyModel`, flat dispatch validation, and absence of fixed commands. Update runner
 event expectations in the same change. Write `phase-03-result.json` at the run root. Do not commit.

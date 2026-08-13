@@ -1,0 +1,59 @@
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$Repository,
+
+    [Parameter(Mandatory = $true)]
+    [string]$ToolRoot
+)
+
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
+$resolvedRepository = (Resolve-Path -LiteralPath $Repository).Path
+$resolvedToolRoot = (Resolve-Path -LiteralPath $ToolRoot).Path
+$compiler = Join-Path $resolvedToolRoot 'apache-flex-sdk-4.16.1\bin\mxmlc.bat'
+$playerGlobalRoot = Join-Path $resolvedToolRoot 'playerglobal-repo'
+$playerGlobal = Join-Path $playerGlobalRoot '11.5\playerglobal.swc'
+$source = Join-Path $resolvedRepository 'interface\src\AbsoluteControlPanelMenu.as'
+$outputDirectory = Join-Path $resolvedRepository 'interface\dist'
+$output = Join-Path $outputDirectory 'AbsoluteControlPanelMenu.swf'
+$buildInfo = Join-Path $outputDirectory 'AbsoluteControlPanelMenu.build.json'
+$expectedPlayerGlobalCommit = 'fef560243029214656d83fc673be0267a1ea0816'
+
+foreach ($required in @($compiler, $playerGlobal, $source)) {
+    if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
+        throw "Pinned interface input is missing: $required"
+    }
+}
+$observedCommit = (& git -c "safe.directory=$playerGlobalRoot" -C $playerGlobalRoot `
+    rev-parse HEAD).Trim()
+if ($observedCommit -ne $expectedPlayerGlobalCommit) {
+    throw "PlayerGlobal checkout is $observedCommit; expected $expectedPlayerGlobalCommit"
+}
+
+New-Item -ItemType Directory -Force -Path $outputDirectory | Out-Null
+$env:PLAYERGLOBAL_HOME = $playerGlobalRoot
+& $compiler '-target-player=11.5' '-swf-version=18' '-debug=false' `
+    '-static-link-runtime-shared-libraries=true' "-output=$output" $source
+if ($LASTEXITCODE -ne 0) {
+    throw "mxmlc failed with exit code $LASTEXITCODE"
+}
+
+$sourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $source).Hash
+$outputHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $output).Hash
+$metadata = [ordered]@{
+    compiler = 'Apache Flex mxmlc 4.16.1 build 20171115'
+    targetPlayer = '11.5'
+    swfVersion = 18
+    playerGlobalCommit = $observedCommit
+    sourceSha256 = $sourceHash
+    outputSha256 = $outputHash
+}
+[System.IO.File]::WriteAllText(
+    $buildInfo,
+    (($metadata | ConvertTo-Json -Depth 4) + [Environment]::NewLine),
+    [System.Text.UTF8Encoding]::new($false))
+
+Write-Output "Built $output"
+Write-Output "SWF SHA-256: $outputHash"

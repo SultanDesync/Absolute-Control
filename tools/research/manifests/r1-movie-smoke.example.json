@@ -9,6 +9,7 @@
     "Address Library for SFSE Plugins",
     "AbsoluteControlPanel-Research"
   ],
+  "additionalPluginFiles": [],
   "processName": "Starfield",
   "launchTimeoutSeconds": 120,
   "titleScreenTimeoutSeconds": 120,
