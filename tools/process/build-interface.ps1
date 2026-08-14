@@ -15,6 +15,8 @@ $resolvedToolRoot = (Resolve-Path -LiteralPath $ToolRoot).Path
 $compiler = Join-Path $resolvedToolRoot 'apache-flex-sdk-4.16.1\bin\mxmlc.bat'
 $playerGlobalRoot = Join-Path $resolvedToolRoot 'playerglobal-repo'
 $playerGlobal = Join-Path $playerGlobalRoot '11.5\playerglobal.swc'
+$sourceRoot = Join-Path $resolvedRepository 'interface\src'
+$sourceProvenanceModule = Join-Path $resolvedRepository 'interface\build\SourceProvenance.psm1'
 $source = Join-Path $resolvedRepository 'interface\src\AbsoluteControlPanelMenu.as'
 $outputDirectory = Join-Path $resolvedRepository 'interface\dist'
 $output = Join-Path $outputDirectory 'AbsoluteControlPanelMenu.swf'
@@ -35,12 +37,15 @@ if ($observedCommit -ne $expectedPlayerGlobalCommit) {
 New-Item -ItemType Directory -Force -Path $outputDirectory | Out-Null
 $env:PLAYERGLOBAL_HOME = $playerGlobalRoot
 & $compiler '-target-player=11.5' '-swf-version=18' '-debug=false' `
-    '-static-link-runtime-shared-libraries=true' "-output=$output" $source
+    '-static-link-runtime-shared-libraries=true' "-source-path+=$sourceRoot" `
+    "-output=$output" $source
 if ($LASTEXITCODE -ne 0) {
     throw "mxmlc failed with exit code $LASTEXITCODE"
 }
 
 $sourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $source).Hash
+Import-Module -Name $sourceProvenanceModule -Force
+$sourceProvenance = Get-ActionScriptSourceProvenance -SourceRoot $sourceRoot
 $outputHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $output).Hash
 $metadata = [ordered]@{
     compiler = 'Apache Flex mxmlc 4.16.1 build 20171115'
@@ -48,6 +53,8 @@ $metadata = [ordered]@{
     swfVersion = 18
     playerGlobalCommit = $observedCommit
     sourceSha256 = $sourceHash
+    sourceTreeSha256 = $sourceProvenance.sourceTreeSha256
+    sources = $sourceProvenance.sources
     outputSha256 = $outputHash
 }
 [System.IO.File]::WriteAllText(

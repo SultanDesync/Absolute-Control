@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://absolute-control-panel.invalid/build-artifacts.schema.json",
+  "title": "Absolute Control Panel canonical build artifact manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "product", "build", "runtime", "artifacts"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "product": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "role", "basename", "target", "packageable", "version"],
+      "properties": {
+        "name": { "const": "Absolute Control Panel" },
+        "role": { "enum": ["release", "research-dev"] },
+        "basename": { "enum": ["AbsoluteControlPanel", "AbsoluteControlPanelResearchDev"] },
+        "target": { "enum": ["AbsoluteControlPanel", "AbsoluteControlPanelResearchDev"] },
+        "packageable": { "type": "boolean" },
+        "version": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "role": { "const": "release" } } },
+          "then": {
+            "properties": {
+              "basename": { "const": "AbsoluteControlPanel" },
+              "target": { "const": "AbsoluteControlPanel" },
+              "packageable": { "const": true }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "role": { "const": "research-dev" } } },
+          "then": {
+            "properties": {
+              "basename": { "const": "AbsoluteControlPanelResearchDev" },
+              "target": { "const": "AbsoluteControlPanelResearchDev" },
+              "packageable": { "const": false }
+            }
+          }
+        }
+      ]
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["configuration", "platform", "architecture", "generatedAtUtc", "identity"],
+      "properties": {
+        "configuration": { "enum": ["debug", "release", "releasedbg"] },
+        "platform": { "const": "windows" },
+        "architecture": { "const": "x64" },
+        "generatedAtUtc": { "type": "string", "format": "date-time" },
+        "identity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["revision", "dirty"],
+          "properties": {
+            "revision": { "type": "string", "minLength": 1 },
+            "dirty": { "type": ["boolean", "null"] }
+          }
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["game", "verifiedVersions"],
+      "properties": {
+        "game": { "const": "Starfield" },
+        "verifiedVersions": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plugin", "interface"],
+      "properties": {
+        "plugin": { "$ref": "#/$defs/plugin" },
+        "interface": { "$ref": "#/$defs/interface" }
+      }
+    }
+  },
+  "$defs": {
+    "relativePath": { "type": "string", "minLength": 1, "not": { "pattern": "(^[A-Za-z]:|^[/\\\\]|(^|[/\\\\])\\.\\.([/\\\\]|$))" } },
+    "sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
+    "fileBase": {
+      "type": "object",
+      "required": ["kind", "path", "destination", "sha256", "size", "lastWriteUtc"],
+      "properties": {
+        "kind": { "type": "string", "minLength": 1 },
+        "path": { "$ref": "#/$defs/relativePath" },
+        "destination": { "$ref": "#/$defs/relativePath" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "size": { "type": "integer", "minimum": 1 },
+        "lastWriteUtc": { "type": "string", "format": "date-time" }
+      }
+    },
+    "plugin": {
+      "allOf": [
+        { "$ref": "#/$defs/fileBase" },
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "sfse-plugin" },
+            "destination": {
+              "enum": [
+                "SFSE/Plugins/AbsoluteControlPanel.dll",
+                "SFSE/Plugins/AbsoluteControlPanelResearchDev.dll"
+              ]
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "interface": {
+      "allOf": [
+        { "$ref": "#/$defs/fileBase" },
+        {
+          "type": "object",
+          "required": ["source", "provenance"],
+          "properties": {
+            "kind": { "const": "scaleform-movie" },
+            "destination": { "const": "Interface/AbsoluteControlPanelMenu.swf" },
+            "source": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path", "sha256", "size"],
+              "properties": {
+                "path": { "$ref": "#/$defs/relativePath" },
+                "sha256": { "$ref": "#/$defs/sha256" },
+                "size": { "type": "integer", "minimum": 1 }
+              }
+            },
+            "provenance": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path", "compiler", "targetPlayer", "swfVersion", "playerGlobalCommit", "sourceTreeSha256", "sources"],
+              "properties": {
+                "path": { "$ref": "#/$defs/relativePath" },
+                "compiler": { "type": "string", "minLength": 1 },
+                "targetPlayer": { "type": "string", "minLength": 1 },
+                "swfVersion": { "type": "integer", "minimum": 1 },
+                "playerGlobalCommit": { "type": "string", "minLength": 1 },
+                "sourceTreeSha256": { "$ref": "#/$defs/sha256" },
+                "sources": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["path", "sha256"],
+                    "properties": {
+                      "path": { "$ref": "#/$defs/relativePath" },
+                      "sha256": { "$ref": "#/$defs/sha256" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}

@@ -1,7 +1,7 @@
 # AI-assisted provider integration harness
 
-> **Status:** Current provider-integration workflow. Runtime steps are supervised until the legacy
-> monolithic runner is normalized.
+> **Status:** Current provider-integration workflow. Automated product checks are scripted;
+> runtime/UX steps remain supervised. Archived builder v1 is not a current dependency.
 
 This workflow is designed so an AI coding agent can add Absolute Control Panel configuration
 support to an existing SFSE module with minimal user intervention. The gameplay module must
@@ -62,7 +62,8 @@ failures and returns an API `Result`; no C++ exception crosses the DLL boundary.
 Before launching Starfield, the agent verifies:
 
 - all ABI structures have the expected `structSize` and version;
-- module, page, and control IDs are non-empty, stable, terminated, and unique;
+- module/page IDs are stable and unique; raw ABI control IDs are unique within a page, while the
+  generated SDK requires module-wide uniqueness for its shared callback/parser model;
 - every descriptor type matches the values returned by `readValue`;
 - invalid IDs, invalid types, and out-of-range writes are rejected;
 - cancel restores the committed snapshot;
@@ -74,13 +75,14 @@ machine-specific absolute paths.
 
 ### 4. Run the isolated in-game proof
 
-The in-game proof is currently a supervised workflow assembled from the build/deploy scripts,
-direct shortcut launch, runtime mailbox, structured evidence, and human UX validation. The legacy
-`run-probe.ps1` full success gate still expects the removed magenta sentinel and must not be cited
-as current end-to-end proof until it is normalized. Follow [the harness status](RESEARCH-HARNESS.md)
-and perform these gates:
+First run `tools/process/validate-current.cmd`; record its automated result while leaving runtime
+and UX `not_run`. The in-game proof is a separate supervised workflow assembled from ResearchDev
+manifest deployment, direct shortcut launch, bounded mailbox commands, structured evidence, and
+human UX validation. Archived builder-v1/`run-probe.ps1` sentinel results are not current proof.
+Follow [the harness status](RESEARCH-HARNESS.md) and perform these gates:
 
-1. build and deploy the host, provider, and source-controlled SWF;
+1. build/deploy the non-packageable ResearchDev host, provider, and source-controlled SWF from one
+   validated manifest; never mix it with the canonical host;
 2. launch the ignored manifest's SFSE shortcut directly, without navigating MO2 or using general
    desktop control;
 3. load the safe test save manually or through bounded game-thread input when that path is under

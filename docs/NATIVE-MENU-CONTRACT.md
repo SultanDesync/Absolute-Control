@@ -2,7 +2,8 @@
 
 > **Status:** Target product contract. Implemented exceptions and validation confidence are tracked
 > in [current implementation state](CURRENT-STATE.md). In particular, dropdown labels, text/numeric
-> editors, confirmation modals, and the target snapshot bridge below are not all implemented.
+> editors and confirmation modals are not implemented. Generation-numbered replacement models and
+> stale-command rejection are implemented through the current flat bridge.
 
 ## Ownership
 
@@ -103,15 +104,16 @@ vanilla launch entry
   -> close is allowed or routed through the dirty-state modal
 ```
 
-Snapshots are immutable and generation-numbered. Commands carry the generation they were based
-on so stale UI gestures can be rejected instead of overwriting newer state.
+Snapshots are immutable and generation-numbered. Current ActionScript commands carry the
+generation they were based on; native rejects stale gestures before provider mutation. Provider
+refresh requests use a separate revision and may coalesce into one replacement snapshot.
 
 ## Target bridge surface
 
-This is the desired long-term bridge shape. The executable prototype currently uses the bounded
-flat `dispatch` ABI documented in [Bridge Protocol v1](BRIDGE-PROTOCOL-V1.md), plus direct
-`applyModel` and pointer methods. Do not implement against this target list as if it were the
-current ActionScript ABI.
+This is a possible long-term structured bridge, not a committed ABI. The executable host uses the
+bounded generation-aware flat `dispatch` form documented in
+[Bridge Protocol v1](BRIDGE-PROTOCOL-V1.md), plus `applyModel`, `ready`, `focus`, `modelApplied`,
+`close`, and pointer methods. Do not implement against this target list as current ActionScript.
 
 ActionScript to C++:
 
@@ -149,17 +151,23 @@ The vertical-slice snapshot must cover the hard interaction types before broader
 ## Threading and cadence
 
 - All Scaleform object calls occur on the game/UI thread.
+- Provider callbacks run on that path outside registry/provider locks under callback leases; they
+  must remain short and may not call Starfield UI functions through the provider ABI.
 - Provider telemetry is copied into bounded process-owned snapshots; no provider pointer is held
   by ActionScript.
 - Live data is rate-limited and coalesced. Configuration is not read from disk per frame.
 - Capture and save commands are asynchronous from the UI's perspective and report completion by
   generation/result events.
+- Product hotkey/pointer pollers are cooperatively stoppable and queue through callback gates, but
+  are intentionally process-lived because SFSE does not provide supported plugin unload.
+- Evidence producers enqueue to a bounded asynchronous writer and never perform evidence-file I/O
+  or wait for disk from UI/render callbacks.
 
 ## Launch integration
 
 The preferred implementation adds one `ABSOLUTE CONTROL PANEL` entry to the vanilla model at
 runtime and handles its selection without replacing the entire vanilla SWF. The research record
-must identify the data provider/event seam for both `MainMenu` and `PauseMenu`.
+has identified and runtime-proven the PauseMenu seam for 1.16.244. MainMenu is not a current target.
 
 If runtime composition is impossible, an SWF-patch fallback must document exact conflicting files,
 load-order behavior, update maintenance, localization implications, and how other UI mods can

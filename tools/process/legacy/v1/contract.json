@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "processVersion": 1,
+  "status": "archived",
+  "name": "disposable-builder-v1",
+  "successor": "tools/process/current-process.json",
+  "requiresExplicitOptIn": true,
+  "optInSwitch": "AllowLegacyV1",
+  "entryPoints": [
+    "tools/process/new-builder-run.ps1",
+    "tools/process/new-phase-prompt.ps1",
+    "tools/process/evaluate-phase.ps1",
+    "tools/process/evaluate-builder-run.ps1",
+    "tools/process/discard-builder-run.ps1"
+  ],
+  "contracts": [
+    "tools/process/builder-result.schema.json",
+    "docs/BUILDER-RUNBOOK.md",
+    "docs/process/phases/01-SUBSCRIBER.md",
+    "docs/process/phases/02-HOST-CORE.md",
+    "docs/process/phases/03-SCALEFORM.md"
+  ],
+  "historicalCriteria": [
+    "SLOP-named host and subscriber integration",
+    "source-marker evaluator assertions",
+    "magenta framebuffer presence sentinel"
+  ]
+}

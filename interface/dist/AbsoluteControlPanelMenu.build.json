@@ -3,6 +3,49 @@
     "targetPlayer":  "11.5",
     "swfVersion":  18,
     "playerGlobalCommit":  "fef560243029214656d83fc673be0267a1ea0816",
-    "sourceSha256":  "375B6DC13C81E699325DE5C0C9535B4A4690B182D3E8DDF7C800A97D6245ED1D",
-    "outputSha256":  "9387416553805EF554ECDEFA4F6B7126E25B51775FF3B0142A78196AA0A26917"
+    "sourceSha256":  "EDE0395F960FE2D56104AF39C11B38A98D5A2F2F8328103C1806BFC92729A32F",
+    "sourceTreeSha256":  "91B19C284387D419CA7852735F2D189D4CB6A66ADF69584EC006AB15D0A0551A",
+    "sources":  [
+                    {
+                        "path":  "AbsoluteControlPanelMenu.as",
+                        "sha256":  "EDE0395F960FE2D56104AF39C11B38A98D5A2F2F8328103C1806BFC92729A32F"
+                    },
+                    {
+                        "path":  "acp/ui/BridgeCommandDispatcher.as",
+                        "sha256":  "26EB831118BBC2BAC45CD76AA36DA790EE0E2D857684BB29523123D382FFF132"
+                    },
+                    {
+                        "path":  "acp/ui/ControlWidgets.as",
+                        "sha256":  "956AFF23DF84973A7CAB95E5F568B102DA18FC23F48651DEDB9BDD61318BE79C"
+                    },
+                    {
+                        "path":  "acp/ui/MenuSelectionState.as",
+                        "sha256":  "EDBB5547008CE42DFC2294AFDAAA4401A6B74FC02B23AE0E19D45649A98B851B"
+                    },
+                    {
+                        "path":  "acp/ui/MenuShellRenderer.as",
+                        "sha256":  "185FD61D848A83479DB312815184838C4F31C73B4CEE1B9CFD2A0A7E9E138B44"
+                    },
+                    {
+                        "path":  "acp/ui/PanelLayout.as",
+                        "sha256":  "C5C46FA449E7596FFF331AD609E0DF0AC1BC2E97F54C09C23966DA5B65ACFD36"
+                    },
+                    {
+                        "path":  "acp/ui/PanelTheme.as",
+                        "sha256":  "B04BD50F348EED53EAB1BB8E5BE06326C47F08344688EF7F4153EFA5CBF63EF2"
+                    },
+                    {
+                        "path":  "acp/ui/PixelTextRenderer.as",
+                        "sha256":  "30B061AB39E6B4C0E78C2FC9A4DFE03C36414A5390F147C243A2EB7AF4592693"
+                    },
+                    {
+                        "path":  "acp/ui/PointerInteraction.as",
+                        "sha256":  "EA5FE7C15041A7DDAE35AEB5805B3310D0F58B16DD16489D54D14E8B263E0B28"
+                    },
+                    {
+                        "path":  "acp/ui/SliderWriteCoordinator.as",
+                        "sha256":  "7B31A08FFC113012124483B9E50C3FB4378A76EE288A805DC7F97F6BEA35C6F9"
+                    }
+                ],
+    "outputSha256":  "6F532395552A906AF98BAEFCCCD1FB74E4C28C4A8273E19CEDCC4A2E4E523F93"
 }

@@ -21,6 +21,10 @@ Absolute Head Tracking, or AbsoluteZero.
   pending, and specified capability matrix.
 - [Design decisions](docs/DECISIONS.md) — architectural choices and their rationale.
 - [SDK status](docs/SDK-STATUS.md) — public-contract sources and release gates.
+- [Architecture map](docs/ARCHITECTURE.md) — product/research, native, ActionScript, threading,
+  and dependency boundaries.
+- [Technical debt register](docs/DEBT-REGISTER.md) — resolved audit findings, current risks, and
+  manual evidence still required.
 - [Starfield runtime update runbook](docs/RUNTIME-UPDATE-RUNBOOK.md) — patch-cycle recovery and
   validation procedure.
 
@@ -28,7 +32,7 @@ The repository deliberately starts with the risky seam rather than product funct
 
 - register an independent `GameMenuBase` with Starfield's UI manager;
 - load a dedicated Scaleform movie without a D3D12/DXGI/WndProc overlay hook;
-- prove keyboard, mouse, and controller focus, navigation, capture, and close behavior;
+- prove keyboard and mouse behavior, then implement and prove controller and broader capture;
 - expose a small, versioned ActionScript-to-C++ bridge;
 - expose a versioned C ABI through which independently installed modules register pages and
   typed controls;
@@ -47,8 +51,8 @@ It includes:
 - an SFSE plugin target and native-menu registration probe;
 - an explicit lifecycle state machine with unit tests;
 - a source-built minimal ActionScript movie with a pinned compiler recipe;
-- componentized deploy, direct-launch, mailbox, evidence, screenshot, and watchdog tooling, with
-  the legacy monolithic-runner gap explicitly documented;
+- a current automated product validator plus componentized ResearchDev deploy, direct-launch,
+  mailbox, evidence, screenshot, and watchdog tooling; disposable builder v1 is archived;
 - retained guarded title, Continue, save-load, and PauseMenu research commands performed through
   game tasks rather than used as the default UX-validation path;
 - a repeatable PauseMenu build/teardown and readiness trace;
@@ -65,13 +69,18 @@ The Starfield 1.16.244 relocation bridge needed by the current CommonLibSF snaps
 documented in
 [the compatibility note](docs/COMMONLIBSF-COMPATIBILITY.md).
 
-The current vertical slice is evidenced on Starfield 1.16.244, including repeated first-open
+The retained vertical slice is evidenced on Starfield 1.16.244, including repeated first-open
 PauseMenu population in a heavily modified profile and a 25-open lifecycle regression on the
 isolated baseline with no timeout, rejection, crash, or new dump. Dynamic subscriber pages, keyboard and mouse
 navigation, draft/apply/cancel transactions, and provider-owned persistence cross the native and
 Scaleform bridge. The first host-owned keyboard chord capture and Absolute Head Tracking's current
 General, Axes, and Bindings pages are runtime-verified. Mods occupy the vertical sidebar and each selected mod's pages occupy
 the horizontal tab row. No ESM/ESP is required.
+
+The current architecture-hardening tree has passed the automated product process: release build,
+8/8 native tests, 6 SDK generator tests, generated-header compile, 25-entry catalogue, complete
+10-source SWF provenance, artifact fixtures, canonical manifest, and compatibility ZIP. Runtime
+and UX are explicitly `not_run` for that tree.
 
 ## Research outcome
 
@@ -108,6 +117,7 @@ Clone recursively, or initialize the pinned dependency after cloning:
 git submodule update --init --recursive
 xmake
 xmake test
+.\tools\process\validate-current.cmd
 ```
 
 The project requires Windows, MSVC with C++23 support, xmake 3.0 or newer, SFSE at runtime,
@@ -118,9 +128,14 @@ and Address Library for SFSE Plugins. Bootstrap and build the pinned interface t
 .\tools\research\build-interface.ps1
 ```
 
-The tests cover lifecycle transitions plus API query/version behavior, descriptor copying,
-duplicate rejection, refresh, and unregistration. Executable tests complement rather than
-replace captured in-game evidence.
+The default target is canonical `AbsoluteControlPanel.dll`. The opt-in
+`AbsoluteControlPanelResearchDev` target contains automation, synthetic-provider, DirectInput, and
+experimental live-component code and is explicitly non-packageable. Artifact manifests, not
+directory scans, are the authority for deployment and package inputs.
+
+Tests cover lifecycle, ABI readiness, copied descriptors, capacity admission, callback leases,
+dirty unregister, refresh/generation, stale commands, source boundaries, and artifact integrity.
+Executable tests complement rather than replace captured in-game evidence.
 
 ## Repository boundaries
 

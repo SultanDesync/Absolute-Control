@@ -1,4 +1,7 @@
-# Builder phase 01: optional subscriber adapter
+# Builder phase 01: optional subscriber adapter (archived v1)
+
+> Historical only. Use `tools/process/validate-current.cmd` and
+> `docs/AI-INTEGRATION-HARNESS.md` for current work.
 
 Work only in the supplied AbsoluteZero worktree. The SLOP host worktree must remain unchanged.
 This phase is complete only when AbsoluteZero builds and tests through its existing presets.
@@ -16,8 +19,8 @@ This phase is complete only when AbsoluteZero builds and tests through its exist
   `registerPage` result is forwarded. The exact case-sensitive v1 host identity is `SLOP`, matching
   `MenuApiHost::g_api`; do not invent a lowercase identity in adapter tests. The Windows lookup
   calls this seam; tests do not compile the resolver into a no-op.
-- Windows discovery tries the release module `SLOP.dll` first and the temporary research module
-  `AbsoluteControlPanelResearch.dll` second so this candidate can be validated before product
+- Historical Windows discovery tried the release module `SLOP.dll` first and the then-current
+  research host second so this candidate could be validated before product
   renaming. Both must pass through the same exported query/identity validation. The research alias
   is removed from the eventual SDK example after the host is renamed.
 - Missing DLL, export, incompatible API, registration rejection, or any callback error is a normal

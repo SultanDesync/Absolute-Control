@@ -1,7 +1,10 @@
 set_xmakever("3.0.0")
 
-set_project("AbsoluteControlPanelResearch")
-set_version("0.1.0")
+local product_version = "0.2.0-dev"
+
+set_project("AbsoluteControlPanel")
+set_version(product_version)
+add_defines('ACP_PRODUCT_VERSION="' .. product_version .. '"')
 set_license("GPL-3.0")
 set_arch("x64")
 set_languages("c++23")
@@ -60,14 +63,47 @@ end)
 
 includes("external/commonlibsf")
 
-target("AbsoluteControlPanelResearch", function()
-    set_basename("AbsoluteControlPanel")
+-- Source ownership is deliberately explicit.  The release plugin must never gain a
+-- research subsystem merely because a new .cpp file was added under src/.
+local release_sources = {
+    "src/EvidenceLog.cpp",
+    "src/diagnostics/AsyncLineSink.cpp",
+    "src/Main.cpp",
+    "src/MenuApiHost.cpp",
+    "src/MenuInputRouter.cpp",
+    "src/MenuSession.cpp",
+    "src/NativeMenuProbe.cpp",
+    "src/ProbeConfig.cpp",
+    "src/input/NativeMenuInputAdapter.cpp",
+    "src/input/PlatformInputServices.cpp",
+    "src/runtime/ProbeRuntimeState.cpp",
+    "src/runtime/RuntimeCompatibility.cpp",
+    "src/scaleform/ScaleformMenuBridge.cpp",
+    "src/ui/ControlPanelMenu.cpp",
+    "src/ui/MenuMessaging.cpp",
+    "src/ui/PauseMenuIntegration.cpp"
+}
+
+local research_only_sources = {
+    "src/LiveComponentsRegistry.cpp",
+    "src/ResearchInputCapture.cpp",
+    "src/ResearchModule.cpp",
+    "src/research/ResearchSupport.cpp"
+}
+
+local function add_control_panel_core_sources()
+    for _, source in ipairs(release_sources) do
+        add_files(source)
+    end
+end
+
+local function configure_control_panel_plugin(plugin_name, description)
     add_defines("SLOP_EXPORTS", "ABSOLUTE_CONTROL_PANEL_EXPORTS")
     add_rules("commonlibsf.menu.compat")
     add_rules("commonlibsf.plugin", {
-        name = "AbsoluteControlPanel",
+        name = plugin_name,
         author = "Absolute Control suite contributors",
-        description = "Native shared configuration menu for Starfield SFSE plugins",
+        description = description,
         options = {
             address_library = true,
             layout_dependent = true,
@@ -76,13 +112,21 @@ target("AbsoluteControlPanelResearch", function()
         }
     })
 
-    add_files("src/**.cpp")
+    add_control_panel_core_sources()
     add_headerfiles("include/(**.h)")
-    add_links("dinput8", "dxguid")
     -- This generated overlay shadows only RE/IDs.h. The upstream submodule remains pristine,
     -- and any upstream text change makes configuration fail instead of silently mispatching.
     add_includedirs(commonlibsf_menu_compat_include, "include")
     set_pcxxheader("include/PCH.h")
+end
+
+-- Canonical, installable product artifact.  This is the only default plugin target.
+target("AbsoluteControlPanel", function()
+    set_default(true)
+    set_basename("AbsoluteControlPanel")
+    configure_control_panel_plugin(
+        "AbsoluteControlPanel",
+        "Native shared configuration menu for Starfield SFSE plugins")
 
     add_installfiles(
         "docs/CURRENT-STATE.md",
@@ -95,8 +139,7 @@ target("AbsoluteControlPanelResearch", function()
         "docs/TEST-MATRIX.md", {
         prefixdir = "Documentation"
     })
-    add_installfiles("include/AbsoluteControlPanelAPI.h", "include/SlopAPI.h",
-        "include/LiveComponentsExperimentalAPI.h", {
+    add_installfiles("include/AbsoluteControlPanelAPI.h", "include/SlopAPI.h", {
         prefixdir = "SDK"
     })
     add_installfiles("interface/dist/AbsoluteControlPanelMenu.swf", {
@@ -105,6 +148,44 @@ target("AbsoluteControlPanelResearch", function()
     add_installfiles("config/AbsoluteControlPanel.ini", {
         prefixdir = "SFSE/Plugins"
     })
+
+    after_build(function()
+        os.execv("powershell.exe", {
+            "-NoProfile",
+            "-ExecutionPolicy", "Bypass",
+            "-File", path.join(os.projectdir(),
+                "tools", "build-artifacts", "New-BuildArtifactManifest.ps1"),
+            "-Configuration", get_config("mode")
+        })
+    end)
+end)
+
+-- Explicit opt-in development artifact.  It composes the release host with the
+-- synthetic provider, mailbox/SendInput automation, DirectInput experiments, and
+-- experimental LiveComponents ABI.  It is non-default, deliberately named, and
+-- has none of the release target's SDK/interface/documentation install entries.
+target("AbsoluteControlPanelResearchDev", function()
+    set_default(false)
+    set_basename("AbsoluteControlPanelResearchDev")
+    configure_control_panel_plugin(
+        "AbsoluteControlPanelResearchDev",
+        "Opt-in Absolute Control Panel research and automation host")
+    add_defines("ACP_ENABLE_RESEARCH_TOOLS=1", "ACP_ENABLE_LIVE_COMPONENTS_EXPERIMENTAL=1")
+    for _, source in ipairs(research_only_sources) do
+        add_files(source)
+    end
+    add_links("dinput8", "dxguid")
+
+    after_build(function()
+        os.execv("powershell.exe", {
+            "-NoProfile",
+            "-ExecutionPolicy", "Bypass",
+            "-File", path.join(os.projectdir(),
+                "tools", "build-artifacts", "New-BuildArtifactManifest.ps1"),
+            "-Configuration", get_config("mode"),
+            "-ArtifactRole", "research-dev"
+        })
+    end)
 end)
 
 target("probe_state_test", function()
@@ -113,6 +194,16 @@ target("probe_state_test", function()
     add_tests("lifecycle")
     add_includedirs("include")
     add_files("tests/ProbeStateTests.cpp")
+end)
+
+target("lifecycle_diagnostics_test", function()
+    set_kind("binary")
+    set_default(false)
+    add_tests("service_and_sink_lifecycle")
+    add_includedirs("include")
+    add_files(
+        "src/diagnostics/AsyncLineSink.cpp",
+        "tests/LifecycleDiagnosticsTests.cpp")
 end)
 
 target("slop_api_test", function()
@@ -129,6 +220,28 @@ target("scaleform_bridge_source_test", function()
     set_default(false)
     add_tests("source_contract")
     add_files("tests/ScaleformBridgeSourceTests.cpp")
+end)
+
+target("native_decomposition_source_test", function()
+    set_kind("binary")
+    set_default(false)
+    add_tests("source_boundaries")
+    add_files("tests/NativeDecompositionSourceTests.cpp")
+end)
+
+target("release_research_boundary_test", function()
+    set_kind("binary")
+    set_default(false)
+    add_tests("source_boundary")
+    add_files("tests/ReleaseResearchBoundaryTests.cpp")
+end)
+
+target("release_research_artifact_test", function()
+    set_kind("binary")
+    set_default(false)
+    add_deps("AbsoluteControlPanel", "AbsoluteControlPanelResearchDev")
+    add_tests("binary_boundary")
+    add_files("tests/ReleaseResearchArtifactTests.cpp")
 end)
 
 target("live_components_test", function()

@@ -2,23 +2,58 @@
 
 #include <SFSE/Logger.h>
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
+
 #include <atomic>
 #include <chrono>
 #include <fstream>
+#include <format>
+#include <memory>
 #include <mutex>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace AbsoluteControlPanelResearch::EvidenceLog
 {
     namespace
     {
-        std::mutex g_lock;
-        std::string g_runId{ "uninitialized" };
-        std::filesystem::path g_path;
-        std::atomic<std::uint64_t> g_sequence{};
-        std::chrono::steady_clock::time_point g_startedAt =
-            std::chrono::steady_clock::now();
         constexpr std::uintmax_t kMaximumEvidenceBytes = 8u * 1024u * 1024u;
+
+        struct Context
+        {
+            std::string runId;
+            std::filesystem::path path;
+            Level minimumLevel{ Level::Info };
+            std::chrono::steady_clock::time_point startedAt =
+                std::chrono::steady_clock::now();
+            std::atomic<std::uint64_t> sequence{};
+            Diagnostics::AsyncLineSink sink;
+        };
+
+        struct ProcessState
+        {
+            std::mutex lock;
+            std::shared_ptr<Context> current;
+            // A timed-out sink remains owned instead of forcing a join on a game
+            // thread. Process termination reclaims these rare retired contexts.
+            std::vector<std::shared_ptr<Context>> retired;
+        };
+
+        ProcessState& State() noexcept
+        {
+            // SFSE exposes no reliable unload notification. An intentional
+            // process-lifetime owner avoids joining a worker from static
+            // destruction while the Windows loader lock is held.
+            static auto* state = new ProcessState{};
+            return *state;
+        }
 
         std::string Escape(std::string_view a_value)
         {
@@ -36,86 +71,161 @@ namespace AbsoluteControlPanelResearch::EvidenceLog
             }
             return escaped;
         }
-    }
 
-    void Initialize(std::string_view a_runId) noexcept
-    {
-        try {
-            const std::scoped_lock lock{ g_lock };
-            g_runId.assign(a_runId);
-            g_sequence.store(0, std::memory_order_release);
-            g_startedAt = std::chrono::steady_clock::now();
-            g_path = std::filesystem::path{ "Data" } / "SFSE" / "Plugins" /
-                     "AbsoluteControlPanel.evidence.jsonl";
+        std::string_view LevelName(Level a_level) noexcept
+        {
+            switch (a_level) {
+            case Level::Trace: return "trace";
+            case Level::Info: return "info";
+            case Level::Warning: return "warning";
+            case Level::Error: return "error";
+            }
+            return "info";
+        }
+
+        std::shared_ptr<Context> Current() noexcept
+        {
+            const std::scoped_lock lock{ State().lock };
+            return State().current;
+        }
+
+        std::filesystem::path ResolvePath(const Options& a_options) noexcept
+        {
+            if (!a_options.pathOverride.empty()) {
+                return a_options.pathOverride;
+            }
+            auto path = std::filesystem::path{ "Data" } / "SFSE" / "Plugins" /
+                        "AbsoluteControlPanel.evidence.jsonl";
             std::error_code directoryError;
-            std::filesystem::create_directories(g_path.parent_path(), directoryError);
+            std::filesystem::create_directories(path.parent_path(), directoryError);
             if (directoryError) {
                 if (const auto logDirectory = SFSE::log::log_directory()) {
-                    g_path = *logDirectory /
-                             "AbsoluteControlPanel.evidence.jsonl";
+                    path = *logDirectory / "AbsoluteControlPanel.evidence.jsonl";
                     directoryError.clear();
                     std::filesystem::create_directories(
-                        g_path.parent_path(), directoryError);
+                        path.parent_path(), directoryError);
                 }
             }
-            if (!directoryError && !g_path.empty()) {
-                std::error_code error;
-                if (std::filesystem::exists(g_path, error) && !error &&
-                    std::filesystem::file_size(g_path, error) > kMaximumEvidenceBytes &&
-                    !error) {
-                    const auto previous = g_path.parent_path() /
-                                          "AbsoluteControlPanel.evidence.previous.jsonl";
-                    std::filesystem::remove(previous, error);
-                    error.clear();
-                    std::filesystem::rename(g_path, previous, error);
-                    if (error) {
-                        std::ofstream truncate{ g_path, std::ios::trunc };
-                    }
-                }
-            } else {
-                g_path.clear();
+            return directoryError ? std::filesystem::path{} : path;
+        }
+
+        void RotateIfNeeded(const std::filesystem::path& a_path) noexcept
+        {
+            if (a_path.empty()) {
+                return;
             }
-        } catch (...) {
-            g_path.clear();
+            std::error_code error;
+            if (!std::filesystem::exists(a_path, error) || error ||
+                std::filesystem::file_size(a_path, error) <= kMaximumEvidenceBytes || error) {
+                return;
+            }
+            const auto previous = a_path.parent_path() /
+                                  "AbsoluteControlPanel.evidence.previous.jsonl";
+            std::filesystem::remove(previous, error);
+            error.clear();
+            std::filesystem::rename(a_path, previous, error);
+            if (error) {
+                std::ofstream truncate{ a_path, std::ios::trunc };
+            }
         }
     }
 
-    void Event(std::string_view a_event, std::string_view a_detail) noexcept
+    void Initialize(std::string_view a_runId, Options a_options) noexcept
     {
         try {
-            const std::scoped_lock lock{ g_lock };
-            const auto sequence =
-                g_sequence.fetch_add(1, std::memory_order_acq_rel) + 1;
-            const auto threadId = ::GetCurrentThreadId();
-            const auto monotonicMicroseconds =
-                std::chrono::duration_cast<std::chrono::microseconds>(
-                    std::chrono::steady_clock::now() - g_startedAt)
-                    .count();
-            REX::INFO(
-                "[probe:{} seq:{} tid:{}] {} {}", g_runId, sequence, threadId,
-                a_event, a_detail);
-            if (g_path.empty()) {
+            auto context = std::make_shared<Context>();
+            context->runId.assign(a_runId.empty() ? "manual" : a_runId);
+            context->minimumLevel = a_options.minimumLevel;
+            context->startedAt = std::chrono::steady_clock::now();
+            context->path = ResolvePath(a_options);
+            RotateIfNeeded(context->path);
+            if (!context->path.empty() &&
+                !context->sink.Start(context->path, a_options.queueCapacity)) {
+                context->path.clear();
+            }
+
+            std::shared_ptr<Context> previous;
+            {
+                const std::scoped_lock lock{ State().lock };
+                previous = std::exchange(State().current, context);
+            }
+            if (previous && !previous->sink.Shutdown(std::chrono::seconds(2))) {
+                const std::scoped_lock lock{ State().lock };
+                State().retired.push_back(std::move(previous));
+            }
+        } catch (...) {
+            REX::ERROR("Could not initialize native-menu evidence sink.");
+        }
+    }
+
+    void Event(std::string_view a_event, std::string_view a_detail, Level a_level) noexcept
+    {
+        try {
+            const auto context = Current();
+            if (!context || a_level < context->minimumLevel) {
                 return;
             }
 
-            const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                          std::chrono::system_clock::now().time_since_epoch())
-                                          .count();
-            std::ofstream stream{ g_path, std::ios::app };
-            stream << "{\"timestamp_ms\":" << milliseconds
-                   << ",\"monotonic_us\":" << monotonicMicroseconds
-                   << ",\"sequence\":" << sequence << ",\"thread_id\":"
-                   << threadId << ",\"run_id\":\"" << Escape(g_runId)
-                   << "\",\"event\":\"" << Escape(a_event)
-                   << "\",\"detail\":\"" << Escape(a_detail) << "\"}\n";
+            const auto sequence =
+                context->sequence.fetch_add(1, std::memory_order_acq_rel) + 1;
+            const auto threadId = ::GetCurrentThreadId();
+            const auto monotonicMicroseconds =
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now() - context->startedAt)
+                    .count();
+            const auto milliseconds =
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch())
+                    .count();
+            auto line = std::format(
+                "{{\"timestamp_ms\":{},\"monotonic_us\":{},\"sequence\":{},"
+                "\"thread_id\":{},\"run_id\":\"{}\",\"level\":\"{}\","
+                "\"event\":\"{}\",\"detail\":\"{}\"}}",
+                milliseconds, monotonicMicroseconds, sequence, threadId,
+                Escape(context->runId), LevelName(a_level), Escape(a_event),
+                Escape(a_detail));
+            (void)context->sink.Enqueue(std::move(line));
         } catch (...) {
-            REX::ERROR("Could not append native-menu probe evidence.");
+            // Evidence production is best effort and must never fault game code.
         }
+    }
+
+    void Trace(std::string_view a_event, std::string_view a_detail) noexcept
+    {
+        Event(a_event, a_detail, Level::Trace);
+    }
+
+    bool Flush(std::chrono::milliseconds a_timeout) noexcept
+    {
+        const auto context = Current();
+        return !context || context->sink.Flush(a_timeout);
+    }
+
+    bool Shutdown(std::chrono::milliseconds a_timeout) noexcept
+    {
+        std::shared_ptr<Context> context;
+        {
+            const std::scoped_lock lock{ State().lock };
+            context = std::exchange(State().current, {});
+        }
+        if (!context || context->sink.Shutdown(a_timeout)) {
+            return true;
+        }
+        const std::scoped_lock lock{ State().lock };
+        State().retired.push_back(std::move(context));
+        return false;
+    }
+
+    Diagnostics::AsyncLineSinkStatistics Statistics() noexcept
+    {
+        const auto context = Current();
+        return context ? context->sink.Statistics() :
+                         Diagnostics::AsyncLineSinkStatistics{};
     }
 
     std::filesystem::path Path() noexcept
     {
-        const std::scoped_lock lock{ g_lock };
-        return g_path;
+        const auto context = Current();
+        return context ? context->path : std::filesystem::path{};
     }
 }

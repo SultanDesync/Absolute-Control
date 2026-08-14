@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "processVersion": 2,
+  "status": "current",
+  "entryPoint": "tools/process/validate-current.cmd",
+  "reportDefault": "artifacts/process/current-validation.json",
+  "claims": {
+    "automatedPass": "All listed automated gates completed successfully for the current workspace.",
+    "releaseReady": false,
+    "runtimeOrUxVerifiedByAutomation": false,
+    "visualEvidencePolicy": "Screenshots and pixel signals may support appearance or presence observations only; semantic behavior requires semantic evidence and the named manual scenario."
+  },
+  "executionPolicy": {
+    "launchesGame": false,
+    "deploysMod": false,
+    "modifiesModOrganizer": false,
+    "usesMachineSpecificPaths": false
+  },
+  "automatedGates": [
+    {
+      "id": "process-definition",
+      "runner": "process-definition",
+      "description": "Validate the current/legacy process boundary and tracked process definitions."
+    },
+    {
+      "id": "native-build",
+      "runner": "native-build",
+      "description": "Configure release mode and build the canonical workspace targets."
+    },
+    {
+      "id": "native-tests",
+      "runner": "native-tests",
+      "dependsOn": ["native-build"],
+      "description": "Run the native host, ABI, lifecycle, bridge, and release-boundary tests."
+    },
+    {
+      "id": "sdk-generator-tests",
+      "runner": "sdk-generator-tests",
+      "description": "Run the SDK menu-definition generator unit tests."
+    },
+    {
+      "id": "sdk-codegen-check",
+      "runner": "sdk-codegen-check",
+      "description": "Prove the checked-in generated example is deterministic and current."
+    },
+    {
+      "id": "sdk-compile-fixture",
+      "runner": "sdk-compile-fixture",
+      "description": "Compile and execute the generated SDK integration fixture."
+    },
+    {
+      "id": "component-catalog",
+      "runner": "component-catalog",
+      "description": "Validate the machine-readable component and capability catalogue."
+    },
+    {
+      "id": "scaleform-provenance",
+      "runner": "scaleform-provenance",
+      "description": "Verify the source-built SWF and build metadata hashes."
+    },
+    {
+      "id": "artifact-tooling",
+      "runner": "artifact-tooling",
+      "description": "Exercise canonical/research role and package-integrity tooling with isolated fixtures."
+    },
+    {
+      "id": "canonical-role-manifest",
+      "runner": "canonical-role-manifest",
+      "dependsOn": ["native-build", "scaleform-provenance", "artifact-tooling"],
+      "description": "Create and validate the release-role manifest for the canonical product artifact only."
+    },
+    {
+      "id": "package-validation",
+      "runner": "package-validation",
+      "dependsOn": ["canonical-role-manifest"],
+      "description": "Create and verify the compatibility archive strictly from the canonical release manifest."
+    }
+  ],
+  "manualGates": [
+    {
+      "id": "runtime-invocation-lifecycle",
+      "status": "not_run",
+      "requiresHumanObservation": true,
+      "description": "Open from PauseMenu and F2, close and reopen repeatedly, and monitor first-open behavior and crashes."
+    },
+    {
+      "id": "input-navigation-capture",
+      "status": "not_run",
+      "requiresHumanObservation": true,
+      "description": "Exercise keyboard, pointer, wheel in both directions, controller-only navigation, device transitions, and binding capture without leaked or stuck input."
+    },
+    {
+      "id": "transactions-persistence",
+      "status": "not_run",
+      "requiresHumanObservation": true,
+      "description": "Verify provider callbacks and persisted configuration for edit, Apply, Cancel, dirty close, save failure, and reload/read-back."
+    },
+    {
+      "id": "failure-and-context-matrix",
+      "status": "not_run",
+      "requiresHumanObservation": true,
+      "description": "Exercise lifecycle contexts and missing, corrupt, incompatible, failing, or disappearing runtime components."
+    },
+    {
+      "id": "display-and-localization",
+      "status": "not_run",
+      "requiresHumanObservation": true,
+      "description": "Judge layout, readability, focus, scrolling, glyphs, UI scale, target resolutions, and ultrawide behavior."
+    },
+    {
+      "id": "compatibility-profiles",
+      "status": "not_run",
+      "requiresHumanObservation": true,
+      "description": "Repeat the required scenarios in the isolated baseline and representative heavy/UI-mod profiles."
+    }
+  ],
+  "legacyContracts": [
+    {
+      "id": "disposable-builder-v1",
+      "status": "archived",
+      "documentation": "tools/process/legacy/v1/README.md",
+      "contract": "tools/process/legacy/v1/contract.json",
+      "requiresExplicitOptIn": true
+    }
+  ]
+}

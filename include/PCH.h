@@ -10,8 +10,6 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <Windows.h>
-#define DIRECTINPUT_VERSION 0x0800
-#include <dinput.h>
 #include <intrin.h>
 #ifdef ERROR
 #undef ERROR

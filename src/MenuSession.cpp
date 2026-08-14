@@ -10,66 +10,63 @@ namespace AbsoluteControlPanelResearch::MenuSession
 {
     namespace
     {
-        constexpr std::size_t kMaximumPages = 32;
-        constexpr std::size_t kMaximumControlsPerPage = 128;
-        constexpr std::size_t kMaximumControls = 512;
-        constexpr std::size_t kMaximumError = SlopApi::kDescriptionCapacity - 1;
+        constexpr std::size_t kMaximumError = AbsoluteControlPanelApi::kDescriptionCapacity - 1;
         constexpr double kMaximumExactScaleformInteger = 9007199254740991.0;
 
-        [[nodiscard]] bool ValidKind(SlopApi::ControlKind a_kind) noexcept
+        [[nodiscard]] bool ValidKind(AbsoluteControlPanelApi::ControlKind a_kind) noexcept
         {
-            return a_kind >= SlopApi::ControlKind::Toggle &&
-                   a_kind <= SlopApi::ControlKind::ButtonBinding;
+            return a_kind >= AbsoluteControlPanelApi::ControlKind::Toggle &&
+                   a_kind <= AbsoluteControlPanelApi::ControlKind::ButtonBinding;
         }
 
-        [[nodiscard]] bool ValidValueKind(SlopApi::ValueKind a_kind) noexcept
+        [[nodiscard]] bool ValidValueKind(AbsoluteControlPanelApi::ValueKind a_kind) noexcept
         {
-            return a_kind >= SlopApi::ValueKind::Boolean &&
-                   a_kind <= SlopApi::ValueKind::String;
+            return a_kind >= AbsoluteControlPanelApi::ValueKind::Boolean &&
+                   a_kind <= AbsoluteControlPanelApi::ValueKind::String;
         }
 
-        [[nodiscard]] SlopApi::ValueKind ExpectedValueKind(SlopApi::ControlKind a_kind) noexcept
+        [[nodiscard]] AbsoluteControlPanelApi::ValueKind ExpectedValueKind(AbsoluteControlPanelApi::ControlKind a_kind) noexcept
         {
             switch (a_kind) {
-            case SlopApi::ControlKind::Toggle: return SlopApi::ValueKind::Boolean;
-            case SlopApi::ControlKind::IntegerSlider:
-            case SlopApi::ControlKind::Choice: return SlopApi::ValueKind::Integer;
-            case SlopApi::ControlKind::FloatSlider: return SlopApi::ValueKind::Float;
-            case SlopApi::ControlKind::ButtonBinding:
-            case SlopApi::ControlKind::Action: return SlopApi::ValueKind::String;
+            case AbsoluteControlPanelApi::ControlKind::Toggle: return AbsoluteControlPanelApi::ValueKind::Boolean;
+            case AbsoluteControlPanelApi::ControlKind::IntegerSlider:
+            case AbsoluteControlPanelApi::ControlKind::Choice: return AbsoluteControlPanelApi::ValueKind::Integer;
+            case AbsoluteControlPanelApi::ControlKind::FloatSlider: return AbsoluteControlPanelApi::ValueKind::Float;
+            case AbsoluteControlPanelApi::ControlKind::ButtonBinding:
+            case AbsoluteControlPanelApi::ControlKind::Action: return AbsoluteControlPanelApi::ValueKind::String;
             }
-            return SlopApi::ValueKind::String;
+            return AbsoluteControlPanelApi::ValueKind::String;
         }
 
-        [[nodiscard]] bool Terminated(const SlopApi::ValueV1& a_value) noexcept
+        [[nodiscard]] bool Terminated(const AbsoluteControlPanelApi::ValueV1& a_value) noexcept
         {
-            return std::memchr(a_value.stringValue, '\0', SlopApi::kStringValueCapacity) != nullptr;
+            return std::memchr(a_value.stringValue, '\0', AbsoluteControlPanelApi::kStringValueCapacity) != nullptr;
         }
 
         [[nodiscard]] bool ValidDescriptor(const MenuApiHost::Control& a_control) noexcept
         {
             if (!ValidKind(a_control.kind)) return false;
-            if (a_control.kind == SlopApi::ControlKind::Toggle || a_control.kind == SlopApi::ControlKind::Action ||
-                a_control.kind == SlopApi::ControlKind::ButtonBinding) return true;
+            if (a_control.kind == AbsoluteControlPanelApi::ControlKind::Toggle || a_control.kind == AbsoluteControlPanelApi::ControlKind::Action ||
+                a_control.kind == AbsoluteControlPanelApi::ControlKind::ButtonBinding) return true;
             const bool rangesAreFinite = std::isfinite(a_control.minimumValue) && std::isfinite(a_control.maximumValue) &&
                    std::isfinite(a_control.stepValue) && a_control.minimumValue <= a_control.maximumValue &&
                    a_control.stepValue > 0.0;
             if (!rangesAreFinite) return false;
-            return (a_control.kind != SlopApi::ControlKind::IntegerSlider && a_control.kind != SlopApi::ControlKind::Choice) ||
+            return (a_control.kind != AbsoluteControlPanelApi::ControlKind::IntegerSlider && a_control.kind != AbsoluteControlPanelApi::ControlKind::Choice) ||
                    (a_control.minimumValue >= -kMaximumExactScaleformInteger && a_control.maximumValue <= kMaximumExactScaleformInteger);
         }
 
         [[nodiscard]] bool ValidWrite(const MenuApiHost::Control& a_control,
-            const SlopApi::ValueV1& a_value) noexcept
+            const AbsoluteControlPanelApi::ValueV1& a_value) noexcept
         {
-            if (a_control.kind == SlopApi::ControlKind::Action || !ValidDescriptor(a_control) ||
+            if (a_control.kind == AbsoluteControlPanelApi::ControlKind::Action || !ValidDescriptor(a_control) ||
                 !ValidValueKind(a_value.kind) || a_value.kind != ExpectedValueKind(a_control.kind)) return false;
-            if (a_value.kind == SlopApi::ValueKind::Float && !std::isfinite(a_value.floatValue)) return false;
-            if (a_value.kind == SlopApi::ValueKind::String && !Terminated(a_value)) return false;
-            if (a_control.kind == SlopApi::ControlKind::IntegerSlider || a_control.kind == SlopApi::ControlKind::Choice)
+            if (a_value.kind == AbsoluteControlPanelApi::ValueKind::Float && !std::isfinite(a_value.floatValue)) return false;
+            if (a_value.kind == AbsoluteControlPanelApi::ValueKind::String && !Terminated(a_value)) return false;
+            if (a_control.kind == AbsoluteControlPanelApi::ControlKind::IntegerSlider || a_control.kind == AbsoluteControlPanelApi::ControlKind::Choice)
                 return a_value.integerValue >= static_cast<std::int64_t>(a_control.minimumValue) &&
                        a_value.integerValue <= static_cast<std::int64_t>(a_control.maximumValue);
-            if (a_control.kind == SlopApi::ControlKind::FloatSlider)
+            if (a_control.kind == AbsoluteControlPanelApi::ControlKind::FloatSlider)
                 return a_value.floatValue >= a_control.minimumValue && a_value.floatValue <= a_control.maximumValue;
             return true;
         }
@@ -91,6 +88,42 @@ namespace AbsoluteControlPanelResearch::MenuSession
 
     bool Session::IsDirty() const noexcept { return !dirtyPageId_.empty(); }
 
+    Session::~Session() noexcept
+    {
+        // The transaction token remains held during Cancel, so a concurrent
+        // unregisterModule call cannot invalidate provider code mid-rollback.
+        if (!RollbackDirtyPage()) {
+            AbandonState();
+        }
+        captureModuleId_.clear();
+        capturePageId_.clear();
+        captureControlId_.clear();
+        captureFlags_ = 0;
+    }
+
+    bool Session::RollbackDirtyPage() noexcept
+    {
+        if (!IsDirty()) return true;
+        const auto page = MenuApiHost::FindPage(dirtyModuleId_, dirtyPageId_);
+        if (!page || !page->canCancel ||
+            MenuApiHost::Cancel(*page) != AbsoluteControlPanelApi::Result::Ok) {
+            return false;
+        }
+        transaction_.Reset();
+        dirtyModuleId_.clear();
+        dirtyPageId_.clear();
+        selectedControlId_.clear();
+        return true;
+    }
+
+    void Session::AbandonState() noexcept
+    {
+        transaction_.Reset();
+        dirtyModuleId_.clear();
+        dirtyPageId_.clear();
+        selectedControlId_.clear();
+    }
+
     bool Session::IsBindingCaptureActive() const noexcept
     {
         return !captureControlId_.empty();
@@ -109,12 +142,14 @@ namespace AbsoluteControlPanelResearch::MenuSession
     Model Session::BuildSnapshot()
     {
         Model model;
+        model.generation = ++generation_;
         model.revision = MenuApiHost::Revision();
         const auto pages = MenuApiHost::Pages();
         std::size_t totalControls{};
         for (const auto& source : pages) {
-            if (model.pages.size() == kMaximumPages || source.controls.size() > kMaximumControlsPerPage ||
-                totalControls + source.controls.size() > kMaximumControls) {
+            if (model.pages.size() == MenuApiHost::kMaximumPages ||
+                source.controls.size() > MenuApiHost::kMaximumControlsPerPage ||
+                totalControls + source.controls.size() > MenuApiHost::kMaximumControls) {
                 SetError("Menu model capacity exceeded");
                 break;
             }
@@ -125,16 +160,17 @@ namespace AbsoluteControlPanelResearch::MenuSession
                 control.value.kind = ExpectedValueKind(descriptor.kind);
                 if (!ValidDescriptor(descriptor)) {
                     control.error = "Invalid control descriptor";
-                } else if (descriptor.kind == SlopApi::ControlKind::Action) {
-                    control.available = source.invokeAction != nullptr;
+                } else if (descriptor.kind == AbsoluteControlPanelApi::ControlKind::Action) {
+                    control.available = source.canInvokeAction;
                     if (!control.available) control.error = "Action unavailable";
                 } else {
-                    SlopApi::ValueV1 value;
-                    const auto result = source.readValue(source.context, descriptor.controlId.c_str(), &value);
-                    if (result == SlopApi::Result::Ok && value.structSize >= sizeof(SlopApi::ValueV1) &&
+                    AbsoluteControlPanelApi::ValueV1 value;
+                    const auto result = MenuApiHost::ReadValue(
+                        source, descriptor.controlId, value);
+                    if (result == AbsoluteControlPanelApi::Result::Ok && value.structSize >= sizeof(AbsoluteControlPanelApi::ValueV1) &&
                         ValidValueKind(value.kind) && value.kind == ExpectedValueKind(descriptor.kind) &&
-                        (value.kind != SlopApi::ValueKind::Float || std::isfinite(value.floatValue)) &&
-                        (value.kind != SlopApi::ValueKind::String || Terminated(value))) {
+                        (value.kind != AbsoluteControlPanelApi::ValueKind::Float || std::isfinite(value.floatValue)) &&
+                        (value.kind != AbsoluteControlPanelApi::ValueKind::String || Terminated(value))) {
                         control.value = value;
                         control.available = true;
                     } else {
@@ -146,9 +182,25 @@ namespace AbsoluteControlPanelResearch::MenuSession
             }
             model.pages.push_back(std::move(page));
         }
-        if (activePageId_.empty() && !model.pages.empty()) {
+        const auto activeExists = std::ranges::any_of(model.pages, [&](const Page& a_page) {
+            return a_page.moduleId == activeModuleId_ && a_page.pageId == activePageId_;
+        });
+        if (!activeExists && !model.pages.empty()) {
             activeModuleId_ = model.pages.front().moduleId;
             activePageId_ = model.pages.front().pageId;
+            selectedControlId_.clear();
+        } else if (model.pages.empty()) {
+            activeModuleId_.clear();
+            activePageId_.clear();
+            selectedControlId_.clear();
+        }
+        const auto captureExists = std::ranges::any_of(model.pages, [&](const Page& a_page) {
+            return a_page.moduleId == captureModuleId_ && a_page.pageId == capturePageId_;
+        });
+        if (IsBindingCaptureActive() && !captureExists) {
+            captureModuleId_.clear(); capturePageId_.clear(); captureControlId_.clear();
+            captureFlags_ = 0;
+            SetError("Input capture provider was unregistered");
         }
         model.activeModuleId = activeModuleId_;
         model.activePageId = activePageId_;
@@ -170,6 +222,10 @@ namespace AbsoluteControlPanelResearch::MenuSession
         if (a_command.schemaVersion != kSchemaVersion) {
             SetError("Unsupported command schema"); return BuildSnapshot();
         }
+        if (a_command.expectedGeneration != 0 &&
+            a_command.expectedGeneration != generation_) {
+            SetError("Stale menu command"); return BuildSnapshot();
+        }
         if (IsBindingCaptureActive() &&
             a_command.kind != CommandKind::BeginBindingCapture) {
             SetError("Finish or cancel input capture first");
@@ -184,13 +240,9 @@ namespace AbsoluteControlPanelResearch::MenuSession
             SetError("Apply or cancel the dirty page before navigation"); return BuildSnapshot();
         }
         if (a_command.kind == CommandKind::Close) {
-            const auto* active = Find(pages, activeModuleId_, activePageId_);
-            if (IsDirty()) {
-                if (!active || active->moduleId != dirtyModuleId_ || active->pageId != dirtyPageId_ || !active->cancel) {
-                    SetError("Dirty page cannot close without rollback"); return BuildSnapshot();
-                }
-                active->cancel(active->context);
-                dirtyModuleId_.clear(); dirtyPageId_.clear(); selectedControlId_.clear();
+            if (IsDirty() && !RollbackDirtyPage()) {
+                SetError("Dirty page cannot close without rollback");
+                return BuildSnapshot();
             }
             return BuildSnapshot();
         }
@@ -204,13 +256,22 @@ namespace AbsoluteControlPanelResearch::MenuSession
         if (a_command.kind == CommandKind::Apply || a_command.kind == CommandKind::Cancel) {
             if (a_command.controlId.empty()) {
                 if (a_command.kind == CommandKind::Apply) {
-                    if (!page->apply || page->apply(page->context) != SlopApi::Result::Ok) {
+                    if (MenuApiHost::Apply(*page) != AbsoluteControlPanelApi::Result::Ok) {
                         SetError("Apply failed"); return BuildSnapshot();
                     }
-                } else if (page->cancel) {
-                    page->cancel(page->context);
+                    transaction_.Reset();
+                    dirtyModuleId_.clear(); dirtyPageId_.clear(); selectedControlId_.clear();
+                } else if (IsDirty()) {
+                    if (!RollbackDirtyPage()) {
+                        SetError("Cancel failed"); return BuildSnapshot();
+                    }
+                } else {
+                    if (MenuApiHost::Cancel(*page) !=
+                        AbsoluteControlPanelApi::Result::Ok) {
+                        SetError("Cancel failed"); return BuildSnapshot();
+                    }
+                    selectedControlId_.clear();
                 }
-                dirtyModuleId_.clear(); dirtyPageId_.clear(); selectedControlId_.clear();
                 return BuildSnapshot();
             }
             SetError("Page command must not name a control"); return BuildSnapshot();
@@ -220,20 +281,21 @@ namespace AbsoluteControlPanelResearch::MenuSession
         if (a_command.kind == CommandKind::SelectControl) {
             activeModuleId_ = page->moduleId; activePageId_ = page->pageId; selectedControlId_ = control.controlId;
         } else if (a_command.kind == CommandKind::Write) {
-            if ((control.flags & SlopApi::kControlReadOnly) != 0 || !ValidWrite(control, a_command.value)) {
+            if ((control.flags & AbsoluteControlPanelApi::kControlReadOnly) != 0 || !ValidWrite(control, a_command.value)) {
                 SetError("Invalid control value"); return BuildSnapshot();
             }
-            if (page->writeDraft(page->context, control.controlId.c_str(), &a_command.value) != SlopApi::Result::Ok) {
+            if (MenuApiHost::WriteDraft(*page, control.controlId,
+                    a_command.value, transaction_) != AbsoluteControlPanelApi::Result::Ok) {
                 SetError("Write failed"); return BuildSnapshot();
             }
             activeModuleId_ = page->moduleId; activePageId_ = page->pageId;
             selectedControlId_ = control.controlId;
             dirtyModuleId_ = page->moduleId; dirtyPageId_ = page->pageId;
         } else if (a_command.kind == CommandKind::BeginBindingCapture) {
-            constexpr auto kDeviceMask = SlopApi::kBindingKeyboard |
-                SlopApi::kBindingMouse | SlopApi::kBindingController;
-            if (control.kind != SlopApi::ControlKind::ButtonBinding ||
-                (control.flags & SlopApi::kControlReadOnly) != 0 ||
+            constexpr auto kDeviceMask = AbsoluteControlPanelApi::kBindingKeyboard |
+                AbsoluteControlPanelApi::kBindingMouse | AbsoluteControlPanelApi::kBindingController;
+            if (control.kind != AbsoluteControlPanelApi::ControlKind::ButtonBinding ||
+                (control.flags & AbsoluteControlPanelApi::kControlReadOnly) != 0 ||
                 (control.flags & kDeviceMask) == 0) {
                 SetError("Input capture unavailable");
                 return BuildSnapshot();
@@ -246,8 +308,9 @@ namespace AbsoluteControlPanelResearch::MenuSession
             captureControlId_ = control.controlId;
             captureFlags_ = control.flags;
         } else if (a_command.kind == CommandKind::Invoke) {
-            if (control.kind != SlopApi::ControlKind::Action || !page->invokeAction ||
-                page->invokeAction(page->context, control.controlId.c_str()) != SlopApi::Result::Ok) {
+            if (control.kind != AbsoluteControlPanelApi::ControlKind::Action ||
+                MenuApiHost::InvokeAction(*page, control.controlId) !=
+                    AbsoluteControlPanelApi::Result::Ok) {
                 SetError("Action unavailable");
             } else {
                 activeModuleId_ = page->moduleId; activePageId_ = page->pageId;
@@ -262,7 +325,7 @@ namespace AbsoluteControlPanelResearch::MenuSession
     Model Session::CompleteBindingCapture(std::string_view a_binding)
     {
         if (!IsBindingCaptureActive() ||
-            a_binding.size() >= SlopApi::kStringValueCapacity) {
+            a_binding.size() >= AbsoluteControlPanelApi::kStringValueCapacity) {
             SetError("No active input capture");
             return BuildSnapshot();
         }
@@ -271,7 +334,7 @@ namespace AbsoluteControlPanelResearch::MenuSession
         command.moduleId = captureModuleId_;
         command.pageId = capturePageId_;
         command.controlId = captureControlId_;
-        command.value.kind = SlopApi::ValueKind::String;
+        command.value.kind = AbsoluteControlPanelApi::ValueKind::String;
         std::memcpy(command.value.stringValue, a_binding.data(), a_binding.size());
         command.value.stringValue[a_binding.size()] = '\0';
         captureModuleId_.clear();

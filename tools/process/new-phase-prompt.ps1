@@ -7,11 +7,15 @@ param(
     [ValidateSet('01', '02', '03')]
     [string]$Phase,
 
-    [string]$Model = 'unspecified'
+    [string]$Model = 'unspecified',
+
+    [switch]$AllowLegacyV1
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'legacy\v1\LegacyV1.ps1')
+Assert-LegacyV1OptIn -Allowed ([bool]$AllowLegacyV1) -EntryPoint 'new-phase-prompt'
 
 $resolvedRun = (Resolve-Path -LiteralPath $RunDirectory).Path
 $run = Get-Content -Raw -LiteralPath (Join-Path $resolvedRun 'run.json') | ConvertFrom-Json

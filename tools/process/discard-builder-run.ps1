@@ -1,11 +1,15 @@
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
 param(
     [Parameter(Mandatory = $true)]
-    [string]$RunDirectory
+    [string]$RunDirectory,
+
+    [switch]$AllowLegacyV1
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'legacy\v1\LegacyV1.ps1')
+Assert-LegacyV1OptIn -Allowed ([bool]$AllowLegacyV1) -EntryPoint 'discard-builder-run'
 
 $resolvedRun = (Resolve-Path -LiteralPath $RunDirectory).Path
 $runPath = Join-Path $resolvedRun 'run.json'

@@ -167,9 +167,70 @@ Every accepted capability updates `CURRENT-STATE.md`, the component catalog, and
 in the same change. Target contracts are labeled as targets, and historical experiments remain
 available without masquerading as current instructions.
 
+## D-020 — Canonical product and quarantined ResearchDev artifacts
+
+**Status:** Accepted.
+
+`AbsoluteControlPanel` is the default canonical target and only release-role/packageable artifact.
+`AbsoluteControlPanelResearchDev` is opt-in and non-packageable. It composes the product host with
+the synthetic provider, mailbox/SendInput automation, DirectInput experiments, and experimental
+live components. Release/research sources are explicit, manifests are role-bound and hash-bound,
+and no deploy/package tool may infer an artifact by scanning a build directory.
+
+## D-021 — Product ABI authority and bounded legacy adapter
+
+**Status:** Accepted for the ABI-v1 development period.
+
+`AbsoluteControlPanelAPI.h` is the only authority for ABI values, records, and callbacks.
+`SlopAPI.h` aliases those definitions and preserves the original export/table prefix for already
+built experimental subscribers; it is not a parallel contract and does not expose product-only
+table suffix fields. New subscribers use product discovery. Adapter removal requires an announced
+migration checkpoint.
+
+## D-022 — Readiness, callback leases, and retryable unregister
+
+**Status:** Accepted.
+
+Discovery is available during initialization, but registration and refresh return `NotReady` until
+runtime validation, hook installation, and factory retention have succeeded. Terminal runtime
+rejection returns `Rejected`. Provider calls acquire nonblocking in-flight leases and run outside
+host locks. A successful draft pins its provider until Apply, Cancel, or session destruction;
+unregister returns retryable `Rejected` while a call or transaction is active rather than waiting
+on the UI thread or invalidating code.
+
+## D-023 — Generational snapshots, refresh wakeups, and coalescing
+
+**Status:** Accepted for the internal bridge.
+
+Every published model receives a per-session generation and current ActionScript commands echo it.
+Stale gestures are rejected before provider mutation. Provider `requestRefresh` advances a
+separate revision that the open bridge consumes on the UI thread; multiple refreshes may coalesce
+into one replacement snapshot. Slider drag keeps the latest sampled value and emits at most one
+provider write per movie frame. The generation-free ten-argument bridge remains compatibility-only.
+
+## D-024 — Explicit module ownership and process-lived services
+
+**Status:** Accepted.
+
+Native bootstrap, compatibility, API/session, input, menu integration, Scaleform, diagnostics, and
+research sources have explicit ownership and one-way dependencies. ActionScript separates its
+document-class surface from bridge, selection, pointer, widgets, shell, layout/theme, and slider
+coordination. Complete source-tree provenance is required for the SWF. Polling and evidence workers
+are cooperatively stoppable, but their plugin owners are intentionally process-lived because SFSE
+does not support plugin unload and loader-lock destruction must not join threads. Evidence file I/O
+is bounded and asynchronous from UI/render producers.
+
+## D-025 — One product-version authority
+
+**Status:** Accepted.
+
+The `product_version` value in `xmake.lua` is the sole product-version authority. Xmake defines
+`ACP_PRODUCT_VERSION` from it for both public and legacy API tables; artifact-manifest generation
+reads the same value. Fixture, catalog, schema, and tool versions remain independently versioned.
+
 ## Open decisions before SDK freeze
 
-- Permanent DLL filename, public query name, namespace, and legacy-alias lifetime.
+- ABI-v1 freeze and the exact removal window for the legacy query/table prefix.
 - Whether labeled choices, strings, sections, and presentation hints extend ABI v1 or require v2.
 - Final dirty-close workflow and modal behavior.
 - Numeric editor interaction and formatting model.

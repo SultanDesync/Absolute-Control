@@ -1,5 +1,11 @@
 # Historical builder run: first external SLOP page
 
+> **Archived v1:** This records the disposable SLOP/AbsoluteZero experiment and its former magenta
+> criterion. It is not current product validation. Use `tools/process/validate-current.cmd` and
+> [the AI integration harness](AI-INTEGRATION-HARNESS.md); runtime/UX remains a separate manual
+> evidence run. Reproducing v1 requires the explicit legacy opt-in documented under
+> `tools/process/legacy/v1`.
+
 > This document preserves the disposable experiment that produced the first external subscriber.
 > **Status: Historical.** It is evidence, not current SDK guidance. New integrations use
 > [`AbsoluteControlPanelAPI.h`](../include/AbsoluteControlPanelAPI.h), the

@@ -27,14 +27,17 @@ Library files, game binaries, logs, screenshots, or the local manifest.
    a local result file under ignored artifacts.
 3. Build and run headless tests before changing mappings. A source/toolchain failure is distinct
    from a runtime incompatibility.
+   Use `tools/process/validate-current.cmd` for the canonical automated baseline; it must leave
+   runtime/UX `not_run` rather than converting a build pass into support evidence.
 4. Confirm the gameplay providers still load with Absolute Control Panel removed. The update must
    not turn the optional host into a daughter-plugin failure.
 
 ## Phase 1 — Fail closed on the new runtime
 
 1. Do not add the new runtime to plugin compatibility metadata merely to make SFSE load it.
-2. Audit every symbol and layout in `docs/COMMONLIBSF-COMPATIBILITY.md`, the generated IDs overlay,
-   menu object size, menu flags/priority, active-menu insertion seam, and PauseMenu model path.
+2. Audit every symbol and layout in `docs/COMMONLIBSF-COMPATIBILITY.md`,
+   `src/runtime/RuntimeCompatibility.cpp`, the generated IDs overlay, menu object size,
+   menu flags/priority, active-menu insertion callsite/target, and PauseMenu model path.
 3. Treat unchanged numeric IDs as unverified until their new-runtime addresses and behavior are
    correlated. Never copy an old RVA into a new version table by assumption.
 4. If any required mapping cannot be proven, leave the host unsupported on that runtime and report
@@ -73,16 +76,23 @@ At minimum revalidate:
    to pass a new build.
 2. Preserve the public provider ABI unless a provider-facing semantic change is truly required.
 3. Update plugin runtime metadata only after every mandatory mapping is corroborated.
-4. Build the product DLL and source SWF from the pinned toolchain.
-5. Run the host tests, SDK generator/tests, compile fixture, catalog validator, and package checks.
-6. Update `COMMONLIBSF-COMPATIBILITY.md`, `CURRENT-STATE.md`, `TEST-MATRIX.md`, and the catalog in
+4. Build the source SWF from the pinned toolchain and validate the complete ordered ActionScript
+   source tree, `sourceTreeSha256`, output hash, and compiler inputs.
+5. Build canonical `AbsoluteControlPanel` and generate its release-role/packageable manifest.
+   If research automation is required, separately build `AbsoluteControlPanelResearchDev` and its
+   non-packageable research manifest. Never co-load, rename, or package the ResearchDev host.
+6. Run `tools/process/validate-current.cmd`; also build/test ResearchDev boundaries when research
+   sources or the runtime harness changed.
+7. Update `COMMONLIBSF-COMPATIBILITY.md`, `CURRENT-STATE.md`, `TEST-MATRIX.md`, and the catalog in
    the same branch.
 
 ## Phase 4 — Validation ladder
 
 Stop at the first unsafe layer; do not use a heavy profile to discover basic ownership corruption.
 
-1. **Headless:** all native, ABI, generator, and catalog checks pass.
+1. **Automated:** the current product validator passes build, 8 native test targets, 6 SDK tests,
+   codegen/compile fixture, catalogue, complete SWF provenance, artifact fixtures, canonical
+   manifest, and package checks. Record actual counts if they change; runtime/UX remains not run.
 2. **Host absent:** Head Tracking and AbsoluteZero still load and retain legacy configuration.
 3. **Registration only:** launch isolated profile, confirm plugin load, factory registration, and
    no diagnostic dialog or crash without opening the panel.
@@ -98,6 +108,8 @@ Stop at the first unsafe layer; do not use a heavy profile to discover basic own
    heavy UI/mod profile.
 10. **Failure injection:** missing/corrupt SWF, incompatible ABI, provider rejection/failure, and
     stale Address Library behavior all fail without harming vanilla menus or gameplay providers.
+    Include wrong/missing bridge root, abnormal external menu teardown while dirty, callback-active
+    and dirty unregister/retry, and verify canonical fail-closed hide behavior.
 
 Preserve structured evidence and Windows crash/dump observations locally. Human review is required
 for layout and interaction feel; screenshots are diagnostic evidence, not a substitute for bridge
@@ -115,6 +127,7 @@ The update PR or fork must report:
 - provider ABI/schema impact, if any;
 - privacy scan result; and
 - whether the heavy compatibility profile was tested.
+- canonical DLL/SWF/manifest hashes and confirmation that no ResearchDev artifact entered a package.
 
 Do not claim runtime support from a successful compile, first menu open, or one Address Library
 lookup. A release-support claim requires the validation ladder appropriate to the changed seams.

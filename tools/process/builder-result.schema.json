@@ -1,6 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "SLOP builder evaluation result",
+  "title": "Archived disposable-builder-v1 evaluation result",
+  "$comment": "Historical schema retained for artifacts/builder-runs provenance. It is not the current product validation contract.",
   "type": "object",
   "required": [
     "schemaVersion",

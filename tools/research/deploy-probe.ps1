@@ -13,13 +13,21 @@ param(
     [string[]]$AdditionalPluginFiles = @(),
     [switch]$RequireArm,
     [switch]$AdvanceTitleWithSendInput,
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+
+    [ValidateSet('debug', 'release', 'releasedbg')]
+    [string]$Configuration = 'releasedbg',
+
+    [string]$ArtifactManifest
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+if ([string]::IsNullOrWhiteSpace($ArtifactManifest)) {
+    $ArtifactManifest = Join-Path $repositoryRoot 'build\artifact-manifests\AbsoluteControlPanelResearchDev.artifacts.json'
+}
 if (-not (Test-Path -LiteralPath $ModPath -PathType Container)) {
     throw "Mod directory does not exist: $ModPath"
 }
@@ -31,22 +39,36 @@ if (-not $SkipBuild) {
     }
     Push-Location $repositoryRoot
     try {
-        xmake
+        xmake f -y -m $Configuration
+        if ($LASTEXITCODE -ne 0) {
+            throw "Native plugin configuration failed with exit code $LASTEXITCODE"
+        }
+        xmake -y AbsoluteControlPanelResearchDev
         if ($LASTEXITCODE -ne 0) {
             throw "Native plugin build failed with exit code $LASTEXITCODE"
         }
     } finally {
         Pop-Location
     }
+    & (Join-Path $repositoryRoot 'tools\build-artifacts\New-BuildArtifactManifest.ps1') `
+        -Configuration $Configuration `
+        -ManifestPath $ArtifactManifest `
+        -ArtifactRole 'research-dev'
 }
 
-$pluginSource = Join-Path $repositoryRoot 'build\windows\x64\releasedbg\AbsoluteControlPanelResearch.dll'
-$movieSource = Join-Path $repositoryRoot 'interface\dist\AbsoluteControlPanelMenu.swf'
-$movieMetadata = Join-Path $repositoryRoot 'interface\dist\AbsoluteControlPanelMenu.build.json'
-$movieSourceCode = Join-Path $repositoryRoot 'interface\src\AbsoluteControlPanelMenu.as'
+$artifactModule = Join-Path $repositoryRoot 'tools\build-artifacts\ArtifactManifest.psm1'
+Import-Module $artifactModule -Force
+$validatedArtifacts = Test-AcpBuildArtifactManifest `
+    -RepositoryRoot $repositoryRoot `
+    -ManifestPath $ArtifactManifest `
+    -ExpectedConfiguration $Configuration `
+    -ExpectedArtifactRole 'research-dev' `
+    -PassThru
+$pluginSource = $validatedArtifacts.PluginPath
+$movieSource = $validatedArtifacts.MoviePath
 $pluginDirectory = Join-Path $ModPath 'SFSE\Plugins'
 $interfaceDirectory = Join-Path $ModPath 'Interface'
-$configPath = Join-Path $pluginDirectory 'AbsoluteControlPanelResearch.ini'
+$configPath = Join-Path $pluginDirectory 'AbsoluteControlPanel.ini'
 
 $resolvedAdditionalPlugins = @($AdditionalPluginFiles | ForEach-Object {
     $resolved = (Resolve-Path -LiteralPath $_).Path
@@ -56,10 +78,19 @@ $resolvedAdditionalPlugins = @($AdditionalPluginFiles | ForEach-Object {
     }
     $resolved
 })
-$destinationNames = @('AbsoluteControlPanelResearch.dll') +
+$destinationNames = @('AbsoluteControlPanelResearchDev.dll') +
     @($resolvedAdditionalPlugins | ForEach-Object { Split-Path -Leaf $_ })
 if (@($destinationNames | Select-Object -Unique).Count -ne $destinationNames.Count) {
-    throw 'Additional plugin filenames must be unique and cannot replace the SLOP host DLL.'
+    throw 'Additional plugin filenames must be unique and cannot replace the Absolute Control Panel host DLL.'
+}
+$forbiddenAdditionalHosts = @($resolvedAdditionalPlugins | Where-Object {
+        (Split-Path -Leaf $_) -iin @(
+            'AbsoluteControlPanel.dll',
+            'AbsoluteControlPanelResearch.dll',
+            'AbsoluteControlPanelResearchDev.dll')
+    })
+if ($forbiddenAdditionalHosts.Count -gt 0) {
+    throw "AdditionalPluginFiles cannot introduce another release, retired, or research host: $($forbiddenAdditionalHosts -join ', ')"
 }
 
 foreach ($requiredFile in @($pluginSource, $movieSource) + $resolvedAdditionalPlugins) {
@@ -68,28 +99,25 @@ foreach ($requiredFile in @($pluginSource, $movieSource) + $resolvedAdditionalPl
     }
 }
 
-foreach ($requiredInterfaceFile in @($movieMetadata, $movieSourceCode)) {
-    if (-not (Test-Path -LiteralPath $requiredInterfaceFile -PathType Leaf)) {
-        throw "Required interface provenance file is missing: $requiredInterfaceFile"
-    }
-}
-$interfaceBuild = Get-Content -LiteralPath $movieMetadata -Raw | ConvertFrom-Json
-$currentSourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $movieSourceCode).Hash
-$currentMovieHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $movieSource).Hash
-if ($interfaceBuild.sourceSha256 -ne $currentSourceHash -or
-    $interfaceBuild.outputSha256 -ne $currentMovieHash) {
-    throw 'Refusing to deploy a stale or unrecorded Scaleform movie. Rebuild the interface first.'
+$conflictingHosts = @(@(
+        (Join-Path $pluginDirectory 'AbsoluteControlPanel.dll'),
+        (Join-Path $pluginDirectory 'AbsoluteControlPanelResearch.dll')
+    ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })
+if ($conflictingHosts.Count -gt 0) {
+    throw "Research deployment target contains a canonical or retired host DLL: $($conflictingHosts -join ', '). Remove the conflicting host explicitly; deploy-probe never mixes or deletes hosts."
 }
 
 New-Item -ItemType Directory -Force -Path $pluginDirectory, $interfaceDirectory | Out-Null
-Copy-Item -LiteralPath $pluginSource -Destination $pluginDirectory -Force
-Copy-Item -LiteralPath $movieSource -Destination $interfaceDirectory -Force
+$deployedPlugin = Join-Path $pluginDirectory 'AbsoluteControlPanelResearchDev.dll'
+$deployedMovie = Join-Path $interfaceDirectory 'AbsoluteControlPanelMenu.swf'
+Copy-Item -LiteralPath $pluginSource -Destination $deployedPlugin -Force
+Copy-Item -LiteralPath $movieSource -Destination $deployedMovie -Force
 foreach ($additionalPlugin in $resolvedAdditionalPlugins) {
     Copy-Item -LiteralPath $additionalPlugin -Destination $pluginDirectory -Force
 }
 
 $configLines = @(
-    '[Probe]',
+    '[ControlPanel]',
     "RunId=$RunId",
     'EnableRegistration=true',
     'AutoOpen=true',
@@ -106,9 +134,15 @@ $configLines = @(
     $configPath, $configLines, [System.Text.UTF8Encoding]::new($false))
 
 $deployedFiles = @(
-    Join-Path $pluginDirectory 'AbsoluteControlPanelResearch.dll'
-    Join-Path $interfaceDirectory 'AbsoluteControlPanelMenu.swf'
+    $deployedPlugin
+    $deployedMovie
 ) + @($resolvedAdditionalPlugins | ForEach-Object {
     Join-Path $pluginDirectory (Split-Path -Leaf $_)
 })
+$deployedPluginHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $deployedPlugin).Hash
+$deployedMovieHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $deployedMovie).Hash
+if ($deployedPluginHash -ine $validatedArtifacts.Manifest.artifacts.plugin.sha256 -or
+    $deployedMovieHash -ine $validatedArtifacts.Manifest.artifacts.interface.sha256) {
+    throw 'Deployment copy verification failed: deployed product hashes do not match the canonical artifact manifest.'
+}
 Get-FileHash -Algorithm SHA256 -LiteralPath $deployedFiles

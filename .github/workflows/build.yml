@@ -19,10 +19,60 @@ jobs:
         uses: xmake-io/github-action-setup-xmake@v1
 
       - name: Configure
-        run: xmake f -y -m releasedbg
+        run: xmake f -y -m release
 
       - name: Build
         run: xmake -y
 
       - name: Test
         run: xmake test
+
+      - name: Test SDK generator
+        run: python -m unittest discover -s sdk/tests -v
+
+      - name: Check generated SDK fixture
+        run: >-
+          python sdk/tools/menu_codegen.py generate
+          sdk/examples/absolute-head-tracking.menu.json
+          sdk/examples/generated/AbsoluteHeadTrackingMenu.generated.h
+          --check
+
+      - name: Compile generated SDK fixture
+        shell: pwsh
+        run: |
+          xmake f -P sdk/tests/compile -y -m release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          xmake -P sdk/tests/compile -y
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          xmake run -P sdk/tests/compile generated_menu_compile_test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Validate development catalogue
+        run: python catalog/validate_catalog.py
+
+      - name: Verify Scaleform source and dist hashes
+        shell: pwsh
+        run: ./tools/build-artifacts/Test-InterfaceProvenance.ps1
+
+      - name: Test artifact integrity tooling
+        shell: pwsh
+        run: ./tools/build-artifacts/tests/Test-ArtifactTooling.ps1
+
+      - name: Create and validate canonical artifact manifest
+        shell: pwsh
+        run: |
+          ./tools/build-artifacts/New-BuildArtifactManifest.ps1 -Configuration release
+          ./tools/build-artifacts/Test-BuildArtifactManifest.ps1 -ExpectedConfiguration release
+
+      - name: Build and validate non-packageable research host
+        shell: pwsh
+        run: |
+          xmake -y AbsoluteControlPanelResearchDev
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./tools/build-artifacts/Test-BuildArtifactManifest.ps1 `
+            -ExpectedConfiguration release `
+            -ExpectedArtifactRole research-dev
+
+      - name: Build and validate compatibility package
+        shell: pwsh
+        run: ./tools/package-compatibility-test.ps1

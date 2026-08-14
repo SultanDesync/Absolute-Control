@@ -1,0 +1,47 @@
+package acp.ui
+{
+    public final class BridgeCommandDispatcher
+    {
+        private var bridge:Object;
+
+        public function BridgeCommandDispatcher(nativeBridge:Object)
+        {
+            bridge = nativeBridge;
+        }
+
+        public function send(model:Object, current:Object, command:String,
+            control:Object, booleanValue:Boolean, integerValue:Number,
+            floatValue:Number, controlIdentity:Boolean = true):void
+        {
+            if (model == null || bridge == null || bridge.dispatch == null ||
+                (current == null && command != "close")) return;
+            var moduleId:String = "";
+            var pageId:String = "";
+            var controlId:String = "";
+            var valueKind:uint = 3;
+            if (controlIdentity && current != null) {
+                moduleId = String(current.moduleId);
+                pageId = String(current.pageId);
+                if (control != null) {
+                    controlId = String(control.controlId);
+                    valueKind = uint(control.valueKind);
+                }
+            } else if (control != null) {
+                moduleId = String(control.moduleId);
+                pageId = String(control.pageId);
+            }
+            dispatchFlat(command, moduleId, pageId, controlId, valueKind,
+                booleanValue, integerValue, floatValue, Number(model.generation));
+        }
+
+        public function dispatchFlat(command:String, moduleId:String,
+            pageId:String, controlId:String, valueKind:uint,
+            booleanValue:Boolean, integerValue:Number, floatValue:Number,
+            expectedGeneration:Number):void
+        {
+            if (bridge == null || bridge.dispatch == null) return;
+            bridge.dispatch(1, command, moduleId, pageId, controlId, valueKind,
+                booleanValue, integerValue, floatValue, "", expectedGeneration);
+        }
+    }
+}

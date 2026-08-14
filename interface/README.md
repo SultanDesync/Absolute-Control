@@ -6,12 +6,29 @@
 
 This directory reserves the source and compiled-asset boundary for the native menu.
 
-`src/AbsoluteControlPanelMenu.as` defines the root object and the smallest C++ bridge.
+`src/AbsoluteControlPanelMenu.as` is the document/root coordinator. It owns the stable native
+callback surface, stage listeners, and native command dispatch, while the imported `acp.ui`
+package owns the separable menu responsibilities:
+
+- `MenuSelectionState` owns selected module/page/control state and viewport normalization;
+- `MenuShellRenderer` owns the persistent mod sidebar, horizontal page tabs, settings rows,
+  help panel, scrollbar, and footer composition;
+- `ControlWidgets` owns toggle, slider, choice, action, and binding rendering and semantics;
+- `PointerInteraction` owns rendered hit regions, slider drag identity, and wheel regions;
+- `PixelTextRenderer` owns the embedded diagnostic glyph set and text drawing; and
+- `PanelLayout` and `PanelTheme` are the single sources for geometry and color constants.
+
+These boundaries are intentionally coarse. They match runtime responsibilities that can be
+validated independently without imposing a component framework on the pinned Flex compiler.
 `dist/AbsoluteControlPanelMenu.swf` is built from source by
 `tools/research/build-interface.ps1`; the adjacent build metadata records compiler, target,
-PlayerGlobal commit, source hash, and output hash. Apache Flex embeds varying build metadata, so
-the pinned inputs and recorded source hash are the reproducibility authority; byte-identical SWF
-hashes are not currently claimed.
+PlayerGlobal commit, root-source compatibility hash, deterministic source-tree manifest/hash, and
+output hash. Apache Flex embeds varying build metadata, so the pinned inputs and recorded source
+tree are the reproducibility authority; byte-identical SWF hashes are not currently claimed.
+
+Run `interface/tests/Test-SourceArchitecture.ps1` after source changes. It protects the public
+document-class surface, checks that each extracted responsibility has one owner, caps coordinator
+growth, and verifies that build provenance covers every ActionScript source.
 
 The research movie uses only Flash platform drawing, including its tiny diagnostic alphabet;
 it contains no Bethesda

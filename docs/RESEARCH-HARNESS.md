@@ -1,13 +1,17 @@
 # Research harness status and workflows
 
-> **Status:** Current inventory with explicit legacy gaps. Use the supported component workflows
-> below. The monolithic `run-probe.ps1` success path is not currently authoritative.
+> **Status:** Current product-validation and ResearchDev workflows. The disposable builder-v1
+> process and monolithic sentinel runner are archived evidence, not current gates.
 
 The harness adapts the useful AbsoluteHOTAS research pattern: bounded commands, structured
 evidence, retained game sessions, narrow visual diagnostics, and privacy-safe local artifacts. It
 does not copy the HOTAS gameplay-injection seam or continuously drive a virtual controller.
 
 ## Current operating rule
+
+Run `tools/process/validate-current.cmd` first. It is the maintained product validator and does not
+launch Starfield, deploy a mod, modify MO2, or use local paths. A pass proves only its automated
+gates; runtime and UX stay `not_run`.
 
 The ignored local manifest supplies the exact MO2 test mod, profile requirements, Address Library,
 and SFSE launcher shortcut. The shortcut is the launch interface: start it directly with
@@ -33,9 +37,10 @@ xmake test
 .\tools\research\deploy-probe.ps1 -ModPath '<test mod>' -RunId '<run id>'
 ```
 
-`deploy-probe.ps1` remains research-named and stages `AbsoluteControlPanelResearch.dll`. The
-product-named package path is not yet normalized; record which DLL was deployed and never combine a
-DLL and SWF from different builds.
+`deploy-probe.ps1` builds/consumes only the non-packageable ResearchDev manifest and stages
+`AbsoluteControlPanelResearchDev.dll`. It refuses to mix that host with canonical
+`AbsoluteControlPanel.dll` or retired `AbsoluteControlPanelResearch.dll`, and verifies deployed
+DLL/SWF hashes. Canonical package checks consume only the release-role/packageable manifest.
 
 ### Profile preparation
 
@@ -58,7 +63,7 @@ behavior.
 
 ### Runtime command mailbox
 
-The plugin registers an independent two-line mailbox in SFSE's resolved log directory. Use
+ResearchDev registers an independent two-line mailbox in SFSE's resolved log directory. Use
 `invoke-runtime-input.ps1` with an explicit mailbox directory, run ID, evidence file, and one
 allow-listed command. The helper assigns an ID atomically and requires accepted and completed
 evidence. It does not accept arbitrary keys or code.
@@ -83,27 +88,38 @@ changes still require a Starfield restart because both binaries are cached by th
 The lifecycle-owned implementation has completed 25 consecutive isolated cycles. New runtime
 support must repeat that test according to [the update runbook](RUNTIME-UPDATE-RUNBOOK.md).
 
-## Legacy monolithic runner
+## Current process versus archived v1
 
-`run-probe.ps1` still contains useful process, screenshot, watchdog, evidence, and profile logic,
-but its current pass path is internally inconsistent with the product:
+`tools/process/validate-current.cmd` is the maintained process. On the audited tree it passed the
+release build, 8/8 native tests, 6 SDK tests, generated fixture check/compile, 25-entry catalogue,
+ten-source SWF provenance, artifact fixtures, canonical manifest, and compatibility ZIP. It always
+reports runtime/UX `not_run`.
+
+The disposable builder-v1 contract lives under `tools/process/legacy/v1` and requires explicit
+opt-in. Root-level builder phase commands remain only to interpret historical run artifacts.
+`run-probe.ps1` likewise retains useful screenshot/process logic but is not a current pass gate:
 
 - it requires the magenta framebuffer sentinel removed from the current SWF;
 - it retains SLOP-era naming and synthetic-provider assumptions;
 - it assumes the research title/Continue sequence as the default validation path; and
-- its deploy/package path targets the research-named DLL rather than the product-named artifact.
+- it follows the archived title/Continue/sentinel scenario rather than the current process.
 
-Accordingly, a successful current build must not claim that this monolithic runner passed. Reuse
-its supported components or repair it in a dedicated harness change. Do not restore a permanent
-magenta square merely to satisfy the old oracle; if a new visual oracle is needed, make it an
-explicit development mode that cannot ship accidentally.
+Do not translate a v1 phase/result into current product evidence. Do not restore a permanent
+magenta square to satisfy its old oracle; a future visual oracle must be explicit development-only
+and can prove visible presence, not semantics.
 
 ## Evidence and diagnostics
 
-The plugin JSONL evidence stream records wall-clock time, monotonic time, sequence, thread ID, run
+The JSONL evidence stream records wall-clock time, monotonic time, sequence, thread ID, run
 ID, event, and bounded detail. Useful authorities include registration, movie/bridge readiness,
 PauseMenu boundary/listener/injection, menu lifecycle, pointer down/up, semantic bridge commands,
 provider results, and mailbox accepted/completed events.
+
+Producers enqueue into a bounded asynchronous single-writer sink and do no evidence-file I/O or
+disk wait from UI/render callbacks. Product defaults to 4,096 outstanding records; ResearchDev uses
+16,384 and trace level. New records are dropped at capacity, and accepted/written/dropped/I/O-error
+statistics are observable. Owners are intentionally process-lived to avoid loader-lock teardown;
+explicit flush/shutdown is for controlled tests, not dynamic plugin unload.
 
 Screenshots, window metadata, crash dumps, process IDs, and logs live only in ignored local artifact
 directories. Screenshots help diagnose unexpected dialogs and layout failures; they do not replace
@@ -114,8 +130,9 @@ semantic or lifecycle evidence. Audio cues may help a supervising human but neve
 The interface build uses Apache Flex 4.16.1 (`mxmlc` build 20171115), Flash Player 11.5, SWF
 version 18, and PlayerGlobal commit `fef560243029214656d83fc673be0267a1ea0816`. Bootstrap verifies
 the pinned checksums. Downloaded tools stay under ignored `.tools/`. Compiler metadata may vary, so
-the source hash and pinned inputs are reproducibility authorities; byte-identical SWFs are not
-claimed.
+the complete ordered source inventory, `sourceTreeSha256`, output hash, and pinned inputs are the
+authorities; the root-only source hash is deprecated compatibility metadata. Byte-identical SWFs
+across compiler environments are not claimed.
 
 ## Privacy and handoff
 

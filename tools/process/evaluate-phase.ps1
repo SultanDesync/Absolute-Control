@@ -5,11 +5,15 @@ param(
 
     [Parameter(Mandatory = $true)]
     [ValidateSet('01', '02', '03')]
-    [string]$Phase
+    [string]$Phase,
+
+    [switch]$AllowLegacyV1
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'legacy\v1\LegacyV1.ps1')
+Assert-LegacyV1OptIn -Allowed ([bool]$AllowLegacyV1) -EntryPoint 'evaluate-phase'
 
 function Import-VisualStudioEnvironment {
     $programFilesX86 = [Environment]::GetFolderPath('ProgramFilesX86')
@@ -138,6 +142,8 @@ try {
             $sessionSource -notmatch 'selectedControlId_\s*=\s*control\.controlId') {
             throw 'Fresh models do not preserve the row selected by an edit or invocation.'
         }
+        # Historical v1 reproduction only. The current product process deliberately has no
+        # framebuffer-color success gate; this preserves the meaning of already-retained runs.
         if ($actionScript -notmatch '0xFF00FF') {
             throw 'The magenta framebuffer sentinel was removed.'
         }

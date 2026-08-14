@@ -122,6 +122,25 @@ namespace AbsoluteControlPanelApi
     static_assert(std::is_trivially_copyable_v<ModuleDescriptorV1>);
     static_assert(std::is_standard_layout_v<PageDescriptorV1>);
     static_assert(std::is_standard_layout_v<ApiV1>);
+    static_assert(sizeof(Result) == sizeof(std::uint32_t));
+    static_assert(sizeof(ControlKind) == sizeof(std::uint32_t));
+    static_assert(sizeof(ValueKind) == sizeof(std::uint32_t));
+    static_assert(static_cast<std::uint32_t>(Result::Ok) == 0);
+    static_assert(static_cast<std::uint32_t>(Result::Rejected) == 6);
+    static_assert(static_cast<std::uint32_t>(ControlKind::Toggle) == 0);
+    static_assert(static_cast<std::uint32_t>(ControlKind::InputBinding) == 5);
+    static_assert(static_cast<std::uint32_t>(ValueKind::Boolean) == 0);
+    static_assert(static_cast<std::uint32_t>(ValueKind::String) == 3);
+    static_assert(offsetof(ValueV1, kind) == sizeof(std::uint32_t));
+    static_assert(offsetof(ControlDescriptorV1, kind) == sizeof(std::uint32_t));
+    static_assert(std::is_same_v<ReadValueCallback,
+        Result(__cdecl*)(void*, const char*, ValueV1*) noexcept>);
+    static_assert(std::is_same_v<WriteDraftCallback,
+        Result(__cdecl*)(void*, const char*, const ValueV1*) noexcept>);
+    static_assert(std::is_same_v<InvokeActionCallback,
+        Result(__cdecl*)(void*, const char*) noexcept>);
+    static_assert(std::is_same_v<ApplyCallback, Result(__cdecl*)(void*) noexcept>);
+    static_assert(std::is_same_v<CancelCallback, void(__cdecl*)(void*) noexcept>);
 }
 
 #if defined(ABSOLUTE_CONTROL_PANEL_EXPORTS)

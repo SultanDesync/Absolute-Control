@@ -117,6 +117,12 @@ and callback wiring. The v1 compiler rejects semantics the current ABI cannot pr
 choice labels and text editors. Sections currently group and order source controls but cannot render
 headings until the public ABI gains a section descriptor.
 
+Generated definitions require control IDs unique across the module because generated pages share
+one callback/context set and one module-wide `ParseControlId`. Direct ABI consumers may use
+page-local IDs when each page's context/callbacks disambiguate them. The host admits 32 modules,
+32 pages, 128 controls per page, and 512 controls total; generator enforcement of the total-512
+limit remains an SDK-freeze gate.
+
 ## Styling
 
 The component library consumes host-owned design tokens for typography, colors, focus/disabled

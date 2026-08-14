@@ -1,55 +1,77 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.1.0"
+    [string]$Version,
+    [string]$ArtifactManifest
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
-$dll = Join-Path $repoRoot "build\windows\x64\release\AbsoluteControlPanelResearch.dll"
-$swf = Join-Path $repoRoot "interface\dist\AbsoluteControlPanelMenu.swf"
-$swfMetadata = Join-Path $repoRoot "interface\dist\AbsoluteControlPanelMenu.build.json"
-$swfSource = Join-Path $repoRoot "interface\src\AbsoluteControlPanelMenu.as"
-$config = Join-Path $repoRoot "packaging\compatibility-test\AbsoluteControlPanelResearch.ini"
-$readme = Join-Path $repoRoot "packaging\compatibility-test\README.txt"
+$repoRoot = (Resolve-Path (Split-Path -Parent $PSScriptRoot)).Path
+if ([string]::IsNullOrWhiteSpace($ArtifactManifest)) {
+    $ArtifactManifest = Join-Path $repoRoot 'build\artifact-manifests\AbsoluteControlPanel.artifacts.json'
+}
+Import-Module (Join-Path $repoRoot 'tools\build-artifacts\ArtifactManifest.psm1') -Force
+$validated = Test-AcpBuildArtifactManifest `
+    -RepositoryRoot $repoRoot `
+    -ManifestPath $ArtifactManifest `
+    -ExpectedConfiguration 'release' `
+    -ExpectedArtifactRole 'release' `
+    -PassThru
+if (-not [bool]$validated.Manifest.product.packageable) {
+    throw 'Compatibility packages may only consume a release manifest marked packageable.'
+}
 
-foreach ($requiredFile in @($dll, $swf, $swfMetadata, $swfSource, $config, $readme)) {
+$manifestVersion = [string]$validated.Manifest.product.version
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    $Version = $manifestVersion
+} elseif ($Version -cne $manifestVersion) {
+    throw "Requested package version '$Version' does not match manifest product version '$manifestVersion'."
+}
+
+$dll = $validated.PluginPath
+$swf = $validated.MoviePath
+$config = Join-Path $repoRoot 'config\AbsoluteControlPanel.ini'
+$readme = Join-Path $repoRoot 'tools\build-artifacts\compatibility-test-README.txt'
+foreach ($requiredFile in @($dll, $swf, $config, $readme)) {
     if (-not (Test-Path -LiteralPath $requiredFile -PathType Leaf)) {
         throw "Required package input is missing: $requiredFile"
     }
 }
 
-$interfaceBuild = Get-Content -LiteralPath $swfMetadata -Raw | ConvertFrom-Json
-$currentSourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $swfSource).Hash
-$currentMovieHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $swf).Hash
-if ($interfaceBuild.sourceSha256 -ne $currentSourceHash -or
-    $interfaceBuild.outputSha256 -ne $currentMovieHash) {
-    throw 'Refusing to package a stale or unrecorded Scaleform movie. Rebuild the interface first.'
-}
-
-$packageRoot = Join-Path $repoRoot "artifacts\packages"
+$packageRoot = Join-Path $repoRoot 'artifacts\packages'
 $stageRoot = Join-Path $packageRoot "stage-$Version"
-$archive = Join-Path $packageRoot "Starfield-Local-Options-Panel-PauseMenu-Compatibility-Test-$Version.zip"
+$archive = Join-Path $packageRoot "Absolute-Control-Panel-PauseMenu-Compatibility-Test-$Version.zip"
 
 if (Test-Path -LiteralPath $stageRoot) {
     $resolvedStage = (Resolve-Path -LiteralPath $stageRoot).Path
-    $resolvedPackages = (Resolve-Path -LiteralPath $packageRoot).Path
-    if (-not $resolvedStage.StartsWith($resolvedPackages + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+    $resolvedPackages = [IO.Path]::GetFullPath($packageRoot).TrimEnd(
+        [IO.Path]::DirectorySeparatorChar,
+        [IO.Path]::AltDirectorySeparatorChar)
+    if (-not $resolvedStage.StartsWith(
+            $resolvedPackages + [IO.Path]::DirectorySeparatorChar,
+            [StringComparison]::OrdinalIgnoreCase)) {
         throw "Refusing to clean staging path outside the package directory: $resolvedStage"
     }
-    Remove-Item -LiteralPath $resolvedStage -Recurse -Force
+    Remove-Item -LiteralPath $stageRoot -Recurse -Force
 }
 
-New-Item -ItemType Directory -Path (Join-Path $stageRoot "SFSE\Plugins") -Force | Out-Null
-New-Item -ItemType Directory -Path (Join-Path $stageRoot "Interface") -Force | Out-Null
-Copy-Item -LiteralPath $dll -Destination (Join-Path $stageRoot "SFSE\Plugins\AbsoluteControlPanelResearch.dll")
-Copy-Item -LiteralPath $config -Destination (Join-Path $stageRoot "SFSE\Plugins\AbsoluteControlPanelResearch.ini")
-Copy-Item -LiteralPath $swf -Destination (Join-Path $stageRoot "Interface\AbsoluteControlPanelMenu.swf")
-Copy-Item -LiteralPath $readme -Destination (Join-Path $stageRoot "README.txt")
+New-Item -ItemType Directory -Path (Join-Path $stageRoot 'SFSE\Plugins') -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $stageRoot 'Interface') -Force | Out-Null
+Copy-Item -LiteralPath $dll -Destination (Join-Path $stageRoot 'SFSE\Plugins\AbsoluteControlPanel.dll')
+Copy-Item -LiteralPath $config -Destination (Join-Path $stageRoot 'SFSE\Plugins\AbsoluteControlPanel.ini')
+Copy-Item -LiteralPath $swf -Destination (Join-Path $stageRoot 'Interface\AbsoluteControlPanelMenu.swf')
+Copy-Item -LiteralPath $readme -Destination (Join-Path $stageRoot 'README.txt')
+
+& (Join-Path $repoRoot 'tools\build-artifacts\Test-PackageContent.ps1') `
+    -ArtifactManifest $ArtifactManifest `
+    -StageRoot $stageRoot
 
 if (Test-Path -LiteralPath $archive) {
     Remove-Item -LiteralPath $archive -Force
 }
-
-Compress-Archive -Path (Join-Path $stageRoot "*") -DestinationPath $archive -CompressionLevel Optimal
+Compress-Archive -Path (Join-Path $stageRoot '*') -DestinationPath $archive -CompressionLevel Optimal
+& (Join-Path $repoRoot 'tools\build-artifacts\Test-PackageContent.ps1') `
+    -ArtifactManifest $ArtifactManifest `
+    -ArchivePath $archive
 Get-FileHash -LiteralPath $archive -Algorithm SHA256

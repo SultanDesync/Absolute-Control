@@ -11,11 +11,14 @@ param(
     [string]$Model = 'unspecified',
     [string]$RunRoot,
     [string]$WorktreeRoot,
-    [switch]$SkipBaselineBuild
+    [switch]$SkipBaselineBuild,
+    [switch]$AllowLegacyV1
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'legacy\v1\LegacyV1.ps1')
+Assert-LegacyV1OptIn -Allowed ([bool]$AllowLegacyV1) -EntryPoint 'new-builder-run'
 
 $gitExecutable = (Get-Command git.exe -ErrorAction Stop).Source
 $gitRoot = Split-Path -Parent (Split-Path -Parent $gitExecutable)

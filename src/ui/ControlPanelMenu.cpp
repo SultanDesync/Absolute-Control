@@ -1,0 +1,431 @@
+
+
+#include "NativeMenuProbe.h"
+
+#include "EvidenceLog.h"
+#include "MenuApiHost.h"
+#include "MenuInputRouter.h"
+#include "MenuSession.h"
+#include "input/PlatformInputServices.h"
+#include "runtime/ProbeRuntimeState.h"
+#include "runtime/RuntimeCompatibility.h"
+#include "scaleform/ScaleformMenuBridge.h"
+#include "ui/ControlPanelMenu.h"
+#include "ui/MenuMessaging.h"
+
+namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
+{
+    namespace
+    {
+        constexpr std::array<std::string_view, 7> kRootCandidates{
+            "_root",
+            "root",
+            "root1",
+            "AbsoluteControlPanelMenu",
+            "root.AbsoluteControlPanelMenu",
+            "root1.AbsoluteControlPanelMenu",
+            "root1.AbsoluteControlPanelMenu_mc"
+        };
+
+        constexpr auto kMenuName = NativeMenuProbe::kMenuName;
+        constexpr auto kMoviePath = NativeMenuProbe::kMoviePath;
+        constexpr auto kRootPath = NativeMenuProbe::kRootPath;
+        std::uint32_t g_menuFlags{};
+
+        class AbsoluteControlPanelMenu final : public RE::GameMenuBase
+        {
+        public:
+            SF_MENU_NAME("AbsoluteControlPanelMenu");
+
+            static void* operator new(std::size_t a_count)
+            {
+                EvidenceLog::Event(
+                    "menu_allocation_started",
+                    std::format("bytes={} allocator=global", a_count));
+                auto* memory = ::operator new(a_count);
+                EvidenceLog::Event(
+                    "menu_allocation_completed",
+                    std::format(
+                        "address=0x{:X} allocator=global",
+
+                        reinterpret_cast<std::uintptr_t>(memory)));
+                return memory;
+            }
+
+            static void operator delete(void* a_memory) noexcept
+            {
+                if (!a_memory) {
+                    return;
+                }
+                EvidenceLog::Event(
+                    "menu_deallocation_started",
+                    std::format(
+                        "address=0x{:X} allocator=global",
+                        reinterpret_cast<std::uintptr_t>(a_memory)));
+                ::operator delete(a_memory);
+            }
+
+            static void operator delete(void* a_memory, std::size_t) noexcept
+            {
+                operator delete(a_memory);
+            }
+
+            AbsoluteControlPanelMenu()
+            {
+                // Current shipped GameMenuBase-derived constructors explicitly clear
+                // the tail byte at +0x130 after the base constructor.  CommonLibSF
+                // exposes that storage but does not initialize it in C++.
+                unk128 = 0;
+                unk130 = 0;
+                menuName = kMenuName.data();
+                SetFlags(g_menuFlags);
+                // Current UI insertion sorts by the byte at +0x110.  GameMenuBase starts at
+                // priority 6.  The probe is now opened only after PauseMenu is closed, but it
+                // still stays below CursorMenu (20) for mouse input.
+                *(
+                    reinterpret_cast<std::uint8_t*>(this) + 0x110) = 19;
+                EvidenceLog::Event(
+                    "menu_constructed",
+                    std::format(
+                        "flags=0x{:08X} priority={} ref_count={}", g_menuFlags,
+                        *(reinterpret_cast<std::uint8_t*>(this) + 0x110),
+                        RefCountForEvidence()));
+            }
+
+            ~AbsoluteControlPanelMenu() override
+            {
+                MenuApiHost::SetMenuOpen(false);
+                EvidenceLog::Event(
+                    "menu_destructor_entered",
+                    std::format(
+                        "ref_count={} caller_rva=0x{:08X}", RefCountForEvidence(),
+                        Runtime::ToImageRva(_ReturnAddress())));
+            }
+
+            const char* GetName() const override
+            {
+                EvidenceLog::Event("menu_get_name", kMenuName);
+                return kMenuName.data();
+            }
+            const char* GetRootPath() const override
+            {
+                EvidenceLog::Event("menu_get_root_path", kRootPath);
+                return kRootPath.data();
+            }
+            std::uint64_t GetUnk05() override
+            {
+                // Current LoadingMenu, ContainerMenu, and MessageBoxMenu all share
+                // ID 36396 in this slot, whose complete body is `mov eax, 1; ret`.
+                EvidenceLog::Event("menu_get_unk05", "result=1");
+                return 1;
+            }
+            bool UseEventDispatcher() override
+            {
+                EvidenceLog::Event("menu_use_event_dispatcher", "result=false");
+                return false;
+            }
+
+            bool ShouldHandleEvent(const RE::InputEvent* a_event) override
+            {
+                if (!a_event || (a_event->deviceType != RE::InputEvent::DeviceType::kKeyboard &&
+                                    a_event->deviceType != RE::InputEvent::DeviceType::kMouse)) {
+                    return false;
+                }
+                return RE::IMenu::ShouldHandleEvent(a_event);
+            }
+
+            // Address Library v22 contains no offsets for these inherited placeholders.
+            // Keep the research menu fail-closed instead of ever resolving ID 0.
+            bool Unk0A() override
+            {
+                // Current IMenu ID 130619 implements this slot as
+                // `return uiMovie != nullptr`.  The UI show processor uses a false
+                // result as the condition for immediate menu cleanup.
+                return uiMovie != nullptr;
+            }
+            bool Unk15(void*) override { return false; }
+            std::uint64_t Unk18(void*, std::uint64_t) override { return 0; }
+            float Unk1A() override { return 0.0F; }
+
+            RE::BSEventNotifyControl ProcessEvent(
+                const RE::UpdateSceneRectEvent&,
+                RE::BSTEventSource<RE::UpdateSceneRectEvent>*) override
+            {
+                return RE::BSEventNotifyControl::kContinue;
+            }
+
+            bool Unk09(const RE::InputEvent* a_event) override
+            {
+                if (a_event && a_event->deviceType == RE::InputEvent::DeviceType::kGamepad) {
+                    return false;
+                }
+                bool handled = false;
+                if (a_event && inputEventHandlingEnabled) {
+                    switch (a_event->eventType) {
+                    case RE::InputEvent::EventType::kButton: {
+                        const auto* button = static_cast<const RE::ButtonEvent*>(a_event);
+                        handled = bridge.HandleButtonInput(*button);
+                        EvidenceLog::Event(
+                            "menu_button_input",
+                            std::format(
+                                "id_code={} value={:.2f} held={:.3f} handled={}",
+                                button->idCode, button->value, button->heldDownSecs,
+                                handled));
+                        if (handled) {
+                            const_cast<RE::ButtonEvent*>(button)->status =
+                                RE::InputEvent::Status::kStop;
+                        }
+                        break;
+                    }
+                    default:
+                        break;
+                    }
+                }
+                if (handled) {
+                    EvidenceLog::Event(
+                        "menu_input_handled",
+                        std::format(
+
+                            "event_type={} device_type={}",
+                            a_event ? static_cast<std::uint32_t>(a_event->eventType) :
+                                      std::numeric_limits<std::uint32_t>::max(),
+                            a_event ? static_cast<std::uint32_t>(a_event->deviceType) :
+                                      std::numeric_limits<std::uint32_t>::max()));
+                }
+                return handled;
+            }
+
+            RE::UI_MESSAGE_RESULT ProcessMessage(RE::UIMessageData& a_message) override
+            {
+                const auto typeBefore = a_message.type;
+                EvidenceLog::Event(
+                    "menu_message_entered",
+                    std::format(
+                        "type={} caller_rva=0x{:08X}",
+                        static_cast<std::uint32_t>(typeBefore),
+                        Runtime::ToImageRva(_ReturnAddress())));
+                const auto result = RE::IMenu::ProcessMessage(a_message);
+                EvidenceLog::Event(
+                    "menu_message_base_completed",
+                    std::format(
+                        "type_before={} type_after={} result={}",
+                        static_cast<std::uint32_t>(typeBefore),
+                        static_cast<std::uint32_t>(a_message.type),
+                        static_cast<std::int64_t>(result)));
+                if (typeBefore == RE::UI_MESSAGE_TYPE::kShow) {
+                    MenuApiHost::SetMenuOpen(true);
+                    Runtime::Transition(ProbeEvent::MenuOpened);
+                    EvidenceLog::Event(
+                        "menu_message_show",
+                        std::format("result={}", static_cast<std::int64_t>(result)));
+                } else if (typeBefore == RE::UI_MESSAGE_TYPE::kHide) {
+                    MenuApiHost::SetMenuOpen(false);
+                    Runtime::Transition(ProbeEvent::MenuClosed);
+                    EvidenceLog::Event(
+                        "menu_message_hide",
+                        std::format("result={}", static_cast<std::int64_t>(result)));
+                    const auto ui = RE::UI::GetSingleton();
+                    const bool pauseOpen = ui && ui->IsMenuOpen(
+                                                     RE::BSFixedString("PauseMenu"));
+                    EvidenceLog::Event(
+                        "research_pause_state_after_probe_close",
+                        std::format("open={}", pauseOpen));
+                }
+                return result;
+            }
+
+            bool LoadMovie(bool, bool a_arg2) override
+            {
+                EvidenceLog::Event(
+                    "movie_load_entered",
+                    std::format(
+                        "arg2={} ref_count={} caller_rva=0x{:08X}", a_arg2,
+                        RefCountForEvidence(), Runtime::ToImageRva(_ReturnAddress())));
+                const bool loaded = RE::IMenu::LoadMovie(false, a_arg2);
+                EvidenceLog::Event(
+                    "movie_load_result", std::format("loaded={}", loaded));
+                if (!loaded || !uiMovie || !uiMovie->asMovieRoot) {
+                    Runtime::Transition(ProbeEvent::RuntimeFault);
+                    return loaded;
+                }
+
+
+                bool bridgeRootFound = false;
+                for (const auto candidatePath : kRootCandidates) {
+                    RE::Scaleform::GFx::Value candidate;
+                    const bool resolved = uiMovie->asMovieRoot->GetVariable(
+                        &candidate, candidatePath.data());
+                    const bool object = resolved && candidate.IsObject();
+                    const bool hasCodeObject = object && candidate.HasMember(CODE_OBJ_NAME);
+                    EvidenceLog::Event(
+                        "root_candidate",
+                        std::format(
+                            "path={} resolved={} object={} display={} has_code_object={}",
+                            candidatePath, resolved, object,
+                            resolved && candidate.IsDisplayObject(), hasCodeObject));
+                    if (!hasCodeObject) {
+                        continue;
+                    }
+
+                    menuObj = candidate;
+                    bridgeRootFound = true;
+                    EvidenceLog::Event("root_selected", candidatePath);
+                    break;
+                }
+
+                if (bridgeRootFound) {
+                    bridge.Attach(uiMovie.get(), menuObj);
+                    MapCodeObjectFunctions();
+                    bridge.LogMovieState("before_on_code_obj_create");
+                    const bool invoked = menuObj.Invoke(ON_CODE_OBJ_CREATED_FUNC);
+                    EvidenceLog::Event(
+                        "bridge_create_invoked", std::format("invoked={}", invoked));
+                    bridge.LogMovieState("after_on_code_obj_create");
+                } else {
+                    EvidenceLog::Event(
+                        "bridge_root_missing", "queueing fail-closed menu hide");
+                    Runtime::Transition(ProbeEvent::RuntimeFault);
+                    Ui::QueueControlPanelMessage(
+                        RE::UI_MESSAGE_TYPE::kHide, "bridge_root_missing");
+                }
+                return loaded;
+            }
+
+            void MapCodeObjectFunctions() override
+            {
+                RE::Scaleform::GFx::Value codeObject;
+                const bool resolved = menuObj.GetMember(CODE_OBJ_NAME, &codeObject);
+                if (!resolved || !codeObject.IsObject()) {
+                    const auto previousType = codeObject.GetType();
+                    uiMovie->asMovieRoot->CreateObject(&codeObject);
+                    const bool assigned =
+                        codeObject.IsObject() && menuObj.SetMember(CODE_OBJ_NAME, codeObject);
+                    EvidenceLog::Event(
+                        "bridge_code_object_created",
+                        std::format(
+                            "previously_resolved={} previous_type={} created={} assigned={}",
+                            resolved, static_cast<std::int32_t>(previousType),
+                            codeObject.IsObject(), assigned));
+                    if (!assigned) {
+                        return;
+                    }
+                }
+                RegisterNativeFunction(
+                    "ready", static_cast<std::uint64_t>(Scaleform::NativeFunction::Ready));
+                RegisterNativeFunction(
+                    "close", static_cast<std::uint64_t>(Scaleform::NativeFunction::Close));
+                RegisterNativeFunction(
+                    "dispatch", static_cast<std::uint64_t>(Scaleform::NativeFunction::Dispatch));
+                RegisterNativeFunction(
+                    "focus", static_cast<std::uint64_t>(Scaleform::NativeFunction::Focus));
+                RegisterNativeFunction(
+                    "modelApplied", static_cast<std::uint64_t>(Scaleform::NativeFunction::ModelApplied));
+                EvidenceLog::Event("bridge_functions_mapped", "version=1 count=5");
+            }
+
+            void Call(
+                const RE::Scaleform::GFx::FunctionHandler::Params& a_params) override
+            {
+                bridge.Call(a_params);
+            }
+
+            void HandlePointerPhase(Input::PointerPhase a_phase)
+            {
+                bridge.HandlePointerPhase(a_phase);
+            }
+
+            [[nodiscard]] std::int32_t RefCountForEvidence() const noexcept
+            {
+                return refCount;
+            }
+
+        private:
+            Scaleform::MenuBridge bridge;
+        };
+
+        RE::Scaleform::Ptr<RE::IMenu>* CreateMenu(RE::Scaleform::Ptr<RE::IMenu>* a_result)
+        {
+            EvidenceLog::Event(
+                "menu_factory_entered",
+                std::format(
+                    "return_storage_bits=0x{:X} caller_rva=0x{:08X}",
+                    reinterpret_cast<std::uintptr_t>(
+                        *reinterpret_cast<RE::IMenu**>(a_result)),
+                    Runtime::ToImageRva(_ReturnAddress())));
+            auto* menu = new AbsoluteControlPanelMenu();
+            EvidenceLog::Event(
+                "menu_factory_constructed",
+                std::format(
+                    "address=0x{:X} ref_count={}",
+                    reinterpret_cast<std::uintptr_t>(menu), menu->RefCountForEvidence()));
+
+            // Match current shipped factories exactly.  The engine passes return storage,
+            // not an initialized Ptr: shipped code AddRefs the new object and overwrites
+            // the pointer-sized slot without attempting to release its prior bits.
+            menu->AddRef();
+            *reinterpret_cast<RE::IMenu**>(a_result) = menu;
+            EvidenceLog::Event(
+                "menu_factory_completed",
+                std::format(
+                    "address=0x{:X} ref_count={}",
+                    reinterpret_cast<std::uintptr_t>(menu),
+                    menu->RefCountForEvidence()));
+            return a_result;
+        }
+
+    }
+
+    bool Register(std::uint32_t a_menuFlags) noexcept
+    {
+        g_menuFlags = a_menuFlags;
+        const auto ui = RE::UI::GetSingleton();
+        if (!ui) {
+            return false;
+        }
+        if (!ui->IsMenuRegistered(RE::BSFixedString(kMenuName.data()))) {
+            ui->RegisterMenu(kMenuName.data(), &CreateMenu);
+        }
+        return ui->IsMenuRegistered(RE::BSFixedString(kMenuName.data()));
+    }
+
+    void RequestOpenFromHotkey() noexcept
+    {
+        const auto ui = RE::UI::GetSingleton();
+        if (!ui) {
+            EvidenceLog::Event("open_hotkey_rejected", "UI singleton unavailable");
+            return;
+        }
+        const RE::BSFixedString menuName{ kMenuName.data() };
+        if (ui->IsMenuOpen(menuName)) {
+            EvidenceLog::Event(
+                "open_hotkey_ignored", "Control Panel menu already open");
+            return;
+        }
+        if (ui->IsMenuOpen(RE::BSFixedString("PauseMenu")) ||
+            ui->IsMenuOpen(RE::BSFixedString("MainMenu"))) {
+            EvidenceLog::Event(
+                "open_hotkey_rejected", "pause or main menu is active");
+            return;
+        }
+        EvidenceLog::Event(
+            "open_hotkey_requested",
+            std::format("virtual_key=0x{:02X}", Runtime::Config().openHotkey));
+        Ui::QueueControlPanelMessage(RE::UI_MESSAGE_TYPE::kShow, "hotkey");
+    }
+
+    void DispatchPointerPhase(Input::PointerPhase a_phase) noexcept
+    {
+        const auto ui = RE::UI::GetSingleton();
+        if (!ui) {
+            return;
+        }
+        const RE::BSFixedString menuName{ kMenuName.data() };
+        if (!ui->IsMenuOpen(menuName)) {
+            return;
+        }
+        auto menu = ui->GetMenu(menuName);
+        if (menu) {
+            static_cast<AbsoluteControlPanelMenu*>(menu.get())->HandlePointerPhase(a_phase);
+        }
+    }
+}

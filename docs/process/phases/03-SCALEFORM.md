@@ -1,4 +1,6 @@
-# Builder phase 03: descriptor-driven native/Scaleform renderer
+# Builder phase 03: descriptor-driven native/Scaleform renderer (archived v1)
+
+> Historical only. Its magenta sentinel is not a current product criterion.
 
 This phase begins only after phases 01 and 02 pass. Consume the tested `MenuSession`; do not
 duplicate provider validation or transactions in NativeMenuProbe or ActionScript.

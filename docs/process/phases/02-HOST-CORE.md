@@ -1,4 +1,6 @@
-# Builder phase 02: generic host model and transactions
+# Builder phase 02: generic host model and transactions (archived v1)
+
+> Historical only. Use `tools/process/validate-current.cmd` and current architecture/API docs.
 
 Work only in the supplied SLOP host worktree. Do not edit ActionScript or NativeMenuProbe in this
 phase. The subscriber worktree must remain unchanged.

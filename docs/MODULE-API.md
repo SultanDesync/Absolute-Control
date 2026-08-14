@@ -22,10 +22,16 @@ contract uses only fixed-width integers, fixed-capacity character arrays, standa
 records, raw function pointers, and an opaque provider context.  No STL type, exception, RTTI
 object, allocator ownership, or CommonLibSF type crosses the DLL boundary.
 
-A provider registers one or more `PageDescriptorV1` records.  The host copies the page and
-control descriptors before `registerPage` returns; the provider must keep its context and
-callbacks alive until it calls `unregisterModule` or Starfield exits.  Control IDs need only be
-unique within a page.  The pair `(moduleId, pageId)` is globally unique.
+A provider registers one or more `PageDescriptorV1` records. The host copies page/control
+descriptors before `registerPage` returns; the provider keeps context/callbacks alive until
+`unregisterModule` succeeds or Starfield exits. Raw ABI control IDs need only be unique within a
+page because every page may supply distinct context/callbacks. The SDK generator uses one shared
+`ProviderCallbacks` set and module-wide ID parser, so generated definitions deliberately require
+module-wide unique IDs. The pair `(moduleId, pageId)` is globally unique.
+
+The host admits at most 32 modules, 32 pages, 128 controls per page, and 512 controls total.
+Identifiers, labels, descriptions, and string values have capacities 64, 96, 192, and 256 bytes
+including the terminator. Registration rejects a graph it cannot render completely.
 
 The presentation schema is fixed: each registered module appears once in the vertical mod
 sidebar, and that module's registered pages appear as horizontal tabs across the top. Page
@@ -51,7 +57,8 @@ Every value read or written carries a `ValueKind`.  Providers must reject a mism
 an unknown control ID, and out-of-range data.  A successful write changes provider-owned draft
 state.  The host then invokes the page's `apply` callback when the user applies a change, or
 `cancel` when the user discards it.  `requestRefresh` tells the host that values or availability
-changed outside a menu command.
+changed outside a menu command. Multiple refreshes may coalesce; the open UI consumes a refresh
+revision on its UI-thread heartbeat and rereads a replacement model.
 
 ## Discovery pattern
 
@@ -63,8 +70,9 @@ when Absolute Control Panel is absent. Provider initialization follows this orde
 2. Resolve `AbsoluteControlPanel_QueryApi` with the Windows loader.
 3. Query exactly the ABI version compiled by the provider.
 4. Validate `structSize`, `abiVersion`, and every function pointer the provider needs.
-5. Register pages.  Treat `NotReady` as retryable and every other non-`Ok` result as a logged,
-   non-fatal configuration-menu failure.
+5. Register the module/pages. The query table may already exist while runtime setup is incomplete:
+   treat `NotReady` as retryable, `Rejected` as terminal for that host process, and every other
+   non-`Ok` result as a logged, non-fatal configuration-menu failure.
 6. Continue loading the gameplay module even when the host is absent or rejects registration.
 
 The earlier `SLOP_QueryApi` export remains available for research subscribers compiled against
@@ -80,18 +88,24 @@ ABI v1. New integrations use the Absolute Control Panel name exclusively.
 - Providers return errors instead of throwing across the boundary.
 - Provider callbacks must be short and must not block the game thread on filesystem or network
   work.
-- A provider unregisters before any callback code can become invalid.  Runtime plugin unloading
-  is not supported by version 1.
+- Every callback executes outside host locks under an in-flight lease. A successful draft write
+  also holds a transaction lease until Apply, Cancel, or session destruction.
+- `unregisterModule` is nonblocking. It returns `Rejected` while any callback/transaction lease is
+  active; the provider retries later and cannot invalidate callback code until unregister returns
+  `Ok`.
+- Runtime host/subscriber DLL unloading is not supported by version 1. Process-exit lifetime is the
+  normal contract.
 
 ## Current executable proof
 
-`src/ResearchModule.cpp` is a synthetic subscriber. It registers a toggle, integer slider, and
+ResearchDev-only `src/ResearchModule.cpp` is a synthetic subscriber. It registers a toggle, integer slider, and
 input binding through the same public ABI available to another DLL. The
 native menu reads and writes those values only through copied descriptors and provider
 callbacks.  The provider persists them to an ignored research-only configuration file.
 
-The contract test proves version rejection, successful registration, descriptor copying,
-duplicate rejection, refresh, and unregistration without launching Starfield. A complete
+The contract test proves product and legacy queries, initialization/rejection, descriptor copying,
+capacity admission, duplicate rejection, refresh consumption, generation/stale-command behavior,
+callback leases, dirty unregister, and retry without launching Starfield. A prior complete
 isolated game run additionally proves that the subscriber's values cross the native/Scaleform
 bridge and persist through its callback. Keyboard chord capture now has its own bounded host
 transaction and provider round-trip tests.
@@ -105,3 +119,7 @@ previous configuration frontends. Exact confidence and checkpoint commits are re
 The ActionScript movie constructs mods, page tabs, and controls from the registry. Choice labels,
 broader input-device capture, richer typography, accessibility, and provider availability changes
 remain explicit development gates.
+
+The product `ApiV1` suffix exposes `isOpen` and `isInputCaptureActive`; the legacy table ends before
+those fields and is statically checked as the exact original prefix. The product header is the
+single ABI authority; no reinterpret-cast adapter exists.

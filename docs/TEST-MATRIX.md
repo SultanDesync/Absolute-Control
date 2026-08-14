@@ -17,6 +17,11 @@ logs and screenshots remain ignored.
 
 ## Accepted runtime evidence
 
+The current architecture-hardening tree has no new runtime/UX result. Its automated product
+process passed the release build, 8/8 native tests, 6 SDK tests, generated fixture check/compile,
+25-entry catalogue, complete ten-source SWF provenance, artifact fixtures, canonical manifest, and
+compatibility ZIP. Runtime rows below are retained evidence from earlier artifacts unless stated.
+
 | Area | Status | Environment/evidence | Result |
 |---|---|---|---|
 | Native menu registration and movie bridge | Verified | Starfield 1.16.244 isolated baseline; lifecycle and bridge events | Dedicated menu factory, source SWF, `_root` bridge, model application, show/hide, and return to gameplay succeeded. |
@@ -49,8 +54,8 @@ logs and screenshots remain ignored.
 |---|---|---|
 | Mouse wheel up and down | Pending clean regression | Scroll overflowing Axes controls in both directions, plus hovered sidebar and overflowing tabs; confirm no setting mutation. |
 | Keyboard-only full route | Pending formal regression | Open from PauseMenu/F2, traverse modules/pages/controls/footer, edit, Apply, Cancel, and Close without mouse. |
-| Xbox-compatible controller only | Pending | Full navigation, edit, Apply/Cancel/Close, no leaked gameplay command, no ghost/stuck axis. |
-| Input-device transition | Pending | Switch mouse/keyboard/controller while open and verify focus, prompts, and held-input reseed. |
+| Xbox-compatible controller only | Not connected | The native menu currently rejects gamepad events. Implement routing/suppression first, then prove full navigation, edit, Apply/Cancel/Close, no leaked command, and no ghost/stuck axis. |
+| Input-device transition | Partly blocked | Mouse/keyboard switching needs a current regression; controller transition/reseed awaits controller routing. |
 | Mouse binding capture | Not implemented | Capture, clear, cancel, conflict behavior, and round-trip. |
 | Controller/HOTAS binding capture | Not implemented | Device identity, noisy axes, held buttons/POV, cancel/timeout, and reseed. |
 | Close during capture/save/live update | Pending | Reliable cancel/rollback and no replayed input. |
@@ -63,7 +68,8 @@ logs and screenshots remain ignored.
 | PauseMenu on foot, ship seat, docked, landed, and in space | Partial/observed; matrix incomplete |
 | Save/load, death/reload, fast travel, and return to main menu | Pending |
 | Alt-tab, focus loss, display-mode change, and controller hot-plug | Pending |
-| Missing, corrupt, old, or newer bridge SWF | Pending failure injection |
+| Missing, corrupt, old, newer, or wrong-root bridge SWF | Pending failure injection; source tests cover canonical wrong-root fail-closed hide |
+| External hide/destruction while a provider page is dirty | Session-destructor rollback is automated; engine-driven external hide remains pending runtime validation. |
 | Provider absent, incompatible, rejecting, failing, or disappearing | Headless coverage; in-game failure injection pending |
 | Save/reload/read-back failure | Pending failure injection |
 | Starfield/SFSE update with stale Address Library or mappings | Pending; use `RUNTIME-UPDATE-RUNBOOK.md` |

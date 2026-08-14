@@ -45,10 +45,12 @@ deployed files, reproduction steps, logs, screenshots/video where useful, and pa
 
 ## Current result
 
-R1 is satisfied for Starfield 1.16.244. The dedicated movie constructs and draws, performs a
-native `ready(1)` bridge callback, enters the active render-order array, produces the required
-framebuffer sentinel, and closes through the watchdog without damaging vanilla PauseMenu.
-Repeated PauseMenu build/teardown cycles also pass in one retained save.
+Retained ResearchDev evidence satisfies R1 for Starfield 1.16.244. That dedicated movie constructed
+and drew, performed a native `ready(1)` bridge callback, entered the active render-order array,
+produced the required framebuffer sentinel, and closed through its research watchdog without
+damaging vanilla PauseMenu. Repeated PauseMenu build/teardown cycles also passed in one retained
+save. This is historical research evidence, not a watchdog dependency in the canonical host: the
+current release path treats a missing bridge root as `RuntimeFault` and queues an explicit hide.
 
 The bridge has also completed keyboard command and immutable snapshot round-trips. A synthetic
 provider registers a toggle, slider, and binding through ABI version 1. A complete isolated run
@@ -80,5 +82,6 @@ following decisions are explicit:
 - accessibility, localization, controller, and ultrawide behavior; and
 - rollback plan preserving the existing manual/ImGui path during migration.
 
-Until then, `AbsoluteControlPanelResearch.dll` and its assets remain an experimental package and
-must not be presented as a supported suite dependency.
+Until then, canonical `AbsoluteControlPanel.dll` remains an unsupported development product and
+`AbsoluteControlPanelResearchDev.dll` remains explicitly non-packageable. Neither may be presented
+as a supported suite dependency; the retired `AbsoluteControlPanelResearch.dll` is never deployed.
