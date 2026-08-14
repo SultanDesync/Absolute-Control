@@ -1,5 +1,8 @@
 # Absolute Control Panel catalogue MCP
 
+> **Status:** Current machine-readable capability ledger. Confidence values must agree with
+> `docs/CURRENT-STATE.md` and `docs/TEST-MATRIX.md`.
+
 This directory is the machine-readable knowledge layer for the Control Panel development
 harness. It records implemented controls, Scaleform assets, native menu surfaces, protocols,
 subscriber examples, limitations, provenance, and confidence separately from narrative docs.

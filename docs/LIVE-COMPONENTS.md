@@ -1,5 +1,9 @@
 # Live and compound components
 
+> **Status:** Experimental headless protocol and target renderer design. Registry and contract tests
+> exist, but MenuSession and the Scaleform movie do not yet consume this API. It is not part of the
+> public provider ABI candidate.
+
 ## Feasibility conclusion
 
 The advanced Absolute suite interfaces are feasible in the native Scaleform host. They do not

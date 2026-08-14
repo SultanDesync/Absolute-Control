@@ -1,5 +1,10 @@
 # Absolute Control Panel menu-definition SDK
 
+> **Status:** Experimental SDK candidate, not a supported release. Use
+> [`CURRENT-STATE.md`](../docs/CURRENT-STATE.md) and
+> [`SDK-STATUS.md`](../docs/SDK-STATUS.md) to distinguish implemented ABI-v1 behavior from the
+> target menu language.
+
 Subscriber developers can either handwrite ABI v1 descriptors or generate the same descriptors
 from strict JSON. Both routes use `AbsoluteControlPanelAPI.h`; neither transfers configuration
 ownership to the host.

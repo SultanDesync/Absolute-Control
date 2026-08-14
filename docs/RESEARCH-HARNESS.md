@@ -1,109 +1,127 @@
-# Bounded native-menu research harness
+# Research harness status and workflows
 
-The harness adapts the useful evidence pattern preserved by earlier AbsoluteHOTAS research
-without copying its gameplay injection seam. Structured events and narrow pixel tests are the
-authority; screenshots and short tones make runs easy to supervise.
+> **Status:** Current inventory with explicit legacy gaps. Use the supported component workflows
+> below. The monolithic `run-probe.ps1` success path is not currently authoritative.
 
-## Full startup run
+The harness adapts the useful AbsoluteHOTAS research pattern: bounded commands, structured
+evidence, retained game sessions, narrow visual diagnostics, and privacy-safe local artifacts. It
+does not copy the HOTAS gameplay-injection seam or continuously drive a virtual controller.
 
-Each full run performs one controlled native-menu experiment:
+## Current operating rule
 
-1. build the plugin and source-controlled SWF with the pinned toolchain;
-2. stamp a unique run ID into a local deployed configuration;
-3. verify the Address Library file and required isolated-profile mods;
-4. deploy the DLL, SWF, and INI to the caller-supplied test mod;
-5. launch the caller-supplied SFSE shortcut;
-6. wait for the title footer pixel signal, then ask the plugin to pulse Enter from an SFSE game
-   task;
-7. send `W`, capture the main menu, and require the Continue row to be visibly brighter than New;
-8. send `E`, wait, send `E` again, and allow the last save to load;
-9. send `Esc`, then require the plugin's direct `UI::IsMenuOpen("PauseMenu")` observation;
-10. send `Esc` again and require `PauseMenu` to be closed;
-11. arm SLOP, wait for movie/bridge events, capture the frame, and require the magenta sentinel;
-12. exercise the synthetic provider and vJoy binding through native input; and
-13. close SLOP and require gameplay to resume with `PauseMenu` still closed.
+The ignored local manifest supplies the exact MO2 test mod, profile requirements, Address Library,
+and SFSE launcher shortcut. The shortcut is the launch interface: start it directly with
+`Start-Process` or equivalent process launch. Do not navigate MO2, depend on general computer
+control, or encode the user's local shortcut path in the repository.
 
-All synthetic keys are fixed scan-code pulses whose down and up halves execute in game-task
-callbacks. PowerShell only writes a two-line command mailbox and waits for `sent=1 error=0`
-acknowledgement. It does not drive Starfield input directly. Accepted mailbox commands are
-`menu_up`, `accept`, `pause`, `show_probe`, and `hide_probe`; arbitrary keys or code are rejected.
+Human input is preferred for UX judgments. Scripted input is restricted to bounded, named research
+commands whose press/release lifecycle and completion are observable. The product does not operate
+vJoy or Steam Input.
 
-The Continue luminance test and direct PauseMenu state checks are synchronization oracles only.
-They are not reverse-engineering targets and do not depend on an AbsoluteHOTAS control-cluster
-offset.
+## Supported components
 
-## MO2 test-profile preparation
+### Build and deploy
 
-`tools/research/prepare-test-profile.cmd` verifies that the explicitly named test mod and every
-`requiredProfileMods` entry are installed beneath the same MO2 mods directory and enabled in the
-explicitly named profile. With `-CreateTestMod -EnableRequiredMods`, it may create the SLOP
-deployment mod and enable already-installed requirements while MO2 is closed. It makes a
-timestamped backup before changing `modlist.txt`.
-
-The harness does not download or silently choose an SFSE, Address Library, or other third-party
-version. Missing prerequisites belong to the pinned test baseline or must be supplied
-deliberately. The normal run performs this preparation in verification-only mode before building
-or launching Starfield.
-
-## Render oracle and diagnostics
-
-The movie contains an opaque 96x96 `#FF00FF` block. The final frame must contain a sufficiently
-large near-magenta cluster; the runner records pixel count, thresholds, dimensions, and bounds
-in `sentinel-signal.json`. The verified exclusive-menu 3440x1440 run contained 16,384 sentinel
-pixels. This
-binary signal keeps routine smoke tests independent of a vision model.
-
-Short tones mark Continue selection, load dispatch, PauseMenu confirmation, and movie load for a
-human listener. They never determine pass/fail.
-
-On failure, the runner preserves partial plugin JSONL, enumerates visible windows owned by the
-exact Starfield process, records their metadata, and captures diagnostic screenshots. Artifacts
-live under ignored `artifacts/research-runs/<run-id>/` and may contain machine paths, process IDs,
-or screenshots; they must never be committed.
-
-## Retained-session cycle
-
-Set `keepGameRunning` in a local ignored manifest to retain the loaded save. Then run:
-
-```powershell
-.\tools\research\cycle-pause.ps1 -CycleCount 3
-```
-
-The cycle runner uses the persistent plugin mailbox to pulse `Esc`, requires an ID-correlated
-`open=true` or `open=false` observation, and captures both sides of every transition. This avoids
-replaying the title/save-load path while studying PauseMenu construction and teardown.
-
-Plugin DLL changes still require a process restart. Starfield also caches a loaded SWF definition
-by movie path, so changing SWF bytecode at the same path requires a restart even though hot
-hide/show creates a fresh menu instance. Unchanged movie lifecycle work can use `show_probe` and
-`hide_probe` in the retained session.
-
-The mailbox `show_probe` command is a research-only invocation seam. It is not the product
-launch design and must never be used to leave SLOP layered above PauseMenu.
-
-## Toolchain and local configuration
-
-The interface build uses Apache Flex 4.16.1 (`mxmlc` build 20171115), Flash Player 11.5, SWF
-version 18, and PlayerGlobal commit `fef560243029214656d83fc673be0267a1ea0816`. Bootstrap verifies
-the published MD5 and a repository-pinned SHA-256. Downloaded tools remain under ignored
-`.tools/`. The compiler embeds varying build metadata, so each output hash is recorded but
-byte-identical hashes are not treated as a gate; the source hash and pinned inputs are.
+The source SWF is built with the pinned toolchain and the native host is built with xmake. Deploy a
+matched DLL/SWF/config set to one explicitly supplied test mod:
 
 ```powershell
 .\tools\research\bootstrap-interface-toolchain.ps1
 .\tools\research\build-interface.ps1
+xmake
+xmake test
+.\tools\research\deploy-probe.ps1 -ModPath '<test mod>' -RunId '<run id>'
 ```
 
-Copy the example manifest to a `*.local.json` file, fill in local test paths, and run:
+`deploy-probe.ps1` remains research-named and stages `AbsoluteControlPanelResearch.dll`. The
+product-named package path is not yet normalized; record which DLL was deployed and never combine a
+DLL and SWF from different builds.
 
-```powershell
-.\tools\research\run-probe.ps1 `
-  -ManifestPath .\tools\research\manifests\r1-movie-smoke.local.json
-```
+### Profile preparation
 
-Local manifests are ignored. The example contains placeholders only. If clean shutdown does not
-finish in time, the runner records the condition and deliberately avoids forced termination.
+`prepare-test-profile.ps1` verifies that the explicitly named mod and every required profile mod
+exist beneath the same MO2 mods directory and are enabled in the specified profile. Creation and
+mod-list editing require explicit switches and a backup. The script does not download or choose
+SFSE, Address Library, or another dependency.
 
-For adapting an independently installed module, follow the
-[AI-assisted provider workflow](AI-INTEGRATION-HARNESS.md) and the
-[versioned provider API](MODULE-API.md).
+### Direct launch and manual validation
+
+1. Launch the manifest's `shortcut` directly.
+2. Load the safe Continue save manually unless startup automation itself is under test.
+3. Open Absolute Control Panel through its populated PauseMenu entry or F2 fallback.
+4. Exercise the intended UX while the evidence log records lifecycle and semantic commands.
+5. Preserve diagnostics locally, then report semantic outcomes without copying local paths.
+
+Manual validation is the authority for slider feel, layout, text alignment, visual hierarchy, and
+navigation comfort. Structured events and provider read-back remain the authority for mechanical
+behavior.
+
+### Runtime command mailbox
+
+The plugin registers an independent two-line mailbox in SFSE's resolved log directory. Use
+`invoke-runtime-input.ps1` with an explicit mailbox directory, run ID, evidence file, and one
+allow-listed command. The helper assigns an ID atomically and requires accepted and completed
+evidence. It does not accept arbitrary keys or code.
+
+Current commands are:
+
+- `menu_up`, `nav_down`, `nav_left`, `nav_right`, and `accept`;
+- `pause` and `probe_escape`;
+- `show_probe` and `hide_probe`;
+- `inject_pause_entry`; and
+- `probe_pause_root` and `probe_main_root`.
+
+`show_probe` is a research invocation seam, not the product launch design. The product path is the
+additive PauseMenu entry with F2 fallback.
+
+### Retained PauseMenu cycles
+
+`cycle-pause.ps1` reuses one loaded save to inspect repeated PauseMenu construction and teardown.
+This is the efficient lifecycle regression path when the DLL and SWF are unchanged. Plugin or SWF
+changes still require a Starfield restart because both binaries are cached by the process.
+
+The lifecycle-owned implementation has completed 25 consecutive isolated cycles. New runtime
+support must repeat that test according to [the update runbook](RUNTIME-UPDATE-RUNBOOK.md).
+
+## Legacy monolithic runner
+
+`run-probe.ps1` still contains useful process, screenshot, watchdog, evidence, and profile logic,
+but its current pass path is internally inconsistent with the product:
+
+- it requires the magenta framebuffer sentinel removed from the current SWF;
+- it retains SLOP-era naming and synthetic-provider assumptions;
+- it assumes the research title/Continue sequence as the default validation path; and
+- its deploy/package path targets the research-named DLL rather than the product-named artifact.
+
+Accordingly, a successful current build must not claim that this monolithic runner passed. Reuse
+its supported components or repair it in a dedicated harness change. Do not restore a permanent
+magenta square merely to satisfy the old oracle; if a new visual oracle is needed, make it an
+explicit development mode that cannot ship accidentally.
+
+## Evidence and diagnostics
+
+The plugin JSONL evidence stream records wall-clock time, monotonic time, sequence, thread ID, run
+ID, event, and bounded detail. Useful authorities include registration, movie/bridge readiness,
+PauseMenu boundary/listener/injection, menu lifecycle, pointer down/up, semantic bridge commands,
+provider results, and mailbox accepted/completed events.
+
+Screenshots, window metadata, crash dumps, process IDs, and logs live only in ignored local artifact
+directories. Screenshots help diagnose unexpected dialogs and layout failures; they do not replace
+semantic or lifecycle evidence. Audio cues may help a supervising human but never decide pass/fail.
+
+## Toolchain
+
+The interface build uses Apache Flex 4.16.1 (`mxmlc` build 20171115), Flash Player 11.5, SWF
+version 18, and PlayerGlobal commit `fef560243029214656d83fc673be0267a1ea0816`. Bootstrap verifies
+the pinned checksums. Downloaded tools stay under ignored `.tools/`. Compiler metadata may vary, so
+the source hash and pinned inputs are reproducibility authorities; byte-identical SWFs are not
+claimed.
+
+## Privacy and handoff
+
+Local manifests use `*.local.json` and remain ignored. A handoff reports versions, artifact hashes,
+semantic results, failure conditions, and evidence event counts without reporting drive-qualified
+paths, account names, mod-list locations, screenshots, device identities, or tokens.
+
+For provider adaptation, follow [the AI integration harness](AI-INTEGRATION-HARNESS.md). For a game
+patch, follow [the runtime update runbook](RUNTIME-UPDATE-RUNBOOK.md).

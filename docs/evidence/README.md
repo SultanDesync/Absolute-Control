@@ -1,5 +1,8 @@
 # Research evidence records
 
+> **Status:** Current publication/privacy policy. Runtime results are summarized in
+> [`TEST-MATRIX.md`](../TEST-MATRIX.md); raw local evidence remains ignored.
+
 Create one Markdown record per experiment using an ISO date and gate name, for example:
 
 ```text

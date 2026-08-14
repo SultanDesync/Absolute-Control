@@ -1,84 +1,104 @@
-# In-Game Test Matrix
+# In-game test matrix
 
-Each result records exact versions, deployed artifacts, logs, reproduction steps, and evidence.
+> **Status:** Current evidence ledger and pending regression list. A row marked pending is not a
+> failed feature claim; it is work that has not yet earned the stated confidence.
 
-## Current PauseMenu regression evidence
+Each accepted result records the game/runtime versions, host and SWF artifacts, profile class,
+steps, semantic evidence, crash observation, and whether human UX judgment was involved. Local
+logs and screenshots remain ignored.
 
-The current Starfield 1.16.244 baseline build (`SHA256
-2A87059AE94B4B5A75B4423B7092E55FBC82F3CB5A56C9AA2C44D409886A9F16`) completed 25
-consecutive PauseMenu opens in one retained loaded save. One Control Panel show/hide was followed
-by five of those cycles to reproduce the previously observed close-then-pause failure shape.
+## Status vocabulary
 
-- 25 insertion boundaries, advance listeners, entry injections, and completed cycles;
-- zero advance timeouts, listener rejections, injection rejections, or injection exceptions;
-- every PauseMenu boundary, advance callback, and mutation occurred on one recorded UI/Scaleform
-  thread; and
-- Starfield remained responsive and Windows Error Reporting produced no new dump.
+- **Verified** — completed with the evidence appropriate to the behavior.
+- **Observed** — manually seen and useful, but lacks a complete artifact/evidence record.
+- **Build verified** — automated tests pass; in-game validation is incomplete.
+- **Pending** — scenario not completed on the current implementation.
+- **Superseded** — result belongs to an earlier implementation and is retained only as context.
 
-This is a regression result for the isolated baseline. The earlier heavily modified profile remains
-the broad compatibility result; neither result replaces the remaining context, input, display, and
-failure-injection matrix below.
+## Accepted runtime evidence
 
-## Current slider-drag regression evidence
+| Area | Status | Environment/evidence | Result |
+|---|---|---|---|
+| Native menu registration and movie bridge | Verified | Starfield 1.16.244 isolated baseline; lifecycle and bridge events | Dedicated menu factory, source SWF, `_root` bridge, model application, show/hide, and return to gameplay succeeded. |
+| Additive PauseMenu entry, isolated | Verified | Host DLL SHA256 `2A87059AE94B4B5A75B4423B7092E55FBC82F3CB5A56C9AA2C44D409886A9F16`; 25 retained-save cycles | 25 boundaries, listeners, injections, and completed cycles; zero timeouts, rejections, new dumps, or observed crashes. One Control Panel show/hide was followed by five more cycles. |
+| Additive PauseMenu entry, heavy profile | Verified for broad compatibility | Heavily modified 600+ mod profile with multiple UI mods | Entry populated without replacing a vanilla SWF and subsequently opened consistently. This is broad compatibility evidence, not universal compatibility. |
+| Multiple subscriber modules | Observed | Absolute Head Tracking plus AbsoluteZero installed together | Both modules appeared in the vertical sidebar and exposed usable, isolated pages/tabs. |
+| Absolute Head Tracking | Verified | Three-page integration on Starfield 1.16.244 | General, one scrollable 12-control Axes page, and Bindings rendered and applied provider-owned values. |
+| AbsoluteZero | Observed | Paired subscriber run plus build/contract tests | Mouse Alignment page was present and usable. Exact subscriber artifact/persistence transcript was not retained, so the catalog remains conservatively build-verified. |
+| Keyboard binding capture | Verified | Head Tracking integration | Single keys and Ctrl/Alt/Shift chords recorded through the native input stream and round-tripped through provider draft/persistence. Escape cancel and clear behavior have automated coverage. |
+| Slider pointer drag | Verified | DLL SHA256 `407B1A8E509830B1580BF959A032167B4E148FC35CCCD61CD646FFB249BED207`; SWF SHA256 `9387416553805EF554ECDEFA4F6B7126E25B51775FF3B0142A78196AA0A26917` | Click-to-position, continuous bidirectional movement, redraw survival, reversal, and clean release worked. Runtime evidence recorded down, repeated writes, and up; human judgment rated the sliders as working well. |
+| Mouse pointer navigation | Observed | Current semantic hit-target movie | Module/page/control/footer clicks were usable; rendered sprites owned hit testing. |
+| Apply and Cancel | Observed plus automated coverage | Head Tracking and AbsoluteZero providers | Apply reached provider persistence; Cancel restored provider state. Cross-page dirty rejection and close rollback have native tests. |
 
-The 2026-08-13 Testing Baseline build (`AbsoluteControlPanel.dll` SHA256
-`407B1A8E509830B1580BF959A032167B4E148FC35CCCD61CD646FFB249BED207` and
-`AbsoluteControlPanelMenu.swf` SHA256
-`9387416553805EF554ECDEFA4F6B7126E25B51775FF3B0142A78196AA0A26917`) was manually
-validated in game.
+## Known observations requiring continued monitoring
 
-- click-to-position remained functional;
-- held pointer movement continuously updated slider values in both directions;
-- dragging survived the model redraw caused by every draft write;
-- releasing the pointer ended the drag cleanly; and
-- runtime evidence recorded one down, multiple writes, and one up for each observed gesture.
+- Two infrequent PauseMenu/close crashes occurred in earlier builds. The later lifecycle-owned
+  revision was introduced after those reports and did not reproduce them in 25 consecutive cycles.
+  This reduces but does not close crash monitoring.
+- An earlier scripted controller research probe left apparent right-stick values frozen near a
+  negative diagonal even though vJoy monitoring appeared centered. Disabling vJoy/Steam Input and
+  removing that automation restored normal mouse authority. Product builds must not drive a
+  controller during startup or menu use.
+- Initial PauseMenu population in the heavy profile varied across early builds, sometimes requiring
+  repeated opens. The event-driven insertion revision later populated on first entry in observed
+  runs. Patch/profile testing must continue to record first-open versus retry behavior.
 
-## Contexts
+## Pending input validation
 
-- initial title/main menu before loading a save;
-- pause menu on foot, in a ship seat, docked, landed, and in space;
-- menu opened and closed repeatedly;
-- save/load transition, death/reload, fast travel, and return to main menu;
-- alt-tab, display-mode change, resolution change, and controller hot-plug; and
-- missing, corrupt, old, and newer-bridge SWF failure cases.
+| Scenario | Status | Required evidence |
+|---|---|---|
+| Mouse wheel up and down | Pending clean regression | Scroll overflowing Axes controls in both directions, plus hovered sidebar and overflowing tabs; confirm no setting mutation. |
+| Keyboard-only full route | Pending formal regression | Open from PauseMenu/F2, traverse modules/pages/controls/footer, edit, Apply, Cancel, and Close without mouse. |
+| Xbox-compatible controller only | Pending | Full navigation, edit, Apply/Cancel/Close, no leaked gameplay command, no ghost/stuck axis. |
+| Input-device transition | Pending | Switch mouse/keyboard/controller while open and verify focus, prompts, and held-input reseed. |
+| Mouse binding capture | Not implemented | Capture, clear, cancel, conflict behavior, and round-trip. |
+| Controller/HOTAS binding capture | Not implemented | Device identity, noisy axes, held buttons/POV, cancel/timeout, and reseed. |
+| Close during capture/save/live update | Pending | Reliable cancel/rollback and no replayed input. |
 
-## Input
+## Pending context and lifecycle validation
 
-- mouse-only;
-- slider click-to-position and held dragging in both directions, including leaving the track while
-  held and confirming that release ends capture;
-- wheel scrolling over the mod sidebar, overflowing page tabs, and control workspace, including
-  confirmation that wheel input does not mutate a value;
-- keyboard-only including Tab/Shift+Tab/arrows/Enter/Escape;
-- Xbox-compatible controller only;
-- transition between mouse and controller while open;
-- HOTAS binding capture with noisy axes and held buttons; and
-- close during capture, save, telemetry update, and modal presentation.
+| Scenario | Status |
+|---|---|
+| Main/title menu load with no attempt to show the panel | Pending formal regression |
+| PauseMenu on foot, ship seat, docked, landed, and in space | Partial/observed; matrix incomplete |
+| Save/load, death/reload, fast travel, and return to main menu | Pending |
+| Alt-tab, focus loss, display-mode change, and controller hot-plug | Pending |
+| Missing, corrupt, old, or newer bridge SWF | Pending failure injection |
+| Provider absent, incompatible, rejecting, failing, or disappearing | Headless coverage; in-game failure injection pending |
+| Save/reload/read-back failure | Pending failure injection |
+| Starfield/SFSE update with stale Address Library or mappings | Pending; use `RUNTIME-UPDATE-RUNBOOK.md` |
 
-## Display
+## Pending display validation
 
-- 1280x720, 1920x1080, 2560x1440, and 3840x2160;
-- 21:9 and 32:9 ultrawide;
-- every supported Starfield UI scaling/accessibility setting; and
-- long pseudo-localized labels and missing-glyph diagnostics.
+| Scenario | Status |
+|---|---|
+| 1280x720 | Pending |
+| 1920x1080 | Verified design canvas; broader UI-scale combinations pending |
+| 2560x1440 | Observed; formal layout record pending |
+| 3840x2160 | Pending |
+| 21:9 and 32:9 | Observed during research; current shell regression pending |
+| Starfield UI scaling/accessibility settings | Pending |
+| Long/pseudo-localized labels and missing glyphs | Pending; pixel glyph set is temporary |
 
-## Compatibility and failure injection
+## Pending compatibility validation
 
-- vanilla UI;
-- representative main-menu and pause-menu SWF mods;
-- representative inventory/HUD/UI-overhaul mods;
-- frame generation and common overlay/capture tools, confirming no project render hook;
-- provider absent, incompatible, throwing/failing, and disappearing during the session;
-- save failure, reload failure, and read-back mismatch; and
-- Starfield/SFSE update with stale Address Library or CommonLibSF metadata.
+| Scenario | Status |
+|---|---|
+| Vanilla UI isolated profile | Verified for current core path |
+| Heavy 600+ mod/UI profile | Broad compatibility verified for invocation and basic use |
+| Representative PauseMenu replacement/overhaul variants | Partial; exact matrix not recorded |
+| Inventory/HUD/UI-overhaul mods | Broad profile observation only |
+| Frame generation and overlay/capture tools | Pending formal matrix; Control Panel has no project renderer hook |
 
 ## Required invariants
 
-- Vanilla menus remain usable after any failure.
-- The research menu always has a reachable close path.
+- Vanilla menus remain usable after any host failure.
+- The panel always has a reachable close path.
+- PauseMenu is closed before the dedicated panel opens; the panel never covers PauseMenu.
 - No input is emitted to gameplay while capture owns the session.
 - Held inputs are reseeded before gameplay resumes.
 - No disk access occurs from render/advance callbacks.
 - No unbounded ActionScript payload, telemetry queue, or string crosses the bridge.
-- Visible pointer targets and native hit regions come from the same layout revision and geometry.
-- A disabled or absent research plugin changes no save data and requires no cleanup.
+- Rendered sprites own pointer hit regions; native code does not maintain duplicate pixel geometry.
+- A disabled or absent host changes no save data and requires no cleanup.
+- A provider remains usable when the host is missing, incompatible, or rejected.

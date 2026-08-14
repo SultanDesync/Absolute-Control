@@ -1,7 +1,7 @@
 # Historical builder run: first external SLOP page
 
 > This document preserves the disposable experiment that produced the first external subscriber.
-> It is evidence, not current SDK guidance. New integrations use
+> **Status: Historical.** It is evidence, not current SDK guidance. New integrations use
 > [`AbsoluteControlPanelAPI.h`](../include/AbsoluteControlPanelAPI.h), the
 > [AI integration harness](AI-INTEGRATION-HARNESS.md), and the
 > [menu-definition SDK](../sdk/README.md). Legacy SLOP names below are retained so the recorded

@@ -1,5 +1,9 @@
 # CommonLibSF native-menu compatibility
 
+> **Status:** Current runtime-specific compatibility record for Starfield 1.16.244. These mappings
+> are internal implementation details, not provider ABI, and must be revalidated through
+> [the runtime update runbook](RUNTIME-UPDATE-RUNBOOK.md) for every supported patch.
+
 ## Scope
 
 The pinned CommonLibSF snapshot supports Starfield 1.16.244 broadly, but several native-menu
@@ -50,7 +54,7 @@ byte `+0x110`. Shipped derived constructors also clear the tail byte at `+0x130`
 - In observed runs, PauseMenu used priority 11 and CursorMenu priority 20. The research overlay
   uses 19, placing it above PauseMenu while preserving the cursor layer.
 - PauseMenu's observed runtime flags were `0x0800071B`; its constructor initially ORs
-  `0x08000713`, with the cursor bit added by the lifecycle path. SLOP now requests the full
+  `0x08000713`, with the cursor bit added by the lifecycle path. Absolute Control Panel now requests the full
   `0x0800071B` runtime mask explicitly because its custom registration path does not reliably
   receive PauseMenu's later cursor-bit mutation.
 

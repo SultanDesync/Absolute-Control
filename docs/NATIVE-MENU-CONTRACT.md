@@ -1,5 +1,9 @@
 # Native Menu Contract
 
+> **Status:** Target product contract. Implemented exceptions and validation confidence are tracked
+> in [current implementation state](CURRENT-STATE.md). In particular, dropdown labels, text/numeric
+> editors, confirmation modals, and the target snapshot bridge below are not all implemented.
+
 ## Ownership
 
 The native shell owns presentation mechanics only:
@@ -84,7 +88,7 @@ release layout contract.
 The component and authoring boundary is defined in
 [the menu definition language](MENU-DEFINITION-LANGUAGE.md).
 
-## Proposed flow
+## Target product flow
 
 ```text
 vanilla launch entry
@@ -102,7 +106,12 @@ vanilla launch entry
 Snapshots are immutable and generation-numbered. Commands carry the generation they were based
 on so stale UI gestures can be rejected instead of overwriting newer state.
 
-## Minimal bridge v1
+## Target bridge surface
+
+This is the desired long-term bridge shape. The executable prototype currently uses the bounded
+flat `dispatch` ABI documented in [Bridge Protocol v1](BRIDGE-PROTOCOL-V1.md), plus direct
+`applyModel` and pointer methods. Do not implement against this target list as if it were the
+current ActionScript ABI.
 
 ActionScript to C++:
 

@@ -1,5 +1,9 @@
 # Absolute Control Panel Scaleform boundary
 
+> **Status:** Current executable interface. Capability confidence and unfinished product widgets are
+> tracked in [`CURRENT-STATE.md`](../docs/CURRENT-STATE.md); this file describes the movie/native
+> boundary rather than the full release design.
+
 This directory reserves the source and compiled-asset boundary for the native menu.
 
 `src/AbsoluteControlPanelMenu.as` defines the root object and the smallest C++ bridge.

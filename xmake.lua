@@ -84,10 +84,15 @@ target("AbsoluteControlPanelResearch", function()
     add_includedirs(commonlibsf_menu_compat_include, "include")
     set_pcxxheader("include/PCH.h")
 
-    add_installfiles("docs/RESEARCH-CHARTER.md", {
-        prefixdir = "Documentation"
-    })
-    add_installfiles("docs/MODULE-API.md", "docs/AI-INTEGRATION-HARNESS.md", {
+    add_installfiles(
+        "docs/CURRENT-STATE.md",
+        "docs/DECISIONS.md",
+        "docs/MODULE-API.md",
+        "docs/NATIVE-MENU-CONTRACT.md",
+        "docs/AI-INTEGRATION-HARNESS.md",
+        "docs/SDK-STATUS.md",
+        "docs/RUNTIME-UPDATE-RUNBOOK.md",
+        "docs/TEST-MATRIX.md", {
         prefixdir = "Documentation"
     })
     add_installfiles("include/AbsoluteControlPanelAPI.h", "include/SlopAPI.h",

@@ -1,13 +1,16 @@
 # AI-assisted provider integration harness
 
+> **Status:** Current provider-integration workflow. Runtime steps are supervised until the legacy
+> monolithic runner is normalized.
+
 This workflow is designed so an AI coding agent can add Absolute Control Panel configuration
 support to an existing SFSE module with minimal user intervention. The gameplay module must
 remain fully usable if Absolute Control Panel is missing, incompatible, or fails to render.
 
-For an autonomous first-implementation run, use
-[the builder runbook](BUILDER-RUNBOOK.md) as the single entry point. The broader document below
-describes the long-term integration policy; it is not intended to be pasted wholesale into every
-builder prompt.
+For a new integration, begin with [current implementation state](CURRENT-STATE.md),
+[the module API](MODULE-API.md), and [the menu-definition SDK](../sdk/README.md), then follow the
+workflow below. `BUILDER-RUNBOOK.md` preserves the first disposable SLOP/AbsoluteZero experiment;
+it is historical evidence, not current builder instruction.
 
 AI generation is a declared project method, not an embarrassing implementation detail.  The
 harness exists to turn fast generation into reviewable evidence: stable contracts, negative
@@ -71,15 +74,22 @@ machine-specific absolute paths.
 
 ### 4. Run the isolated in-game proof
 
-The existing bounded runner performs the expensive validation:
+The in-game proof is currently a supervised workflow assembled from the build/deploy scripts,
+direct shortcut launch, runtime mailbox, structured evidence, and human UX validation. The legacy
+`run-probe.ps1` full success gate still expects the removed magenta sentinel and must not be cited
+as current end-to-end proof until it is normalized. Follow [the harness status](RESEARCH-HARNESS.md)
+and perform these gates:
 
 1. build and deploy the host, provider, and source-controlled SWF;
-2. launch through SFSE;
-3. use guarded game-thread input to continue the last save;
+2. launch the ignored manifest's SFSE shortcut directly, without navigating MO2 or using general
+   desktop control;
+3. load the safe test save manually or through bounded game-thread input when that path is under
+   test;
 4. open and close PauseMenu as a synchronization check;
 5. require PauseMenu to be closed before showing Absolute Control Panel;
 6. require bridge-model and menu-lifecycle acknowledgements;
-7. exercise representative controls through native keyboard and mouse input;
+7. exercise representative controls through native keyboard and mouse input, with a human judging
+   layout and interaction feel;
 8. record a keyboard chord and require the normalized binding to round-trip;
 9. validate provider-owned persisted values;
 10. close Absolute Control Panel and require gameplay to resume with PauseMenu still closed; and
@@ -93,9 +103,10 @@ and Windows thread ID. PauseMenu mutation is permitted only after the engine's a
 insertion boundary and from that movie's own Scaleform advance callback; no worker may poll a
 foreign movie.
 
-Pixel thresholds and structured plugin events are pass/fail authorities.  A vision model is
-reserved for failure screenshots, layout review, and unexpected dialogs; routine success does
-not spend vision-model tokens.
+Structured plugin events and semantic read-back are mechanical pass/fail authorities. A narrow
+pixel oracle may be added when the current movie deliberately exposes one, but the removed magenta
+sentinel is not evidence. A vision model is reserved for failure screenshots, layout review, and
+unexpected dialogs; routine success does not spend vision-model tokens.
 
 ### 5. Prove isolation and privacy
 
@@ -106,14 +117,14 @@ Only placeholder manifests may be committed.
 
 ### 6. Open a draft integration PR
 
-The PR reports the ABI version, registered pages and controls, validation behavior, automated
-evidence, known gaps, and rollback behavior.  It must not claim full MCM readiness until dynamic
-rendering, a product invocation route, controller navigation, dirty-state UX, and multi-provider
-composition are separately proven.
+The PR reports the ABI version, registered pages and controls, validation behavior, automated and
+manual evidence, known gaps, and rollback behavior. It must not claim full MCM readiness until dynamic
+rendering, a product invocation route, controller navigation, dirty-state UX, current harness
+automation, and multi-provider composition are separately proven.
 
 ## Definition of done for one provider
 
 A provider integration is complete when it registers without linking gameplay to the host,
 round-trips every supported setting type, uses the module's existing validation and persistence,
-survives host absence, passes the isolated in-game runner, and introduces no local-machine data
+survives host absence, passes the supervised isolated in-game proof, and introduces no local-machine data
 into Git.  The current synthetic provider is the reference fixture, not a product dependency.

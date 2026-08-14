@@ -177,7 +177,7 @@
       "status": "implemented",
       "confidence": "runtime-verified",
       "capacity": 128,
-      "notes": "Ten compact controls are visible at once with selection-following scrolling; overflowing pages expose a workspace scrollbar.",
+      "notes": "Ten compact controls are visible at once with selection-following scrolling; overflowing pages expose a workspace scrollbar. Direction-specific mouse-wheel routing is implemented, but a clean final two-direction runtime regression remains pending.",
       "tags": ["navigation", "scaleform", "dynamic"]
     },
     {
@@ -186,7 +186,7 @@
       "name": "Input-aware command footer",
       "status": "implemented",
       "confidence": "runtime-verified",
-      "notes": "Apply, Cancel, and Close/Back are compact device-aware prompts and clickable footer targets. Dirty pages still block cross-page navigation; Cancel rolls provider state back and Close safely resolves dirty state.",
+      "notes": "Apply, Cancel, and Close/Back are compact device-aware prompts and clickable footer targets. Dirty pages block cross-page navigation; Cancel rolls provider state back. Current Close automatically cancels a dirty page; the target confirmation modal is not implemented.",
       "tags": ["transactions", "scaleform", "safety"]
     },
     {
@@ -256,7 +256,7 @@
       "moduleId": "AbsoluteZero",
       "pages": ["mouse-alignment"],
       "controlKinds": ["Toggle", "IntegerSlider", "FloatSlider"],
-      "notes": "Independent one-page subscriber used with Absolute Head Tracking to validate multi-mod discovery, vertical sidebar navigation, and page-tab isolation.",
+      "notes": "Independent one-page subscriber used with Absolute Head Tracking to observe multi-mod discovery, vertical sidebar navigation, and page-tab isolation in game. The exact subscriber artifact and persistence transcript were not retained, so confidence remains build-verified.",
       "tags": ["subscriber", "integration", "multi-module"]
     },
     {

@@ -1,5 +1,9 @@
 # Absolute Control Panel module API
 
+> **Status:** Executable ABI-v1 candidate, not frozen. Product-named discovery is preferred;
+> research aliases and missing presentation metadata are documented in
+> [current state](CURRENT-STATE.md) and [SDK status](SDK-STATUS.md).
+
 Absolute Control Panel is a native configuration-menu host. It is intended to
 play the role commonly filled by a Mod Configuration Menu: one native Starfield menu renders
 configuration pages supplied by independently installed SFSE plugins.
@@ -91,6 +95,12 @@ duplicate rejection, refresh, and unregistration without launching Starfield. A 
 isolated game run additionally proves that the subscriber's values cross the native/Scaleform
 bridge and persist through its callback. Keyboard chord capture now has its own bounded host
 transaction and provider round-trip tests.
+
+Absolute Head Tracking is the first product-named external subscriber and registers General,
+Axes, and Bindings through `AbsoluteControlPanel_QueryApi`. AbsoluteZero is the preserved legacy
+ABI fixture and currently resolves `SLOP_QueryApi`. Both remain fail-optional and retain their
+previous configuration frontends. Exact confidence and checkpoint commits are recorded in
+[current implementation state](CURRENT-STATE.md).
 
 The ActionScript movie constructs mods, page tabs, and controls from the registry. Choice labels,
 broader input-device capture, richer typography, accessibility, and provider availability changes

@@ -1,5 +1,9 @@
 # Absolute Control Panel menu definition language
 
+> **Status:** Accepted target language with an implemented ABI-v1 subset. The checked-in compiler
+> currently rejects choice labels, text input, rendered sections, formatting, and presentation
+> hints that the runtime ABI cannot preserve. See [current state](CURRENT-STATE.md).
+
 ## Decision
 
 Absolute Control Panel uses three separate layers:

@@ -1,5 +1,9 @@
 # Native Menu Research Charter
 
+> **Status:** Historical research charter. It preserves the original questions and SLOP-era gate
+> names. Use [current implementation state](CURRENT-STATE.md), [design decisions](DECISIONS.md), and
+> [the current test matrix](TEST-MATRIX.md) for present claims.
+
 ## Question
 
 Can a standalone SFSE plugin host a shared SLOP configuration menu on Starfield's native menu

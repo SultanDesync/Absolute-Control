@@ -1,5 +1,9 @@
 # SLOP native/ActionScript bridge protocol v1
 
+> **Status:** Current internal prototype protocol with historical SLOP type names. It is separate
+> from the product-named provider API and may change before release. The target future bridge in
+> `NATIVE-MENU-CONTRACT.md` is not implemented.
+
 This protocol is internal to the SLOP host. It is separate from the cross-DLL `SlopAPI.h` ABI.
 Its purpose is to remove implementation choices from builder-agent prompts and make generic
 rendering mechanically testable.

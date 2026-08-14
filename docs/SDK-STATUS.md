@@ -1,11 +1,15 @@
 # SDK status and release checklist
 
+> **Status:** Current SDK-readiness index. The ABI and tooling are experimental and not frozen.
+
 Absolute Control Panel has a working provider ABI and integration harness, but the SDK is not yet
 frozen or packaged as a supported developer release. This index separates current contracts from
 historical research instructions and records what must be true before an SDK tag is published.
 
 ## Authoritative development sources
 
+- `docs/CURRENT-STATE.md` — authoritative capability status and known limitations.
+- `docs/DECISIONS.md` — accepted and provisional architectural decisions.
 - `include/AbsoluteControlPanelAPI.h` — current public C ABI candidate.
 - `docs/MODULE-API.md` — ownership, discovery, transactions, and failure behavior.
 - `sdk/menu-definition.schema.json` — strict authoring schema.
@@ -14,9 +18,11 @@ historical research instructions and records what must be true before an SDK tag
 - `catalog/catalog.json` — machine-readable component capability and confidence catalogue.
 - `docs/AI-INTEGRATION-HARNESS.md` — provider inventory, implementation, and validation workflow.
 - `docs/TEST-MATRIX.md` — runtime evidence and remaining compatibility coverage.
+- `docs/RUNTIME-UPDATE-RUNBOOK.md` — version-update recovery and validation procedure.
 
-Documents under `docs/process/` and the historical builder runbook describe disposable SLOP-era
-experiments. They remain useful provenance but are not instructions for a new integration.
+Documents under `docs/process/`, the historical builder runbook, and SLOP-named research passages
+describe disposable experiments. They remain useful provenance but are not instructions for a new
+integration. `CURRENT-STATE.md` wins when a historical claim conflicts with current behavior.
 
 ## Current compatibility policy
 

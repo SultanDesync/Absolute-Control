@@ -15,6 +15,15 @@ any other contribution.
 It does not depend on, load, or alter AbsoluteHOTAS, Absolute Workbench, Absolute Power,
 Absolute Head Tracking, or AbsoluteZero.
 
+## Start here
+
+- [Current implementation state](docs/CURRENT-STATE.md) — authoritative implemented, verified,
+  pending, and specified capability matrix.
+- [Design decisions](docs/DECISIONS.md) — architectural choices and their rationale.
+- [SDK status](docs/SDK-STATUS.md) — public-contract sources and release gates.
+- [Starfield runtime update runbook](docs/RUNTIME-UPDATE-RUNBOOK.md) — patch-cycle recovery and
+  validation procedure.
+
 The repository deliberately starts with the risky seam rather than product functionality:
 
 - register an independent `GameMenuBase` with Starfield's UI manager;
@@ -38,8 +47,10 @@ It includes:
 - an SFSE plugin target and native-menu registration probe;
 - an explicit lifecycle state machine with unit tests;
 - a source-built minimal ActionScript movie with a pinned compiler recipe;
-- a bounded deploy/launch/evidence/screenshot/watchdog harness;
-- guarded title, Continue, save-load, and PauseMenu automation performed through game tasks;
+- componentized deploy, direct-launch, mailbox, evidence, screenshot, and watchdog tooling, with
+  the legacy monolithic-runner gap explicitly documented;
+- retained guarded title, Continue, save-load, and PauseMenu research commands performed through
+  game tasks rather than used as the default UX-validation path;
 - a repeatable PauseMenu build/teardown and readiness trace;
 - a copied-descriptor C ABI and synthetic subscriber with toggle, slider, and binding controls;
 - an ImGui parity inventory and acceptance matrix; and
@@ -58,8 +69,8 @@ The current vertical slice is evidenced on Starfield 1.16.244, including repeate
 PauseMenu population in a heavily modified profile and a 25-open lifecycle regression on the
 isolated baseline with no timeout, rejection, crash, or new dump. Dynamic subscriber pages, keyboard and mouse
 navigation, draft/apply/cancel transactions, and provider-owned persistence cross the native and
-Scaleform bridge. The first host-owned keyboard chord capture and all five Absolute Head Tracking
-pages are runtime-verified. Mods occupy the vertical sidebar and each selected mod's pages occupy
+Scaleform bridge. The first host-owned keyboard chord capture and Absolute Head Tracking's current
+General, Axes, and Bindings pages are runtime-verified. Mods occupy the vertical sidebar and each selected mod's pages occupy
 the horizontal tab row. No ESM/ESP is required.
 
 ## Research outcome

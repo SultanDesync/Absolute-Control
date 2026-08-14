@@ -1,5 +1,8 @@
 # ImGui Utility Parity Matrix
 
+> **Status:** Target acceptance matrix, not a list of completed features. Current evidence and gaps
+> are tracked in [current implementation state](CURRENT-STATE.md) and [the test matrix](TEST-MATRIX.md).
+
 The goal is workflow utility, not pixel-for-pixel imitation. A native Starfield control may replace
 an ImGui widget only when it preserves the associated state, safety, input, and feedback behavior.
 
