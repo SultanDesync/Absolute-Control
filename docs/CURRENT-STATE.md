@@ -11,7 +11,15 @@ registration, three-page bridge publication, native snapshot readiness, multi-fr
 convergence, and clean menu/process teardown. Later cross-weapon testing invalidated promotion of
 the Automation editor: only the Weapon 1 happy path worked. The current early-release source keeps
 the page ID but publishes a three-control **Coming Soon** safety preview instead. Runtime evidence
-for that reduced surface is pending. AbsoluteHOTAS is the next subscriber integration priority.
+for that reduced surface is pending. AbsoluteHOTAS H1, standalone Absolute Head Tracking, and
+standalone AbsoluteZero are now runtime-qualified configuration subscribers. Head Tracking,
+Absolute Power, and AbsoluteZero also enumerated together in the current native menu without a
+module-list conflict. The current HOTAS/Zero compatibility slice is runtime verified:
+Zero's presence selects native mouse pitch/yaw, HOTAS retains the single writer hook and other
+flight lanes, and Zero uses bounded accumulator operations without a competing trampoline.
+The supervised paired smoke confirmed that AbsoluteZero owns mouse auto-centering. Head Tracking
+remains deliberately incompatible with HOTAS while the latter still embeds legacy head tracking;
+that state is not a host-registration failure.
 The project is experimental and is not a supported
 Nexus or SDK release.
 
@@ -42,7 +50,7 @@ records runtime and UX as `not_run`; this result does not establish release read
 | F2 fallback | Runtime verified on pre-hardening artifact; current regression pending | Opens from gameplay when MainMenu and PauseMenu are not active. |
 | ESM/ESP | Not required | DLL factory, runtime PauseMenu composition, and SWF path require no data plugin. |
 | Runtime support | Exact-gated | Only Starfield 1.16.244 is accepted. Eighteen Address Library mappings plus the lifecycle callsite/target are checked before readiness. |
-| Host readiness | Automated verified; runtime pending | The query table is discoverable while initializing. Registration and refresh return `NotReady` until runtime validation, hook installation, and factory retention succeed; terminal failure returns `Rejected`. |
+| Host readiness | Runtime verified on current hardened DLL | The query table is discoverable while initializing. Registration and refresh return `NotReady` until runtime validation, hook installation, and factory retention succeed; Head Tracking and AbsoluteZero discover the current ResearchDev artifact at data-load and have a bounded post-post-data-load retry. Terminal failure returns `Rejected`. |
 | Canonical build | Automated verified | Default target `AbsoluteControlPanel` emits `AbsoluteControlPanel.dll` and a packageable release-role manifest. “Packageable” identifies safe inputs; it is not a release claim. |
 | Research build | Automated boundary verified | Opt-in `AbsoluteControlPanelResearchDev` emits a non-packageable manifest and alone contains the synthetic provider, mailbox/SendInput, and DirectInput research tools. The bounded live/compound registry is now shared product code. |
 | CommonLibSF | Internal dependency | Pinned structural scaffolding plus an exact 1.16.244 ID overlay; no CommonLibSF/SFSE type crosses the provider ABI. |
@@ -92,20 +100,20 @@ See [the API contract](MODULE-API.md), [bridge protocol](BRIDGE-PROTOCOL-V1.md),
 
 | Capability | Status | Current behavior |
 |---|---|---|
-| Multiple subscriber modules | Runtime verified mechanically; visual regression pending | The current ResearchDev synthetic provider plus Absolute Power published one combined five-page model. The earlier Head Tracking plus AbsoluteZero visual observation remains retained. |
-| Mod sidebar / module tabs | Runtime verified on prior artifact | Modules are vertical; the selected module's pages are horizontal; current limits display 15 modules, six tabs, and 12 ordinary rows before scrolling. |
+| Multiple subscriber modules | Runtime and visual interaction verified on current artifact | ResearchDev enumerated alongside AbsoluteHOTAS and, in separate current runs, standalone Absolute Head Tracking and AbsoluteZero. A combined run displayed Head Tracking, Absolute Power, and AbsoluteZero together without module-list conflict. HOTAS published three pages; Head Tracking published General, Axes, and Bindings; Zero published Mouse Alignment. |
+| Mod sidebar / module tabs | Runtime verified on current artifact | Modules are vertical; the selected module's pages are horizontal; current screenshots cover HOTAS, Head Tracking, and AbsoluteZero module/page selection. Current limits display 15 modules, six tabs, and 12 ordinary rows before scrolling. |
 | Pointer clicks and footer | Observed plus automated source coverage | Rendered sprites own semantic hit targets for modules, tabs, controls, Apply, Cancel, and Close. |
 | Slider click and drag | Runtime verified on prior artifact; generation/coalescing regression pending | Step, click-to-position, bidirectional drag, and release exist. Current code adds bounded per-frame coalescing/stale-write rejection. |
 | Mouse wheel | Implemented, runtime pending | Native direction events route to hovered sidebar, tabs, or workspace; a clean two-direction current regression is still required. |
 | Keyboard navigation | Observed plus automated coverage | Module/page/control/footer routes, adjustment, Apply, Cancel, Close, and keyboard capture exist; formal current keyboard-only regression remains. |
 | Controller navigation | A/B/D-pad implemented; device regression pending | The native adapter routes Xbox A, B, and the four D-pad directions through the shared menu router with per-button edge suppression. B cancels capture or resolves a dirty decision as Stay; A activates the focused modal/action/control. In-game traversal and repeat-cadence acceptance remain pending. |
-| Keyboard binding capture | Runtime verified on prior artifact | One key plus Ctrl/Alt/Shift, Escape cancel, and clear round-trip through provider draft. |
+| Keyboard binding capture | Runtime verified on current subscriber set | Head Tracking round-tripped single keys and Ctrl/Alt/Shift chords; AbsoluteZero uses the same current native capture surface for its clearable, modifier-free suppression key. Escape cancel and clear behavior have automated coverage. |
 | Mouse/controller/HOTAS capture | Not implemented | Flags are reserved; the current adapter does not capture these devices. |
-| Toggle/action/integer/float controls | Implemented; prior runtime evidence retained | Typed callbacks, bounds, read-only behavior, action invocation, and draft/apply/cancel are covered. |
+| Toggle/action/integer/float controls | Runtime verified on current artifact | Head Tracking exercised the current toggle, action, integer-slider, and float-slider presentation with provider draft/apply/cancel ownership. Typed callbacks, bounds, and read-only behavior remain automated. |
 | Choice | Implemented; runtime interaction pending | Providers may publish up to 256 dynamic value/label pairs. The virtualized dropdown supports pointer, wheel, keyboard, paging, selection, dismissal, and readable fallback labels for bounded integral choices. Transient choices change provider-owned view state without dirtying or pinning a transaction. |
 | Segmented allocation grid | Runtime registered/model-published; interaction UX pending | The product bridge and SWF render six systems × 32 pips with an inline priority-order and color legend, per-system G/Y/R request totals, hollow/green/yellow/red tiers, cyan live outline, gold target-preview tick, pointer tier selection, positional fill-through/trim operations, and shared Apply/Cancel ownership. Power registered `grid=ready` in the current run. Eighteen exact integer sliders provide keyboard-accessible tier editing; pointer interaction, full controller routing, persistence, and frame-time evidence remain open. |
 | Text/numeric editor | Bounded text implemented; direct numeric typing pending | TextInput provides provider-bounded printable-ASCII entry with Backspace, Enter-to-draft, Escape cancel, capture teardown, and ordinary Apply/Cancel ownership. Exact integer slider stepping is available; direct numeric typing is not. |
-| Dirty route/close | H1 runtime interaction verified; full input matrix pending | Page/module switching and Close open a host-owned Apply/Discard/Stay modal. Apply failure retains the provider draft and transaction lease, Discard calls provider Cancel, Stay restores the previously published focus, and only a resolved Close queues Hide. The HOTAS H1 smoke test exercised the exposed decision flows without visible seams; abnormal destruction remains fail-safe Cancel exactly once. |
+| Dirty route/close | HOTAS H1 and Head Tracking runtime interaction verified; full input matrix pending | Page/module switching and Close open a host-owned Apply/Discard/Stay modal. Apply failure retains the provider draft and transaction lease, Discard calls provider Cancel, Stay restores the previously published focus, and only a resolved Close queues Hide. The HOTAS H1 smoke and current Head Tracking change/discard/save/stale-setting tests completed without visible seams; abnormal destruction remains fail-safe Cancel exactly once. |
 | Hundreds-scale catalog | Build verified; runtime budget pending | A 512-module/1,536-page/24,576-control fixture serializes only 512 summaries, three active-module pages, and 16 active-page controls/reads. Concurrent registry stress passes; in-game UI-frame and memory measurements remain required. |
 | Typography/localization | Vector font implemented; localization pending | Embedded Roboto regular/bold replaces the temporary pixel glyph renderer. Localization, accessibility, and display scaling remain open. |
 
