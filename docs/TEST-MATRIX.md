@@ -81,7 +81,7 @@ Other runtime rows below are retained evidence from earlier artifacts unless sta
 |---|---|---|
 | Mouse wheel up and down | Pending clean regression | Scroll overflowing Axes controls in both directions, plus hovered sidebar and overflowing tabs; confirm no setting mutation. |
 | Keyboard-only full route | Pending formal regression | Open from PauseMenu/F2, traverse modules/pages/controls/footer, edit, Apply, Cancel, and Close without mouse. |
-| Xbox-compatible controller only | Back-only implemented; runtime pending | Prove physical B cancellation/Back, then implement and prove full navigation, edit, Apply/Cancel, no leaked command, and no ghost/stuck axis. |
+| Xbox-compatible controller only | A/B/D-pad implemented; runtime pending | Prove physical traversal, activation, dirty Apply/Discard/Stay, capture cancellation, held/repeat suppression, no leaked command, and no ghost/stuck axis; add remaining reverse-adjust/page shortcuts before claiming parity. |
 | Input-device transition | Partly blocked | Mouse/keyboard switching needs a current regression; controller transition/reseed awaits controller routing. |
 | Mouse binding capture | Not implemented | Capture, clear, cancel, conflict behavior, and round-trip. |
 | Controller/HOTAS binding capture | Not implemented | Device identity, noisy axes, held buttons/POV, cancel/timeout, and reseed. |

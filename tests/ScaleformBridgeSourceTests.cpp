@@ -39,17 +39,19 @@ int main()
     const auto widgets = Read("interface/src/acp/ui/ControlWidgets.as");
     const auto selection = Read("interface/src/acp/ui/MenuSelectionState.as");
     const auto shell = Read("interface/src/acp/ui/MenuShellRenderer.as");
+    const auto dirtyDecision =
+        Read("interface/src/acp/ui/DirtyDecisionDialog.as");
     const auto pointer = Read("interface/src/acp/ui/PointerInteraction.as");
     const auto dispatcher = Read("interface/src/acp/ui/BridgeCommandDispatcher.as");
     const auto sliderWrites = Read("interface/src/acp/ui/SliderWriteCoordinator.as");
     const auto layout = Read("interface/src/acp/ui/PanelLayout.as");
     const auto theme = Read("interface/src/acp/ui/PanelTheme.as");
     const auto vectorText = Read("interface/src/acp/ui/VectorTextRenderer.as");
-    const auto actionScript = actionScriptRoot + widgets + selection + shell + pointer +
-        dispatcher + sliderWrites + layout + theme + vectorText;
+    const auto actionScript = actionScriptRoot + widgets + selection + shell +
+        dirtyDecision + pointer + dispatcher + sliderWrites + layout + theme + vectorText;
     CHECK(!native.empty() && !evidence.empty() && !actionScriptRoot.empty());
     CHECK(!widgets.empty() && !selection.empty() && !shell.empty() && !pointer.empty() &&
-        !dispatcher.empty() && !sliderWrites.empty());
+        !dirtyDecision.empty() && !dispatcher.empty() && !sliderWrites.empty());
     CHECK(!layout.empty() && !theme.empty() && !vectorText.empty());
     CHECK(!Read("interface/src/acp/ui/FontAssets/Roboto-Regular.ttf").empty());
     CHECK(!Read("interface/src/acp/ui/FontAssets/Roboto-Bold.ttf").empty());
@@ -220,6 +222,10 @@ int main()
         std::string::npos);
     CHECK(shell.find("drawFooter") != std::string::npos);
     CHECK(shell.find("drawChoicePopup") != std::string::npos);
+    CHECK(shell.find("DirtyDecisionDialog.draw") != std::string::npos);
+    CHECK(dirtyDecision.find("SAVE CHANGES BEFORE CLOSING?") !=
+        std::string::npos);
+    CHECK(dirtyDecision.find("dirtyApply") != std::string::npos);
     CHECK(shell.find("hiddenBelow") != std::string::npos);
     CHECK(shell.find("action ? \"activate\" : \"select\"") !=
         std::string::npos);

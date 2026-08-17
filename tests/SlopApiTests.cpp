@@ -417,6 +417,25 @@ int main()
     CHECK(routed.command && routed.command->kind == CommandKind::Close);
     routed = MenuInputRouter::Route(emptyModel, MenuInputRouter::kTab);
     CHECK(routed.command && routed.command->kind == CommandKind::Close);
+    auto decisionModel = emptyModel;
+    decisionModel.dirtyDecisionActive = true;
+    routed = MenuInputRouter::Route(decisionModel, MenuInputRouter::kEscape);
+    CHECK(routed.command &&
+        routed.command->kind == CommandKind::ResolveDirtyStay);
+    routed = MenuInputRouter::Route(decisionModel, MenuInputRouter::kApply);
+    CHECK(routed.command &&
+        routed.command->kind == CommandKind::ResolveDirtyApply);
+    routed = MenuInputRouter::Route(decisionModel, MenuInputRouter::kCancel);
+    CHECK(routed.command &&
+        routed.command->kind == CommandKind::ResolveDirtyDiscard);
+    routed = MenuInputRouter::Route(decisionModel, MenuInputRouter::kDown);
+    CHECK(!routed.command &&
+        routed.focus.region == MenuInputRouter::FocusRegion::Actions &&
+        routed.focus.actionIndex == 1);
+    routed = MenuInputRouter::Route(
+        decisionModel, MenuInputRouter::kAccept, routed.focus);
+    CHECK(routed.command &&
+        routed.command->kind == CommandKind::ResolveDirtyDiscard);
     model = session.Snapshot();
 
     model = session.Dispatch(MakeCommand(CommandKind::SelectControl, "general", "missing"));
@@ -435,8 +454,16 @@ int main()
     // deterministic, retryable rejection rather than stranding the session.
     CHECK(publicApi->unregisterModule("test.module") == Result::Rejected);
 
-    // Every route to a different page is refused while this page owns the transaction.
-    CHECK(!session.Dispatch(MakeCommand(CommandKind::SelectPage, "bindings")).error.empty());
+    // Route changes open the guarded decision while preserving the provider
+    // draft and exact active control. Stay dismisses it without navigation.
+    model = session.Dispatch(MakeCommand(CommandKind::SelectPage, "bindings"));
+    CHECK(model.error.empty() && model.dirty && model.dirtyDecisionActive &&
+        !model.dirtyDecisionClosesMenu && model.activePageId == "general" &&
+        model.selectedControlId == "count");
+    model = session.Dispatch(MakeCommand(CommandKind::ResolveDirtyStay, ""));
+    CHECK(model.error.empty() && model.dirty && !model.dirtyDecisionActive &&
+        model.activePageId == "general" && model.selectedControlId == "count");
+    // Non-navigation commands still cannot bypass dirty-page ownership.
     CHECK(!session.Dispatch(MakeCommand(CommandKind::SelectControl, "bindings", "other")).error.empty());
     auto foreignWrite = MakeCommand(CommandKind::Write, "bindings", "other"); foreignWrite.value.kind = ValueKind::Boolean;
     CHECK(!session.Dispatch(foreignWrite).error.empty() && bindingsProvider.writes == 0);
@@ -540,10 +567,19 @@ int main()
     CHECK(!model.textCaptureActive && model.error.empty());
 
     write.value.kind = ValueKind::Integer; write.value.integerValue = 4;
-    const auto cancelsBeforeClose = generalProvider.cancels;
+    const auto appliesBeforeClose = generalProvider.applies;
     CHECK(session.Dispatch(write).dirty);
-    CHECK(session.Dispatch(MakeCommand(CommandKind::Close, "")).dirty == false &&
-        generalProvider.cancels == cancelsBeforeClose + 1);
+    model = session.Dispatch(MakeCommand(CommandKind::Close, ""));
+    CHECK(model.dirty && model.dirtyDecisionActive &&
+        model.dirtyDecisionClosesMenu && !model.closeRequested);
+    generalProvider.failApply = true;
+    model = session.Dispatch(MakeCommand(CommandKind::ResolveDirtyApply, ""));
+    CHECK(!model.error.empty() && model.dirty && model.dirtyDecisionActive &&
+        !model.closeRequested && generalProvider.applies == appliesBeforeClose + 1);
+    generalProvider.failApply = false;
+    model = session.Dispatch(MakeCommand(CommandKind::ResolveDirtyApply, ""));
+    CHECK(model.error.empty() && !model.dirty && !model.dirtyDecisionActive &&
+        model.closeRequested && generalProvider.applies == appliesBeforeClose + 2);
 
     // A compound edit is attached to the same page transaction as scalar
     // controls. It pins provider lifetime, marks the page dirty, and resolves
@@ -743,7 +779,14 @@ int main()
             auto closedWrite = MakeCommand(CommandKind::Write, "general", "enabled");
             closedWrite.value.kind = ValueKind::Boolean;
             CHECK(closedSession.Dispatch(closedWrite).dirty);
-            CHECK(!closedSession.Dispatch(MakeCommand(CommandKind::Close, "")).dirty);
+            auto closeDecision = closedSession.Dispatch(
+                MakeCommand(CommandKind::Close, ""));
+            CHECK(closeDecision.dirty && closeDecision.dirtyDecisionActive &&
+                !closeDecision.closeRequested);
+            closeDecision = closedSession.Dispatch(
+                MakeCommand(CommandKind::ResolveDirtyDiscard, ""));
+            CHECK(!closeDecision.dirty && !closeDecision.dirtyDecisionActive &&
+                closeDecision.closeRequested);
             cancelsAfterNormal = generalProvider.cancels;
         }
         CHECK(cancelsAfterNormal == cancelsBefore + 1);

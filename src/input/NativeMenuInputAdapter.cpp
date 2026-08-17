@@ -36,20 +36,48 @@ namespace AbsoluteControlPanelResearch::Input
         auto& session = a_sink.InputSession();
         auto& inputFocus = a_sink.InputFocus();
         if (a_event.deviceType == RE::InputEvent::DeviceType::kGamepad) {
-            const bool isBack =
-                a_event.idCode == REX::W32::XINPUT_GAMEPAD_B ||
-                a_event.idCode == SFSE::InputMap::kGamepadButtonOffset_B;
-            if (!isBack) {
-                return false;
-            }
-
+            struct Route {
+                std::int32_t mask;
+                std::int32_t offset;
+                std::int32_t menuKey;
+            };
+            constexpr std::array routes{
+                Route{REX::W32::XINPUT_GAMEPAD_DPAD_UP,
+                    SFSE::InputMap::kGamepadButtonOffset_DPAD_UP,
+                    MenuInputRouter::kArrowUp},
+                Route{REX::W32::XINPUT_GAMEPAD_DPAD_DOWN,
+                    SFSE::InputMap::kGamepadButtonOffset_DPAD_DOWN,
+                    MenuInputRouter::kArrowDown},
+                Route{REX::W32::XINPUT_GAMEPAD_DPAD_LEFT,
+                    SFSE::InputMap::kGamepadButtonOffset_DPAD_LEFT,
+                    MenuInputRouter::kArrowLeft},
+                Route{REX::W32::XINPUT_GAMEPAD_DPAD_RIGHT,
+                    SFSE::InputMap::kGamepadButtonOffset_DPAD_RIGHT,
+                    MenuInputRouter::kArrowRight},
+                Route{REX::W32::XINPUT_GAMEPAD_A,
+                    SFSE::InputMap::kGamepadButtonOffset_A,
+                    MenuInputRouter::kAccept},
+                Route{REX::W32::XINPUT_GAMEPAD_B,
+                    SFSE::InputMap::kGamepadButtonOffset_B,
+                    MenuInputRouter::kEscape},
+            };
+            const auto route = std::ranges::find_if(
+                routes, [&](const Route& candidate) {
+                    return a_event.idCode == candidate.mask ||
+                           a_event.idCode == candidate.offset;
+                });
+            if (route == routes.end()) return false;
+            const auto routeIndex =
+                static_cast<std::size_t>(route - routes.begin());
+            const bool isBack = route->menuKey == MenuInputRouter::kEscape;
+            if (session.IsCaptureActive() && !isBack) return false;
             const bool down = a_event.value > 0.0F;
-            const bool pressed = down && !gamepadBackDown_;
-            gamepadBackDown_ = down;
+            const bool pressed = down && !gamepadButtonDown_[routeIndex];
+            gamepadButtonDown_[routeIndex] = down;
             if (!pressed) {
                 return true;
             }
-            if (session.IsCaptureActive()) {
+            if (session.IsCaptureActive() && isBack) {
                 const bool textCapture = session.IsTextCaptureActive();
                 const auto model = textCapture ?
                     session.CancelTextCapture() : session.CancelBindingCapture();
@@ -61,11 +89,23 @@ namespace AbsoluteControlPanelResearch::Input
                 a_sink.PublishInputModel(model);
                 return true;
             }
-
-            MenuSession::Command command;
-            command.kind = MenuSession::CommandKind::Close;
-            EvidenceLog::Event("bridge_close", "native controller requested close");
-            a_sink.DispatchInputCommand(command, "close", "native-controller");
+            const auto previousFocus = inputFocus;
+            auto routed = MenuInputRouter::Route(
+                session.Snapshot(), route->menuKey, inputFocus);
+            inputFocus = routed.focus;
+            if (!routed.command) {
+                if (previousFocus != inputFocus) {
+                    a_sink.PublishInputModel(session.Snapshot());
+                }
+                return true;
+            }
+            if (routed.command->kind == MenuSession::CommandKind::Close) {
+                EvidenceLog::Event(
+                    "bridge_close", "native controller requested close");
+            }
+            EvidenceLog::Event("menu_input_routed", "source=controller");
+            a_sink.DispatchInputCommand(*routed.command,
+                CommandName(routed.command->kind), "native-controller");
             return true;
         }
         if (a_event.deviceType == RE::InputEvent::DeviceType::kMouse) {
@@ -303,6 +343,10 @@ namespace AbsoluteControlPanelResearch::Input
         case MenuSession::CommandKind::Apply: return "apply";
         case MenuSession::CommandKind::Cancel: return "cancel";
         case MenuSession::CommandKind::Close: return "close";
+        case MenuSession::CommandKind::ResolveDirtyApply: return "dirtyApply";
+        case MenuSession::CommandKind::ResolveDirtyDiscard: return "dirtyDiscard";
+        case MenuSession::CommandKind::ResolveDirtyStay: return "dirtyStay";
+        case MenuSession::CommandKind::Compound: return "compound";
         }
         return "unknown";
     }

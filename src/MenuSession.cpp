@@ -7,6 +7,7 @@
 #include <cstring>
 #include <limits>
 #include <ranges>
+#include <utility>
 
 namespace AbsoluteControlPanelResearch::MenuSession
 {
@@ -146,6 +147,8 @@ namespace AbsoluteControlPanelResearch::MenuSession
             AbandonState();
         }
         ClearCapture();
+        ClearDirtyDecision();
+        closeRequested_ = false;
     }
 
     bool Session::RollbackDirtyPage() noexcept
@@ -169,6 +172,7 @@ namespace AbsoluteControlPanelResearch::MenuSession
         dirtyModuleId_.clear();
         dirtyPageId_.clear();
         selectedControlId_.clear();
+        ClearDirtyDecision();
     }
 
     bool Session::IsBindingCaptureActive() const noexcept
@@ -212,6 +216,79 @@ namespace AbsoluteControlPanelResearch::MenuSession
     bool Session::IsDirtyOtherPage(const Command& a_command) const noexcept
     {
         return IsDirty() && (a_command.moduleId != dirtyModuleId_ || a_command.pageId != dirtyPageId_);
+    }
+
+    void Session::BeginDirtyDecision(const Command& a_command)
+    {
+        dirtyDecisionKind_ = a_command.kind == CommandKind::Close ?
+            DirtyDecisionKind::Close : DirtyDecisionKind::Navigate;
+        decisionModuleId_ = a_command.moduleId;
+        decisionPageId_ = a_command.pageId;
+    }
+
+    void Session::ClearDirtyDecision() noexcept
+    {
+        dirtyDecisionKind_ = DirtyDecisionKind::None;
+        decisionModuleId_.clear();
+        decisionPageId_.clear();
+    }
+
+    void Session::CompletePendingRoute()
+    {
+        if (dirtyDecisionKind_ == DirtyDecisionKind::Close) {
+            closeRequested_ = true;
+        } else if (dirtyDecisionKind_ == DirtyDecisionKind::Navigate) {
+            const auto page = MenuApiHost::FindPage(
+                decisionModuleId_, decisionPageId_);
+            if (!page) {
+                SetError("The requested page is no longer available");
+                ClearDirtyDecision();
+                return;
+            }
+            activeModuleId_ = page->moduleId;
+            activePageId_ = page->pageId;
+            selectedControlId_.clear();
+        }
+        ClearDirtyDecision();
+    }
+
+    Model Session::ResolveDirtyDecision(CommandKind a_kind)
+    {
+        if (dirtyDecisionKind_ == DirtyDecisionKind::None) {
+            SetError("No pending dirty-page decision");
+            return BuildSnapshot();
+        }
+        if (a_kind == CommandKind::ResolveDirtyStay) {
+            ClearDirtyDecision();
+            return BuildSnapshot();
+        }
+
+        const auto page = MenuApiHost::FindPage(dirtyModuleId_, dirtyPageId_);
+        if (!page) {
+            SetError("The dirty provider page is no longer available");
+            return BuildSnapshot();
+        }
+        if (a_kind == CommandKind::ResolveDirtyApply) {
+            if (!page->canApply ||
+                MenuApiHost::Apply(*page) !=
+                    AbsoluteControlPanelApi::Result::Ok) {
+                SetError("Apply failed; your draft is still available");
+                return BuildSnapshot();
+            }
+            transaction_.Reset();
+            dirtyModuleId_.clear();
+            dirtyPageId_.clear();
+        } else if (a_kind == CommandKind::ResolveDirtyDiscard) {
+            if (!RollbackDirtyPage()) {
+                SetError("Discard failed; your draft is still available");
+                return BuildSnapshot();
+            }
+        } else {
+            SetError("Unknown dirty-page decision");
+            return BuildSnapshot();
+        }
+        CompletePendingRoute();
+        return BuildSnapshot();
     }
 
     Model Session::BuildSnapshot()
@@ -359,6 +436,11 @@ namespace AbsoluteControlPanelResearch::MenuSession
         model.activePageId = activePageId_;
         model.selectedControlId = selectedControlId_;
         model.dirty = IsDirty();
+        model.dirtyDecisionActive =
+            dirtyDecisionKind_ != DirtyDecisionKind::None;
+        model.dirtyDecisionClosesMenu =
+            dirtyDecisionKind_ == DirtyDecisionKind::Close;
+        model.closeRequested = std::exchange(closeRequested_, false);
         model.bindingCaptureActive = IsBindingCaptureActive();
         model.textCaptureActive = IsTextCaptureActive();
         model.captureModuleId = captureModuleId_;
@@ -392,6 +474,21 @@ namespace AbsoluteControlPanelResearch::MenuSession
             a_command.expectedGeneration != publishedGeneration_) {
             SetError("Stale menu command"); return BuildSnapshot();
         }
+        const bool resolvesDirtyDecision =
+            a_command.kind == CommandKind::ResolveDirtyApply ||
+            a_command.kind == CommandKind::ResolveDirtyDiscard ||
+            a_command.kind == CommandKind::ResolveDirtyStay;
+        if (dirtyDecisionKind_ != DirtyDecisionKind::None) {
+            if (!resolvesDirtyDecision) {
+                SetError("Choose Apply, Discard, or Stay first");
+                return BuildSnapshot();
+            }
+            return ResolveDirtyDecision(a_command.kind);
+        }
+        if (resolvesDirtyDecision) {
+            SetError("No pending dirty-page decision");
+            return BuildSnapshot();
+        }
         if (IsCaptureActive() &&
             a_command.kind != CommandKind::BeginBindingCapture &&
             a_command.kind != CommandKind::BeginTextCapture) {
@@ -404,13 +501,19 @@ namespace AbsoluteControlPanelResearch::MenuSession
             SetError("Unknown page"); return BuildSnapshot();
         }
         if (a_command.kind != CommandKind::Close && IsDirtyOtherPage(a_command)) {
-            SetError("Apply or cancel the dirty page before navigation"); return BuildSnapshot();
-        }
-        if (a_command.kind == CommandKind::Close) {
-            if (IsDirty() && !RollbackDirtyPage()) {
-                SetError("Dirty page cannot close without rollback");
+            if (a_command.kind == CommandKind::SelectPage) {
+                BeginDirtyDecision(a_command);
                 return BuildSnapshot();
             }
+            SetError("The command does not own the dirty page");
+            return BuildSnapshot();
+        }
+        if (a_command.kind == CommandKind::Close) {
+            if (IsDirty()) {
+                BeginDirtyDecision(a_command);
+                return BuildSnapshot();
+            }
+            closeRequested_ = true;
             return BuildSnapshot();
         }
         if (a_command.kind == CommandKind::SelectPage) {

@@ -629,8 +629,8 @@ focus or state cue.
 | **Artifact-Safe Slider** | Implemented with inset 6px rail, opaque 20px ring thumb, center marker, and aligned readout | Multi-resolution endpoint/clipping and pointer-drag regression. |
 | **Workspace Scrollbar** | Implemented as a proportional position indicator with above/below hidden counts | Add direct thumb/track pointer interaction and complete controller paging acceptance. |
 | **Explicit Action Button** | Current rows still use a terminal chevron | Replace the chevron-only treatment with a labeled `RUN` or action-specific button. |
-| **Apply / Discard / Stay Modal** | Rejection logic in C++ host | Create `ModalDialog.as` component hooked to bridge close events. |
-| **Controller D-Pad Navigation** | B-button Back verified | Wire directional gamepad events to focus manager in C++ host adapter. |
+| **Apply / Discard / Stay Modal** | Implemented through `DirtyDecisionDialog.as`, `MenuSession`, native routing, and the bridge close gate | In-game pointer/keyboard/controller visual acceptance, including failed Apply and focus restoration. |
+| **Controller D-Pad Navigation** | A/B and D-pad route through the shared native focus/command adapter | In-game traversal, repeat cadence, capture interaction, and modal acceptance. |
 | **Tactile SFX Triggers** | Not implemented; original event names unverified | Discover valid native events and prove menu-volume/spam behavior before adding any bridge surface. |
 
 ---

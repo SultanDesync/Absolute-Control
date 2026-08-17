@@ -204,6 +204,9 @@ namespace AbsoluteControlPanelResearch::Scaleform
                 else if (name == "apply") command.kind = MenuSession::CommandKind::Apply;
                 else if (name == "cancel") command.kind = MenuSession::CommandKind::Cancel;
                 else if (name == "close") command.kind = MenuSession::CommandKind::Close;
+                else if (name == "dirtyApply") command.kind = MenuSession::CommandKind::ResolveDirtyApply;
+                else if (name == "dirtyDiscard") command.kind = MenuSession::CommandKind::ResolveDirtyDiscard;
+                else if (name == "dirtyStay") command.kind = MenuSession::CommandKind::ResolveDirtyStay;
                 else command.schemaVersion = 0;
                 DispatchCommand(command, name, "scaleform");
             }
@@ -310,6 +313,17 @@ namespace AbsoluteControlPanelResearch::Scaleform
                 EvidenceLog::Event("bridge_command",
                     std::format("command={} source={}", a_name, a_source));
                 const auto model = session.Dispatch(a_command);
+                if (model.dirtyDecisionActive && !dirtyDecisionReturnFocus) {
+                    dirtyDecisionReturnFocus = lastPublishedInputFocus;
+                } else if (!model.dirtyDecisionActive &&
+                    dirtyDecisionReturnFocus) {
+                    if (a_command.kind ==
+                        MenuSession::CommandKind::ResolveDirtyStay &&
+                        model.error.empty()) {
+                        inputFocus = *dirtyDecisionReturnFocus;
+                    }
+                    dirtyDecisionReturnFocus.reset();
+                }
                 if (a_command.kind == MenuSession::CommandKind::BeginBindingCapture &&
                     model.error.empty() && model.bindingCaptureActive) {
                     // A release barrier is only needed when the same keyboard event that
@@ -354,8 +368,7 @@ namespace AbsoluteControlPanelResearch::Scaleform
 
                     std::format("command={} source={} error={}",
                         a_name, a_source, model.error));
-                if (a_command.kind == MenuSession::CommandKind::Close &&
-                    model.error.empty()) {
+                if (model.closeRequested && model.error.empty()) {
                     // A successful close needs no replacement display tree.  The
                     // queued UI message is processed only after this command stack
                     // unwinds; teardown drops any older deferred publication.
@@ -382,7 +395,7 @@ namespace AbsoluteControlPanelResearch::Scaleform
                     MenuApiHost::SetInputCaptureActive(false);
                 }
                 const auto model = session.Dispatch(MenuSession::Command{ .kind = MenuSession::CommandKind::Close });
-                if (model.error.empty()) {
+                if (model.closeRequested && model.error.empty()) {
                     closing = true;
                     pendingModel.reset();
                     MenuApiHost::SetInputCaptureActive(false);
@@ -654,6 +667,10 @@ namespace AbsoluteControlPanelResearch::Scaleform
                     model.SetMember("focusedAction", RE::Scaleform::GFx::Value(
                         inputFocus.actionIndex)) &&
                     model.SetMember("dirty", RE::Scaleform::GFx::Value(a_model.dirty)) &&
+                    model.SetMember("dirtyDecisionActive", RE::Scaleform::GFx::Value(
+                        a_model.dirtyDecisionActive)) &&
+                    model.SetMember("dirtyDecisionClosesMenu", RE::Scaleform::GFx::Value(
+                        a_model.dirtyDecisionClosesMenu)) &&
                     model.SetMember("bindingCaptureActive", RE::Scaleform::GFx::Value(
                         a_model.bindingCaptureActive)) &&
                     model.SetMember("textCaptureActive", RE::Scaleform::GFx::Value(
@@ -710,6 +727,7 @@ namespace AbsoluteControlPanelResearch::Scaleform
                 modelPublicationActive = false;
                 if (invoked) {
                     session.AcknowledgePublishedGeneration(a_model.generation);
+                    lastPublishedInputFocus = inputFocus;
                 }
                 EvidenceLog::Event(
                     "bridge_model_published",
@@ -862,6 +880,7 @@ namespace AbsoluteControlPanelResearch::Scaleform
                         "source=menu-hidden");
                 }
                 session.Teardown();
+                dirtyDecisionReturnFocus.reset();
                 MenuApiHost::SetInputCaptureActive(false);
                 pendingModel.reset();
                 EvidenceLog::Event(
@@ -891,6 +910,8 @@ namespace AbsoluteControlPanelResearch::Scaleform
 
             MenuSession::Session session;
             MenuInputRouter::FocusState inputFocus;
+            MenuInputRouter::FocusState lastPublishedInputFocus;
+            std::optional<MenuInputRouter::FocusState> dirtyDecisionReturnFocus;
             Input::NativeMenuInputAdapter inputAdapter;
 
             std::uint64_t refreshCursor{};

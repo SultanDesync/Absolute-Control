@@ -45,7 +45,7 @@ namespace AbsoluteControlPanelResearch::Input
             MenuSession::CommandKind a_kind) noexcept;
 
         std::array<bool, 256> keyDown_{};
-        bool gamepadBackDown_{};
+        std::array<bool, 6> gamepadButtonDown_{};
         bool captureAwaitingRelease_{};
         std::int32_t lastWheelIdCode_{};
         std::uint32_t lastWheelTimeCode_{};

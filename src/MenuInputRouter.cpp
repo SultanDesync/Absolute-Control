@@ -187,6 +187,39 @@ namespace AbsoluteControlPanelResearch::MenuInputRouter
         if (!result.handled) {
             return result;
         }
+        if (a_model.dirtyDecisionActive) {
+            result.focus.region = FocusRegion::Actions;
+            const auto DecisionCommand = [](MenuSession::CommandKind a_kind) {
+                MenuSession::Command command;
+                command.kind = a_kind;
+                return command;
+            };
+            if (a_keyCode == kEscape || a_keyCode == kTab) {
+                result.command = DecisionCommand(
+                    MenuSession::CommandKind::ResolveDirtyStay);
+            } else if (a_keyCode == kApply) {
+                result.command = DecisionCommand(
+                    MenuSession::CommandKind::ResolveDirtyApply);
+            } else if (a_keyCode == kCancel) {
+                result.command = DecisionCommand(
+                    MenuSession::CommandKind::ResolveDirtyDiscard);
+            } else if (IsUp(a_keyCode) || IsDown(a_keyCode) ||
+                IsLeft(a_keyCode) || IsRight(a_keyCode)) {
+                result.focus.actionIndex =
+                    (IsUp(a_keyCode) || IsLeft(a_keyCode)) ?
+                    (result.focus.actionIndex + kActionCount - 1) % kActionCount :
+                    (result.focus.actionIndex + 1) % kActionCount;
+            } else if (IsAccept(a_keyCode)) {
+                constexpr MenuSession::CommandKind decisions[]{
+                    MenuSession::CommandKind::ResolveDirtyApply,
+                    MenuSession::CommandKind::ResolveDirtyDiscard,
+                    MenuSession::CommandKind::ResolveDirtyStay,
+                };
+                result.command = DecisionCommand(
+                    decisions[result.focus.actionIndex]);
+            }
+            return result;
+        }
         if (a_keyCode == kEscape || a_keyCode == kTab) {
             MenuSession::Command command;
             command.kind = MenuSession::CommandKind::Close;

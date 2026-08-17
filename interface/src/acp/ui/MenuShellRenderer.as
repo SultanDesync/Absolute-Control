@@ -65,7 +65,8 @@ package acp.ui
                 PanelTheme.DIM_TEXT, true);
         }
 
-        public function redraw(model:Object, state:MenuSelectionState, inputMode:String):void
+        public function redraw(model:Object, state:MenuSelectionState,
+            inputMode:String, dirtyDecisionCursor:int = 0):void
         {
             if (statusField == null || moduleLayer == null || tabLayer == null ||
                 rowLayer == null || scrollLayer == null || helpLayer == null ||
@@ -108,7 +109,13 @@ package acp.ui
             drawScrollBar(current, state, gridHeight, visibleRows);
             drawHelp(current, state);
             drawFooter(model, state, inputMode);
-            drawChoicePopup(current, state, gridHeight);
+            if (Boolean(model.dirtyDecisionActive)) {
+                closeChoice();
+                DirtyDecisionDialog.draw(
+                    overlayLayer, hits, model, dirtyDecisionCursor, inputMode);
+            } else {
+                drawChoicePopup(current, state, gridHeight);
+            }
         }
 
         public function openChoice(current:Object, control:Object):void

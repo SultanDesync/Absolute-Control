@@ -30,6 +30,7 @@ package
         private var commandBridge:BridgeCommandDispatcher;
         private var shell:MenuShellRenderer;
         private var choiceInput:ChoiceInputRouter;
+        private var dirtyDecisionCursor:int = 0;
 
         public function AbsoluteControlPanelMenu()
         {
@@ -69,6 +70,7 @@ package
                 pointer.clearSliderDrag();
             }
             model = next;
+            if (!Boolean(model.dirtyDecisionActive)) dirtyDecisionCursor = 0;
             selection.applyModel(model);
             redraw();
             if (BGSCodeObj != null && BGSCodeObj.modelApplied != null) {
@@ -117,6 +119,11 @@ package
 
             var kind:String = String(target.kind);
             if (kind == "disabled") return true;
+            if (kind == "dirtyDecision") {
+                dirtyDecisionCursor = int(target.index);
+                sendPage(String(target.payload));
+                return true;
+            }
             if (kind == "page") {
                 selection.focusRegion = int(target.index);
                 syncFocus();
@@ -261,6 +268,39 @@ package
                 event.stopImmediatePropagation();
                 return;
             }
+            if (model != null && Boolean(model.dirtyDecisionActive)) {
+                var decisionHandled:Boolean = true;
+                if (event.keyCode == Keyboard.ESCAPE ||
+                    event.keyCode == Keyboard.TAB) {
+                    sendPage("dirtyStay");
+                } else if (event.keyCode == Keyboard.F) {
+                    sendPage("dirtyApply");
+                } else if (event.keyCode == Keyboard.X) {
+                    sendPage("dirtyDiscard");
+                } else if (event.keyCode == Keyboard.LEFT ||
+                    event.keyCode == Keyboard.UP || event.keyCode == Keyboard.A ||
+                    event.keyCode == Keyboard.W) {
+                    dirtyDecisionCursor = (dirtyDecisionCursor + 2) % 3;
+                    redraw();
+                } else if (event.keyCode == Keyboard.RIGHT ||
+                    event.keyCode == Keyboard.DOWN || event.keyCode == Keyboard.D ||
+                    event.keyCode == Keyboard.S) {
+                    dirtyDecisionCursor = (dirtyDecisionCursor + 1) % 3;
+                    redraw();
+                } else if (event.keyCode == Keyboard.E ||
+                    event.keyCode == Keyboard.ENTER ||
+                    event.keyCode == Keyboard.SPACE) {
+                    sendPage(dirtyDecisionCursor == 0 ? "dirtyApply" :
+                        (dirtyDecisionCursor == 1 ? "dirtyDiscard" : "dirtyStay"));
+                } else {
+                    decisionHandled = false;
+                }
+                if (decisionHandled) {
+                    event.preventDefault();
+                    event.stopImmediatePropagation();
+                }
+                return;
+            }
             if (inputMode != "keyboard") {
                 inputMode = "keyboard";
                 redraw();
@@ -395,7 +435,7 @@ package
 
         private function redraw():void
         {
-            shell.redraw(model, selection, inputMode);
+            shell.redraw(model, selection, inputMode, dirtyDecisionCursor);
         }
 
         private function syncFocus():void

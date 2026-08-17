@@ -113,7 +113,10 @@ model carries the bounded error so the UI can recover.
 | `beginTextCapture` | module/page/control | Require writable TextInput, read its opening string, enter bounded native text capture, and publish. Enter writes the edited string through the ordinary draft transaction; Escape cancels capture without a write. |
 | `apply` | dirty module/page | Call `apply`; on success release transaction/dirty state and publish. Clean calls are rejected without a provider callback. |
 | `cancel` | dirty module/page | Call `cancel`, release transaction/dirty state, reread, and publish. Clean calls are rejected without a provider callback. |
-| `close` | active session | Cancel a normal dirty session, publish, and hide only without error. |
+| `close` | active session | Clean Close requests Hide. Dirty Close publishes the guarded decision and retains the provider transaction. |
+| `dirtyApply` | pending dirty decision | Apply the pinned provider draft, then complete the requested route/Close. Failure retains the draft and decision. |
+| `dirtyDiscard` | pending dirty decision | Cancel the provider draft, then complete the requested route/Close. |
+| `dirtyStay` | pending dirty decision | Dismiss the decision, preserve the draft, and restore the previously published route/focus. |
 
 ## Refresh and slider cadence
 
@@ -131,14 +134,14 @@ rejects any stale command that crosses this ActionScript guard.
 
 ## Transaction and lifetime state
 
-Dirty state is one `(moduleId,pageId)` transaction. Navigation to another page is rejected until
-Apply or Cancel. Callback leases run outside host locks. Unregister returns retryable `Rejected`
+Dirty state is one `(moduleId,pageId)` transaction. Navigation to another page or Close opens one
+guarded Apply/Discard/Stay decision; unrelated commands remain rejected until it is resolved.
+Callback leases run outside host locks. Unregister returns retryable `Rejected`
 while any callback or transaction is active; it never blocks the UI thread waiting for provider
 code. Runtime DLL unloading is unsupported.
 
-The current v1 implementation's normal Close performs provider Cancel; the accepted release flow
-will first present the guarded dirty decision documented in
-`SCALABILITY-TRANSACTIONS-AND-TEARDOWN.md`. A successful Close enters a terminal bridge state,
+Normal Close now presents the guarded dirty decision documented in
+`SCALABILITY-TRANSACTIONS-AND-TEARDOWN.md`. A successfully resolved Close enters a terminal bridge state,
 drops deferred publications, and queues Hide without applying another display tree. If a menu is
 externally hidden or destroyed without the normal close command, the idempotent Hide/destructor
 teardown performs one best-effort provider rollback while the unregister lease is still held, then

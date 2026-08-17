@@ -25,7 +25,10 @@ namespace AbsoluteControlPanelResearch::MenuSession
         Apply,
         Cancel,
         Compound,
-        Close
+        Close,
+        ResolveDirtyApply,
+        ResolveDirtyDiscard,
+        ResolveDirtyStay
     };
 
     struct Control
@@ -74,6 +77,9 @@ namespace AbsoluteControlPanelResearch::MenuSession
         std::string activePageId;
         std::string selectedControlId;
         bool dirty{};
+        bool dirtyDecisionActive{};
+        bool dirtyDecisionClosesMenu{};
+        bool closeRequested{};
         bool bindingCaptureActive{};
         bool textCaptureActive{};
         std::string captureModuleId;
@@ -142,6 +148,11 @@ namespace AbsoluteControlPanelResearch::MenuSession
         std::string selectedControlId_;
         std::string dirtyModuleId_;
         std::string dirtyPageId_;
+        enum class DirtyDecisionKind : std::uint8_t { None, Navigate, Close };
+        DirtyDecisionKind dirtyDecisionKind_{DirtyDecisionKind::None};
+        std::string decisionModuleId_;
+        std::string decisionPageId_;
+        bool closeRequested_{};
         std::string captureModuleId_;
         std::string capturePageId_;
         std::string captureControlId_;
@@ -159,6 +170,10 @@ namespace AbsoluteControlPanelResearch::MenuSession
         [[nodiscard]] bool IsDirty() const noexcept;
         [[nodiscard]] bool IsDirtyOtherPage(const Command& a_command) const noexcept;
         [[nodiscard]] bool RollbackDirtyPage() noexcept;
+        [[nodiscard]] Model ResolveDirtyDecision(CommandKind a_kind);
+        void BeginDirtyDecision(const Command& a_command);
+        void ClearDirtyDecision() noexcept;
+        void CompletePendingRoute();
         void ClearCapture() noexcept;
         void AbandonState() noexcept;
         void SetError(std::string_view a_error);
