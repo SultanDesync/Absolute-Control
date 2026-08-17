@@ -47,9 +47,11 @@ CSS, ActionScript, and native drawing callbacks are therefore not expressible. T
 and style.
 
 Sections preserve authoring order, but ABI v1 has no section descriptor, so section headings are not
-emitted. Choice labels, text editors, presentation hints, and advanced live components require a
-future ABI and are rejected rather than silently degraded. Control IDs must be unique across the
-whole module because ABI v1 callbacks receive `controlId`, not a page-qualified key.
+emitted. Direct ABI-v1 providers can publish labeled choices through the appended page callback and
+can use bounded `TextInput`; the generator does not emit either feature yet and rejects them rather
+than silently degrading the definition. Presentation hints and advanced live components remain
+outside this schema profile. Control IDs must be unique across the whole module because ABI v1
+callbacks receive `controlId`, not a page-qualified key.
 
 ## Tests
 

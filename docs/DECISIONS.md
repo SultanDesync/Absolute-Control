@@ -151,13 +151,16 @@ visibility suspension, stale-state handling, and compound operations. They curre
 a separate experimental API so ordinary ABI v1 cannot be destabilized. Promotion, redesign, or
 removal remains open.
 
-## D-018 — Dirty close currently cancels; release UX remains open
+## D-018 — Guarded dirty navigation and close
 
-**Status:** Provisional.
+**Status:** Accepted target; modal implementation pending.
 
-The current session safely invokes provider Cancel when a dirty page closes. This prevents silent
-persistence but discards the draft without a confirmation screen. The target design calls for an
-input-complete Apply/Discard/Return modal before release.
+One menu session permits one dirty provider page. Leaving it for another page/module prompts
+Apply & Continue, Discard & Continue, or Stay. User-requested Close prompts Apply & Close, Discard
+& Close, or Stay. External destruction cannot prompt and performs one provider Cancel while its
+transaction lease is held. The subscriber retains all draft and persistence ownership; the host
+stores only dirty identity, route intent, and transaction orchestration. See
+[scalability, transactions, and teardown](SCALABILITY-TRANSACTIONS-AND-TEARDOWN.md).
 
 ## D-019 — Documentation follows executable evidence
 
@@ -228,11 +231,51 @@ The `product_version` value in `xmake.lua` is the sole product-version authority
 `ACP_PRODUCT_VERSION` from it for both public and legacy API tables; artifact-manifest generation
 reads the same value. Fixture, catalog, schema, and tool versions remain independently versioned.
 
+## D-026 — Frame-boundary model publication
+
+**Status:** Accepted and implemented for the current bridge.
+
+Commands and provider callbacks may synchronously mutate session/provider state, but replacement
+Scaleform models are coalesced and applied only from the next movie-frame acknowledgement. The
+initial no-input snapshot is the sole synchronous publication. A successful Close enters a
+terminal state and queues Hide without rebuilding the display tree. This prevents display-object
+destruction while pointer/keyboard dispatch still owns an event target.
+
+## D-027 — Lazy module directory before hundreds-scale capacity
+
+**Status:** Core representation implemented and build-verified; runtime budgets pending.
+
+The internal bridge carries a compact module directory, page metadata for the active module, and
+values/controls only for the active page. The 512-module × 3-page × 16-control fixture proves 16
+reads and 16 serialized controls rather than full-graph traversal. Registry limits are explicit;
+the 512-summary serialization and visible redraw path still require in-game frame/memory budgets.
+Provider headless ownership and the public C ABI remain independent of this view model.
+
+## D-028 — Terminal, fail-safe menu teardown
+
+**Status:** Accepted; core bridge/session behavior implemented, runtime fault injection pending.
+
+Accepted Close makes the bridge terminal: late commands cannot mutate providers, pending movie
+publications are dropped, capture ownership is cleared, and Hide is queued. External destruction
+also clears capture and relies on the session's exactly-once dirty rollback under its transaction
+lease. Dynamic plugin DLL unload remains unsupported and is separate from safe menu teardown and
+retryable subscriber unregistration.
+
+## D-029 — Linearized registry and session-scoped lifecycle
+
+**Status:** Accepted and build-verified; engine fault injection pending.
+
+Registry mutations and terminal readiness transitions recheck lifecycle under the registry lock;
+catalog graph and revision are captured at one linearized point. Provider callbacks run outside
+host locks under leases, and unregister is nonblocking/retryable while callbacks or a transaction
+are active. Refresh wakes are page-scoped except for directory mutations. Menu session state and
+Scaleform calls remain deliberately UI-thread-confined. Back-stack origin belongs to the displayed
+menu instance, and Hide/destruction share one idempotent capture/transaction teardown.
+
 ## Open decisions before SDK freeze
 
 - ABI-v1 freeze and the exact removal window for the legacy query/table prefix.
 - Whether labeled choices, strings, sections, and presentation hints extend ABI v1 or require v2.
-- Final dirty-close workflow and modal behavior.
 - Numeric editor interaction and formatting model.
 - Whether the experimental live/compound ABI is promoted, redesigned, or removed.
 - Whether eliminating CommonLibSF materially improves maintenance after the native seam stabilizes.

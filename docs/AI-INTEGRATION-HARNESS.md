@@ -94,8 +94,12 @@ Follow [the harness status](RESEARCH-HARNESS.md) and perform these gates:
    layout and interaction feel;
 8. record a keyboard chord and require the normalized binding to round-trip;
 9. validate provider-owned persisted values;
-10. close Absolute Control Panel and require gameplay to resume with PauseMenu still closed; and
-11. preserve ignored logs and screenshots on both success and failure.
+10. when opened directly/F2, close Absolute Control and require gameplay to resume with PauseMenu
+    still closed;
+11. when opened from PauseMenu, use Back and require PauseMenu to reappear, close PauseMenu, and at
+    ultrawide resolution require gameplay to resume at the pre-open aspect/scene rect; then reopen
+    from PauseMenu only after the selecting mouse button has been released; and
+12. preserve ignored logs and screenshots on both success and failure.
 
 The runtime input mailbox is independent from automatic menu opening and lives in SFSE's resolved
 log directory so it remains writable and visible after MO2 has launched. Use

@@ -7,6 +7,18 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+function Get-ResearchFileSha256 {
+    param([Parameter(Mandatory = $true)][string]$LiteralPath)
+    $stream = [IO.File]::OpenRead($LiteralPath)
+    $digest = [Security.Cryptography.SHA256]::Create()
+    try {
+        return ([BitConverter]::ToString($digest.ComputeHash($stream))).Replace('-', '')
+    } finally {
+        $digest.Dispose()
+        $stream.Dispose()
+    }
+}
+
 Add-Type -AssemblyName System.Drawing
 Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @'
 using System;
@@ -451,21 +463,10 @@ function Invoke-ResearchInput {
     Move-Item -LiteralPath $temporaryPath -Destination $script:InputPath -Force
     Write-RunnerEvent 'research_input_requested' "id=$CommandId command=$Command"
 
-    $marker = '"run_id":"{0}","event":"research_input_key_up","detail":"id={1} command={2}' -f `
-        $script:RunId, $CommandId, $Command
-    $eventLine = Wait-ForCondition -TimeoutSeconds 15 `
-        -Description "game-task input acknowledgement $CommandId/$Command" -Process $Process `
-        -Condition {
-            if (-not (Test-Path -LiteralPath $script:PluginEvidencePath)) {
-                return $false
-            }
-            $line = Get-Content -LiteralPath $script:PluginEvidencePath |
-                Where-Object { $_.Contains($marker) } | Select-Object -Last 1
-            if ($null -ne $line) { return $line }
-            return $false
-        }
-    if (-not $eventLine.Contains('sent=1 error=0')) {
-        throw "Research input failed: $eventLine"
+    $eventRecord = Wait-ForPluginEvent -Event 'research_input_key_up' `
+        -DetailContains "id=$CommandId command=$Command" -TimeoutSeconds 15 -Process $Process
+    if (-not $eventRecord.detail.Contains('sent=1 error=0')) {
+        throw "Research input failed: $($eventRecord.detail)"
     }
     Write-RunnerEvent 'research_input_acknowledged' "id=$CommandId command=$Command"
 }
@@ -478,19 +479,21 @@ function Wait-ForPluginEvent {
         [System.Diagnostics.Process]$Process
     )
 
-    $eventMarker = '"run_id":"{0}","event":"{1}"' -f $script:RunId, $Event
     return Wait-ForCondition -TimeoutSeconds $TimeoutSeconds `
         -Description "plugin event $Event" -Process $Process -Condition {
             if (-not (Test-Path -LiteralPath $script:PluginEvidencePath)) {
                 return $false
             }
-            $line = Get-Content -LiteralPath $script:PluginEvidencePath |
-                Where-Object {
-                    $_.Contains($eventMarker) -and
+            $record = Get-Content -LiteralPath $script:PluginEvidencePath |
+                ForEach-Object {
+                    try { $_ | ConvertFrom-Json } catch { $null }
+                } | Where-Object {
+                    $null -ne $_ -and $_.run_id -eq $script:RunId -and
+                    $_.event -eq $Event -and
                     ([string]::IsNullOrEmpty($DetailContains) -or
-                        $_.Contains($DetailContains))
+                        ([string]$_.detail).Contains($DetailContains))
                 } | Select-Object -Last 1
-            if ($null -ne $line) { return $line }
+            if ($null -ne $record) { return $record }
             return $false
         }
 }
@@ -550,8 +553,8 @@ if ($manifest.addressLibraryFile) {
     if (-not (Test-Path -LiteralPath $manifest.addressLibraryFile -PathType Leaf)) {
         throw "Address Library preflight failed: missing $($manifest.addressLibraryFile)"
     }
-    $addressLibraryHash =
-        (Get-FileHash -Algorithm SHA256 -LiteralPath $manifest.addressLibraryFile).Hash
+    $addressLibraryHash = Get-ResearchFileSha256 `
+        -LiteralPath $manifest.addressLibraryFile
     Write-RunnerEvent 'address_library_present' (
         "path=$($manifest.addressLibraryFile) sha256=$addressLibraryHash")
 }
@@ -601,7 +604,7 @@ try {
 
     $documents = [Environment]::GetFolderPath('MyDocuments')
     $pluginEvidencePath = Join-Path $documents (
-        'My Games\Starfield\SFSE\Logs\AbsoluteControlPanelResearch.evidence.jsonl')
+        'My Games\Starfield\SFSE\Logs\AbsoluteControlPanel.evidence.jsonl')
     $script:PluginEvidencePath = $pluginEvidencePath
     Write-RunnerEvent 'launch_requested' "shortcut=$($manifest.shortcut)"
     Start-Process -FilePath $manifest.shortcut | Out-Null
@@ -643,17 +646,10 @@ try {
         [System.Text.UTF8Encoding]::new($false))
     Write-RunnerEvent 'title_advance_request_written' $advancePath
 
-    $sendInputMarker = '"run_id":"{0}","event":"title_enter_key_up"' -f $runId
-    $sendInputEvent = Wait-ForCondition -TimeoutSeconds 30 `
-        -Description 'plugin-side title Enter pulse' -Process $starfield -Condition {
-            if (-not (Test-Path -LiteralPath $pluginEvidencePath)) { return $false }
-            $eventLine = Get-Content -LiteralPath $pluginEvidencePath |
-                Where-Object { $_.Contains($sendInputMarker) } | Select-Object -Last 1
-            if ($null -ne $eventLine) { return $eventLine }
-            return $false
-        }
-    if (-not $sendInputEvent.Contains('sent=1 error=0')) {
-        throw "Plugin-side Enter pulse failed: $sendInputEvent"
+    $sendInputEvent = Wait-ForPluginEvent -Event 'title_enter_key_up' `
+        -DetailContains '' -TimeoutSeconds 30 -Process $starfield
+    if (-not $sendInputEvent.detail.Contains('sent=1 error=0')) {
+        throw "Plugin-side Enter pulse failed: $($sendInputEvent.detail)"
     }
     Write-RunnerEvent 'title_enter_sent' 'method=plugin_game_task_scan_code'
 
@@ -705,28 +701,16 @@ try {
     Start-Sleep -Milliseconds $loadWaitMilliseconds
     Invoke-ResearchInput -CommandId 4 -Command 'pause' -Process $starfield
 
-    $pauseMarker = '"run_id":"{0}","event":"research_pause_state","detail":"id=4 open=true"' -f $runId
-    Wait-ForCondition -TimeoutSeconds 15 -Description 'PauseMenu open state' `
-        -Process $starfield -Condition {
-            if (-not (Test-Path -LiteralPath $pluginEvidencePath)) { return $false }
-            $content = Get-Content -Raw -LiteralPath $pluginEvidencePath
-            if ($content.Contains($pauseMarker)) { return $true }
-            return $false
-        } | Out-Null
+    Wait-ForPluginEvent -Event 'research_pause_state' -DetailContains 'id=4 open=true' `
+        -TimeoutSeconds 15 -Process $starfield | Out-Null
     Write-RunnerEvent 'pause_menu_confirmed'
     Invoke-StepTone -Frequency 880
     $pauseCheckpointPath = Join-Path $runDirectory 'pause-menu.png'
     Save-WindowScreenshot -Process $starfield -Path $pauseCheckpointPath
 
     Invoke-ResearchInput -CommandId 5 -Command 'pause' -Process $starfield
-    $pauseClosedMarker = '"run_id":"{0}","event":"research_pause_state","detail":"id=5 open=false"' -f $runId
-    Wait-ForCondition -TimeoutSeconds 15 -Description 'PauseMenu closed state' `
-        -Process $starfield -Condition {
-            if (-not (Test-Path -LiteralPath $pluginEvidencePath)) { return $false }
-            $content = Get-Content -Raw -LiteralPath $pluginEvidencePath
-            if ($content.Contains($pauseClosedMarker)) { return $true }
-            return $false
-        } | Out-Null
+    Wait-ForPluginEvent -Event 'research_pause_state' -DetailContains 'id=5 open=false' `
+        -TimeoutSeconds 15 -Process $starfield | Out-Null
     Write-RunnerEvent 'pause_menu_closed_before_custom_menu'
 
     $armPath = Join-Path (Split-Path -Parent $pluginEvidencePath) (
@@ -737,14 +721,20 @@ try {
         [System.Text.UTF8Encoding]::new($false))
     Write-RunnerEvent 'experiment_arm_written' $armPath
 
-    $movieMarker = '"run_id":"{0}","event":"movie_load_result","detail":"loaded=true"' -f $runId
     $sentinelProbePath = Join-Path $runDirectory 'sentinel-probe.png'
     $script:NextSentinelSample = [DateTime]::UtcNow
     $movieOracle = Wait-ForCondition -TimeoutSeconds $manifest.movieTimeoutSeconds `
         -Description 'successful native menu movie load' -Process $starfield -Condition {
             if (Test-Path -LiteralPath $pluginEvidencePath) {
-                $content = Get-Content -Raw -LiteralPath $pluginEvidencePath
-                if ($content.Contains($movieMarker)) { return 'plugin_movie_event' }
+                $movieEvent = Get-Content -LiteralPath $pluginEvidencePath |
+                    ForEach-Object {
+                        try { $_ | ConvertFrom-Json } catch { $null }
+                    } | Where-Object {
+                        $null -ne $_ -and $_.run_id -eq $script:RunId -and
+                        $_.event -eq 'movie_load_result' -and
+                        ([string]$_.detail).Contains('loaded=true')
+                    } | Select-Object -Last 1
+                if ($null -ne $movieEvent) { return 'plugin_movie_event' }
             }
             if ([DateTime]::UtcNow -ge $script:NextSentinelSample) {
                 $script:NextSentinelSample = [DateTime]::UtcNow.AddMilliseconds(
@@ -775,12 +765,15 @@ try {
     }
 
     Wait-ForPluginEvent -Event 'bridge_model_applied' `
-        -DetailContains 'revision=' -TimeoutSeconds 10 -Process $starfield | Out-Null
+        -DetailContains 'generation=' -TimeoutSeconds 10 -Process $starfield | Out-Null
+    Wait-ForPluginEvent -Event 'bridge_model_published' `
+        -DetailContains 'populated=true invoked=true' -TimeoutSeconds 10 `
+        -Process $starfield | Out-Null
     Write-RunnerEvent 'initial_model_round_trip_confirmed'
 
     if ($manualValidation) {
         Write-RunnerEvent 'manual_validation_ready' (
-            'SLOP is populated; Q/R page, W/S row, E activate, A/D adjust, F apply, X cancel, Esc close')
+            'Absolute Control Panel is populated; Q/R page, W/S row, E activate, A/D adjust, F apply, X cancel, Esc close')
         Invoke-StepTone -Frequency 1320
         return
     }
@@ -810,15 +803,8 @@ try {
         -DetailContains 'open=false' -TimeoutSeconds 10 -Process $starfield | Out-Null
     Write-RunnerEvent 'explicit_close_confirmed' 'pause_menu_open=false gameplay_resumed=true'
 
-    $watchdogMarker = '"run_id":"{0}","event":"watchdog_fired"' -f $runId
-    Wait-ForCondition -TimeoutSeconds $manifest.watchdogTimeoutSeconds `
-        -Description 'native menu watchdog close' -Process $starfield -Condition {
-            if (Test-Path -LiteralPath $pluginEvidencePath) {
-                $content = Get-Content -Raw -LiteralPath $pluginEvidencePath
-                if ($content.Contains($watchdogMarker)) { return $true }
-            }
-            return $false
-        } | Out-Null
+    Wait-ForPluginEvent -Event 'watchdog_fired' -DetailContains '' `
+        -TimeoutSeconds $manifest.watchdogTimeoutSeconds -Process $starfield | Out-Null
     Write-RunnerEvent 'watchdog_seen'
 
     $matchingEvidence = Get-Content -LiteralPath $pluginEvidencePath |

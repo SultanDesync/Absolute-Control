@@ -1,8 +1,9 @@
 # Live and compound components
 
-> **Status:** Experimental headless protocol and target renderer design. Registry and contract tests
-> exist, but MenuSession and the Scaleform movie do not yet consume this API. It is not part of the
-> public provider ABI candidate.
+> **Status:** Product-integrated ABI candidate. The registry, MenuSession transaction lane, native
+> bridge, and Scaleform renderer consume the segmented allocation grid for Absolute Power. Range
+> meters and telemetry plots remain headless/tested contracts without product renderers. The export
+> retains its experimental name until ABI freeze and in-game performance/accessibility acceptance.
 
 ## Feasibility conclusion
 
@@ -50,14 +51,20 @@ has a semantic state, preview state, live state, and optional interaction. This 
 Power's six ship systems and up to 32 pips per system:
 
 - hollow, green, yellow, and red allocation tiers;
-- live powered/current indication;
-- target-preview indication;
+- explicit Green-first, Yellow-after-Green, Red-last semantics;
+- cyan-outline live powered/current indication;
+- gold-tick target-preview indication;
 - per-column current, maximum, and target labels;
-- add-tier selection; and
+- per-system G/Y/R requested-count labels and add-tier selection; and
 - click/keyboard/controller operations to add, trim, or change tier.
 
-The renderer creates the bounded sprite pool once, then changes visibility and state. It does not
-recreate hundreds of text fields and buttons for every live frame.
+The current renderer rebuilds the visible six-by-32 display from a bounded copied model at a
+low-rate Power cadence. Selecting a hollow pip fills through that position with the chosen tier;
+selecting a filled pip trims that position and everything above it. Power's companion 18 integer
+sliders expose the same exact tier counts to keyboard navigation. A current Starfield run registered
+the channel as ready and published the Power route; pointer behavior, persistence, controller
+routing, and frame-time measurement remain qualification work. Pool reuse remains a performance
+optimization required before the public SDK freezes.
 
 ## Live-data lane
 
@@ -65,9 +72,9 @@ A provider registers a live channel associated with a page/component. The host p
 that page is visible and the menu is active. A callback copies the latest fixed-capacity POD frame
 without blocking, allocating, accessing disk, or traversing unsafe gameplay objects.
 
-The host publishes a targeted live update such as `applyLiveFrame(channelId, revision, frame)` to
-the owning component. Full page descriptors and ordinary configuration values remain on the
-immutable model lane.
+The host polls only the visible route, copies the latest frame into the immutable page model, and
+coalesces replacement publication at the existing ActionScript frame boundary. Full page
+descriptors and ordinary configuration values remain on the configuration model lane.
 
 Initial policy targets are:
 
@@ -97,9 +104,11 @@ The provider validates the operation, mutates its draft, computes any allocation
 returns a replacement compound snapshot. The host never edits a provider-owned preset structure
 directly.
 
-Before the public SDK freezes, these events and snapshots require a versioned compound-control ABI.
-Packing an allocation grid into hundreds of unrelated scalar controls or an opaque unvalidated
-string is explicitly rejected.
+These events and snapshots now use the sized v1 live-component ABI. A successful compound edit
+first attaches the ordinary page transaction token, so unregister is pinned and the same page
+Apply/Cancel/teardown callbacks commit or roll back both scalar and compound drafts. Packing an
+allocation grid into hundreds of unrelated scalar controls or an opaque unvalidated string
+remains explicitly rejected.
 
 ## Performance proof
 

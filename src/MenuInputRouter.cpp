@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cmath>
 #include <ranges>
-#include <vector>
 
 namespace AbsoluteControlPanelResearch::MenuInputRouter
 {
@@ -46,42 +45,16 @@ namespace AbsoluteControlPanelResearch::MenuInputRouter
                 static_cast<std::size_t>(std::distance(a_model.pages.begin(), found));
         }
 
-        [[nodiscard]] std::vector<std::size_t> ModulePageStarts(
-            const MenuSession::Model& a_model)
+        [[nodiscard]] std::size_t ActiveModuleIndex(
+            const MenuSession::Model& a_model) noexcept
         {
-            std::vector<std::size_t> starts;
-            starts.reserve(a_model.pages.size());
-            for (std::size_t index = 0; index < a_model.pages.size(); ++index) {
-                const auto& candidate = a_model.pages[index];
-                const auto known = std::ranges::any_of(starts, [&](std::size_t start) {
-                    return a_model.pages[start].moduleId == candidate.moduleId;
+            const auto found = std::ranges::find_if(
+                a_model.modules, [&](const MenuSession::Module& a_module) {
+                    return a_module.moduleId == a_model.activeModuleId;
                 });
-                if (!known) {
-                    starts.push_back(index);
-                }
-            }
-            return starts;
-        }
-
-        [[nodiscard]] std::vector<std::size_t> ModulePages(
-            const MenuSession::Model& a_model, std::string_view a_moduleId)
-        {
-            std::vector<std::size_t> pages;
-            pages.reserve(a_model.pages.size());
-            for (std::size_t index = 0; index < a_model.pages.size(); ++index) {
-                if (a_model.pages[index].moduleId == a_moduleId) {
-                    pages.push_back(index);
-                }
-            }
-            return pages;
-        }
-
-        [[nodiscard]] std::size_t PositionOf(
-            const std::vector<std::size_t>& a_indexes, std::size_t a_index) noexcept
-        {
-            const auto found = std::ranges::find(a_indexes, a_index);
-            return found == a_indexes.end() ? 0 :
-                static_cast<std::size_t>(std::distance(a_indexes.begin(), found));
+            return found == a_model.modules.end() ? 0 :
+                static_cast<std::size_t>(
+                    std::distance(a_model.modules.begin(), found));
         }
 
         [[nodiscard]] std::size_t SelectedControlIndex(
@@ -101,6 +74,16 @@ namespace AbsoluteControlPanelResearch::MenuInputRouter
             command.kind = a_kind;
             command.moduleId = a_page.moduleId;
             command.pageId = a_page.pageId;
+            return command;
+        }
+
+        [[nodiscard]] MenuSession::Command ModuleCommand(
+            const MenuSession::Module& a_module)
+        {
+            MenuSession::Command command;
+            command.kind = MenuSession::CommandKind::SelectPage;
+            command.moduleId = a_module.moduleId;
+            command.pageId = a_module.firstPageId;
             return command;
         }
 
@@ -163,6 +146,10 @@ namespace AbsoluteControlPanelResearch::MenuInputRouter
                 return ControlCommand(
                     MenuSession::CommandKind::BeginBindingCapture, a_page, a_control);
             }
+            if (a_control.descriptor.kind == SlopApi::ControlKind::TextInput) {
+                return ControlCommand(
+                    MenuSession::CommandKind::BeginTextCapture, a_page, a_control);
+            }
             return Adjust(a_page, a_control, 1);
         }
 
@@ -184,7 +171,8 @@ namespace AbsoluteControlPanelResearch::MenuInputRouter
 
     bool IsMenuKey(std::int32_t a_keyCode) noexcept
     {
-        return a_keyCode == kEscape || IsAccept(a_keyCode) || IsUp(a_keyCode) ||
+        return a_keyCode == kEscape || a_keyCode == kTab ||
+               IsAccept(a_keyCode) || IsUp(a_keyCode) ||
                IsDown(a_keyCode) || IsLeft(a_keyCode) || IsRight(a_keyCode) ||
                a_keyCode == kDecrease || a_keyCode == kIncrease ||
                a_keyCode == kPreviousPage || a_keyCode == kNextPage ||
@@ -199,7 +187,7 @@ namespace AbsoluteControlPanelResearch::MenuInputRouter
         if (!result.handled) {
             return result;
         }
-        if (a_keyCode == kEscape) {
+        if (a_keyCode == kEscape || a_keyCode == kTab) {
             MenuSession::Command command;
             command.kind = MenuSession::CommandKind::Close;
             result.command = std::move(command);
@@ -217,15 +205,13 @@ namespace AbsoluteControlPanelResearch::MenuInputRouter
             return result;
         }
         if (a_keyCode == kPreviousPage || a_keyCode == kNextPage) {
-            const auto modulePages = ModulePages(a_model, page.moduleId);
-            const auto pageCount = modulePages.size();
-            const auto pagePosition = PositionOf(modulePages, pageIndex);
+            const auto pageCount = a_model.pages.size();
             const auto target = a_keyCode == kPreviousPage ?
-                (pagePosition + pageCount - 1) % pageCount :
-                (pagePosition + 1) % pageCount;
+                (pageIndex + pageCount - 1) % pageCount :
+                (pageIndex + 1) % pageCount;
             result.focus.region = FocusRegion::Controls;
             result.command = PageCommand(
-                MenuSession::CommandKind::SelectPage, a_model.pages[modulePages[target]]);
+                MenuSession::CommandKind::SelectPage, a_model.pages[target]);
             return result;
         }
 
@@ -244,17 +230,14 @@ namespace AbsoluteControlPanelResearch::MenuInputRouter
         }
 
         if (result.focus.region == FocusRegion::Modules) {
-            if (IsUp(a_keyCode) || IsDown(a_keyCode)) {
-                const auto moduleStarts = ModulePageStarts(a_model);
-                const auto moduleCount = moduleStarts.size();
-                const auto modulePosition = PositionOf(moduleStarts,
-                    ModulePages(a_model, page.moduleId).front());
+            if ((IsUp(a_keyCode) || IsDown(a_keyCode)) &&
+                !a_model.modules.empty()) {
+                const auto moduleCount = a_model.modules.size();
+                const auto modulePosition = ActiveModuleIndex(a_model);
                 const auto target = IsUp(a_keyCode) ?
                     (modulePosition + moduleCount - 1) % moduleCount :
                     (modulePosition + 1) % moduleCount;
-                result.command = PageCommand(
-                    MenuSession::CommandKind::SelectPage,
-                    a_model.pages[moduleStarts[target]]);
+                result.command = ModuleCommand(a_model.modules[target]);
             }
             return result;
         }

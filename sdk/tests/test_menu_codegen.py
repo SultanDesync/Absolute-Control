@@ -59,6 +59,32 @@ class MenuCodegenTests(unittest.TestCase):
         with self.assertRaisesRegex(menu_codegen.ValidationError, "minimum must be less"):
             menu_codegen.load(FIXTURES / "invalid-bounds.menu.json")
 
+    def test_module_control_capacity_fails_before_generation(self):
+        valid = menu_codegen.load(EXAMPLE)
+        candidate = copy.deepcopy(valid)
+        template = candidate["pages"][0]["sections"][0]["options"][0]
+        candidate["pages"] = []
+        for page_index in range(5):
+            options = []
+            for control_index in range(128):
+                option = copy.deepcopy(template)
+                option["id"] = f"value.{page_index}.{control_index}"
+                options.append(option)
+            candidate["pages"].append({
+                "id": f"page.{page_index}",
+                "title": f"Page {page_index}",
+                "sections": [{
+                    "id": "main",
+                    "title": "Main",
+                    "options": options,
+                }],
+            })
+        with self.assertRaisesRegex(
+            menu_codegen.ValidationError,
+            "module exceeds the ABI-v1 limit of 512 controls",
+        ):
+            menu_codegen.validate(candidate)
+
     def test_check_mode_detects_stale_output(self):
         with tempfile.TemporaryDirectory() as directory:
             stale = pathlib.Path(directory) / "stale.h"

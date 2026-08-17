@@ -12,12 +12,16 @@
 
 namespace AbsoluteControlPanelResearch::MenuApiHost
 {
-    // These are both registry and render-model limits. Registration rejects a
-    // descriptor graph that the v1 menu cannot render in full.
-    inline constexpr std::size_t kMaximumModules = 32;
-    inline constexpr std::size_t kMaximumPages = 32;
+    // Registration remains explicitly bounded, but the render snapshot carries
+    // controls for the active page only. This keeps ordinary UI work independent
+    // of the total registered control count while admitting the documented
+    // hundreds-of-subscribers test envelope.
+    inline constexpr std::size_t kMaximumModules = 512;
+    inline constexpr std::size_t kMaximumPages = 2048;
+    inline constexpr std::size_t kMaximumPagesPerModule = 32;
     inline constexpr std::size_t kMaximumControlsPerPage = 128;
-    inline constexpr std::size_t kMaximumControls = 512;
+    inline constexpr std::size_t kMaximumControlsPerModule = 512;
+    inline constexpr std::size_t kMaximumControls = 32768;
 
     enum class HostLifecycle : std::uint32_t
     {
@@ -40,6 +44,12 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
         double stepValue{};
     };
 
+    struct ChoiceOption
+    {
+        std::int64_t value{};
+        std::string label;
+    };
+
     struct Page
     {
         std::string moduleId;
@@ -51,10 +61,27 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
         bool canInvokeAction{};
         bool canApply{};
         bool canCancel{};
+        std::uint64_t refreshRevision{};
 
         // Opaque shared ownership keeps copied page snapshots safe across
         // concurrent registry mutation. Callbacks are intentionally not exposed.
         std::shared_ptr<ProviderState> provider;
+    };
+
+    struct ModuleSummary
+    {
+        std::string moduleId;
+        std::string displayName;
+        std::string firstPageId;
+    };
+
+    struct CatalogSnapshot
+    {
+        // Captured under the same registry lock as pages, so the graph and its
+        // revision always describe one linearized point in time.
+        std::uint64_t revision{};
+        std::vector<ModuleSummary> modules;
+        std::vector<Page> pages;
     };
 
     // A successful draft write attaches the UI session to its provider. The
@@ -77,18 +104,27 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
         friend AbsoluteControlPanelApi::Result WriteDraft(
             const Page&, std::string_view, const AbsoluteControlPanelApi::ValueV1&,
             Transaction&) noexcept;
+        friend AbsoluteControlPanelApi::Result AttachTransaction(
+            const Page&, Transaction&) noexcept;
         std::shared_ptr<ProviderState> provider_;
     };
 
     [[nodiscard]] std::optional<Page> FindPage(
         std::string_view a_moduleId, std::string_view a_pageId) noexcept;
-    [[nodiscard]] std::vector<Page> Pages() noexcept;
+    // Copies the module directory, page metadata for the selected module, and
+    // controls/provider for the selected page only. If the requested route no
+    // longer exists, the nearest module page or first registered page is used.
+    [[nodiscard]] CatalogSnapshot SnapshotCatalog(
+        std::string_view a_moduleId, std::string_view a_pageId) noexcept;
     [[nodiscard]] std::uint64_t Revision() noexcept;
 
     // requestRefresh has its own cursor so the active menu can consume a wakeup
     // exactly once and republish a model. Poll this on the UI/game thread.
     [[nodiscard]] std::uint64_t RefreshRevision() noexcept;
     [[nodiscard]] bool ConsumeRefresh(std::uint64_t& a_cursor) noexcept;
+    [[nodiscard]] bool ConsumeRefresh(std::uint64_t& a_cursor,
+        std::string_view a_activeModuleId,
+        std::string_view a_activePageId) noexcept;
 
     // Provider callbacks must only be invoked through these lease-acquiring
     // functions. They never run under the registry or provider-state mutex.
@@ -96,9 +132,20 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
     // callbacks short and must not call Starfield UI functions from them.
     [[nodiscard]] AbsoluteControlPanelApi::Result ReadValue(const Page& a_page,
         std::string_view a_controlId, AbsoluteControlPanelApi::ValueV1& a_value) noexcept;
+    [[nodiscard]] AbsoluteControlPanelApi::Result ReadChoiceOptions(
+        const Page& a_page, std::string_view a_controlId,
+        std::vector<ChoiceOption>& a_options) noexcept;
     [[nodiscard]] AbsoluteControlPanelApi::Result WriteDraft(const Page& a_page,
         std::string_view a_controlId, const AbsoluteControlPanelApi::ValueV1& a_value,
         Transaction& a_transaction) noexcept;
+    [[nodiscard]] AbsoluteControlPanelApi::Result WriteTransientChoice(
+        const Page& a_page, std::string_view a_controlId,
+        const AbsoluteControlPanelApi::ValueV1& a_value) noexcept;
+    // Compound components mutate the same provider-owned page draft without a
+    // scalar WriteDraft callback. Attach first so unregister remains blocked
+    // until page Apply/Cancel or teardown releases the transaction.
+    [[nodiscard]] AbsoluteControlPanelApi::Result AttachTransaction(
+        const Page& a_page, Transaction& a_transaction) noexcept;
     [[nodiscard]] AbsoluteControlPanelApi::Result InvokeAction(const Page& a_page,
         std::string_view a_controlId) noexcept;
     [[nodiscard]] AbsoluteControlPanelApi::Result Apply(const Page& a_page) noexcept;

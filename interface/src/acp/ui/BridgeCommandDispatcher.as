@@ -43,5 +43,16 @@ package acp.ui
             bridge.dispatch(1, command, moduleId, pageId, controlId, valueKind,
                 booleanValue, integerValue, floatValue, "", expectedGeneration);
         }
+
+        public function sendCompound(model:Object, current:Object,
+            component:Object, operationKind:uint, columnId:String,
+            tierId:String, count:uint):void
+        {
+            if (model == null || current == null || component == null ||
+                bridge == null || bridge.compound == null) return;
+            bridge.compound(1, String(current.moduleId), String(current.pageId),
+                String(component.channelId), String(component.controlId), columnId,
+                tierId, operationKind, count, Number(model.generation));
+        }
     }
 }

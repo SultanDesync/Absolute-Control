@@ -17,6 +17,18 @@ function Write-Utf8File {
     [IO.File]::WriteAllText($Path, $Contents, [Text.UTF8Encoding]::new($false))
 }
 
+function Get-FixtureSha256 {
+    param([Parameter(Mandatory = $true)][string]$LiteralPath)
+    $stream = [IO.File]::OpenRead($LiteralPath)
+    $digest = [Security.Cryptography.SHA256]::Create()
+    try {
+        return ([BitConverter]::ToString($digest.ComputeHash($stream))).Replace('-', '')
+    } finally {
+        $digest.Dispose()
+        $stream.Dispose()
+    }
+}
+
 function Assert-Throws {
     param([scriptblock]$Action, [string]$Pattern)
     try {
@@ -49,8 +61,8 @@ try {
     $helperContents = 'package acp.ui { public class FixtureHelper {} }'
     Write-Utf8File $helperSource $helperContents
     Write-Utf8File $movie 'canonical-swf-fixture'
-    $sourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $source).Hash
-    $movieHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $movie).Hash
+    $sourceHash = Get-FixtureSha256 -LiteralPath $source
+    $movieHash = Get-FixtureSha256 -LiteralPath $movie
     $sourceProvenance = Get-ActionScriptSourceProvenance `
         -SourceRoot (Join-Path $fixtureRoot 'interface\src')
     $canonicalMetadata = [ordered]@{

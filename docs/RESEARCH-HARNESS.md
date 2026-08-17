@@ -68,6 +68,11 @@ ResearchDev registers an independent two-line mailbox in SFSE's resolved log dir
 allow-listed command. The helper assigns an ID atomically and requires accepted and completed
 evidence. It does not accept arbitrary keys or code.
 
+The current evidence filename is `AbsoluteControlPanel.evidence.jsonl` for both canonical and
+ResearchDev hosts. ResearchDev starts only the bounded title-advance watcher before PostDataLoad;
+the remaining experiment services still wait for normal runtime initialization. Runner event
+matching parses JSON fields and must not depend on serialization field order.
+
 Current commands are:
 
 - `menu_up`, `nav_down`, `nav_left`, `nav_right`, and `accept`;
@@ -85,24 +90,32 @@ additive PauseMenu entry with F2 fallback.
 This is the efficient lifecycle regression path when the DLL and SWF are unchanged. Plugin or SWF
 changes still require a Starfield restart because both binaries are cached by the process.
 
+`run-probe.ps1` is the current supervised cold-start cycle. Invoke `run-probe.cmd` (or explicitly
+use Windows PowerShell) with an ignored local manifest; the embedded `System.Drawing` helper is not
+PowerShell 7 compatible. It validates the ResearchDev manifest, deploys
+the exact DLL/SWF pair, launches the shortcut, advances the title screen through bounded commands,
+loads the retained safe save, opens the native movie, and requires structural
+`bridge_model_applied` plus populated `bridge_model_published` evidence. Manual mode returns with
+the game retained; `visibleMilliseconds` remains bounded to 15 minutes so the ResearchDev watchdog
+still provides eventual recovery. A magenta pixel threshold of zero disables the archived visual
+sentinel requirement; semantic movie/bridge evidence remains authoritative.
+
 The lifecycle-owned implementation has completed 25 consecutive isolated cycles. New runtime
 support must repeat that test according to [the update runbook](RUNTIME-UPDATE-RUNBOOK.md).
 
 ## Current process versus archived v1
 
 `tools/process/validate-current.cmd` is the maintained process. On the audited tree it passed the
-release build, 8/8 native tests, 6 SDK tests, generated fixture check/compile, 25-entry catalogue,
+release build, 9/9 native tests, 7 SDK tests, generated fixture check/compile, 26-entry catalogue,
 ten-source SWF provenance, artifact fixtures, canonical manifest, and compatibility ZIP. It always
 reports runtime/UX `not_run`.
 
 The disposable builder-v1 contract lives under `tools/process/legacy/v1` and requires explicit
 opt-in. Root-level builder phase commands remain only to interpret historical run artifacts.
-`run-probe.ps1` likewise retains useful screenshot/process logic but is not a current pass gate:
-
-- it requires the magenta framebuffer sentinel removed from the current SWF;
-- it retains SLOP-era naming and synthetic-provider assumptions;
-- it assumes the research title/Continue sequence as the default validation path; and
-- it follows the archived title/Continue/sentinel scenario rather than the current process.
+`run-probe.ps1` is current ResearchDev runtime tooling but is not part of the automated product
+pass gate: it launches the local game/profile, uses research-only bounded input and screenshots,
+and still requires human judgment for UX. Its semantic model/movie checks do not restore or depend
+on the archived permanent magenta sentinel.
 
 Do not translate a v1 phase/result into current product evidence. Do not restore a permanent
 magenta square to satisfy its old oracle; a future visual oracle must be explicit development-only

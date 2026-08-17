@@ -4,6 +4,9 @@
 #include "MenuApiHost.h"
 #include "SlopAPI.h"
 
+#include <REX/W32/XINPUT.h>
+#include <SFSE/InputMap.h>
+
 #include <algorithm>
 #include <cmath>
 #include <format>
@@ -22,11 +25,49 @@ namespace AbsoluteControlPanelResearch::Input
         captureAwaitingRelease_ = a_awaitingRelease;
     }
 
+    void NativeMenuInputAdapter::BeginTextCapture(bool a_awaitingRelease) noexcept
+    {
+        captureAwaitingRelease_ = a_awaitingRelease;
+    }
+
     bool NativeMenuInputAdapter::HandleButtonInput(
         const RE::ButtonEvent& a_event, NativeMenuInputSink& a_sink)
     {
         auto& session = a_sink.InputSession();
         auto& inputFocus = a_sink.InputFocus();
+        if (a_event.deviceType == RE::InputEvent::DeviceType::kGamepad) {
+            const bool isBack =
+                a_event.idCode == REX::W32::XINPUT_GAMEPAD_B ||
+                a_event.idCode == SFSE::InputMap::kGamepadButtonOffset_B;
+            if (!isBack) {
+                return false;
+            }
+
+            const bool down = a_event.value > 0.0F;
+            const bool pressed = down && !gamepadBackDown_;
+            gamepadBackDown_ = down;
+            if (!pressed) {
+                return true;
+            }
+            if (session.IsCaptureActive()) {
+                const bool textCapture = session.IsTextCaptureActive();
+                const auto model = textCapture ?
+                    session.CancelTextCapture() : session.CancelBindingCapture();
+                MenuApiHost::SetInputCaptureActive(false);
+                EvidenceLog::Event(
+                    textCapture ? "text_capture_cancelled" :
+                                  "binding_capture_cancelled",
+                    "source=controller");
+                a_sink.PublishInputModel(model);
+                return true;
+            }
+
+            MenuSession::Command command;
+            command.kind = MenuSession::CommandKind::Close;
+            EvidenceLog::Event("bridge_close", "native controller requested close");
+            a_sink.DispatchInputCommand(command, "close", "native-controller");
+            return true;
+        }
         if (a_event.deviceType == RE::InputEvent::DeviceType::kMouse) {
             if (a_event.idCode != kMouseWheelUpIdCode &&
                 a_event.idCode != kMouseWheelDownIdCode) {
@@ -120,6 +161,49 @@ namespace AbsoluteControlPanelResearch::Input
             return true;
         }
 
+        if (session.IsTextCaptureActive()) {
+            if (captureAwaitingRelease_) {
+                if (std::ranges::none_of(keyDown_, [](bool a_down) { return a_down; })) {
+                    captureAwaitingRelease_ = false;
+                    EvidenceLog::Event(
+                        "text_capture_armed", "all initiating keys released");
+                }
+                return true;
+            }
+            if (!pressed) return true;
+            if (a_event.idCode == VK_ESCAPE) {
+                const auto model = session.CancelTextCapture();
+                MenuApiHost::SetInputCaptureActive(false);
+                EvidenceLog::Event("text_capture_cancelled", "source=keyboard");
+                a_sink.PublishInputModel(model);
+                return true;
+            }
+            if (a_event.idCode == VK_RETURN) {
+                const auto model = session.CompleteTextCapture();
+                if (!model.textCaptureActive) {
+                    MenuApiHost::SetInputCaptureActive(false);
+                }
+                EvidenceLog::Event(
+                    model.error.empty() ? "text_capture_completed" :
+                                          "text_capture_rejected",
+                    std::format("source=keyboard error={}", model.error));
+                a_sink.PublishInputModel(model);
+                return true;
+            }
+            if (a_event.idCode == VK_BACK) {
+                a_sink.PublishInputModel(session.BackspaceTextCapture());
+                return true;
+            }
+            if (IsModifierVirtualKey(a_event.idCode)) return true;
+            const auto character = TextCharacter(
+                a_event.idCode,
+                IsCapturedModifierDown(VK_SHIFT, VK_LSHIFT, VK_RSHIFT));
+            if (character) {
+                a_sink.PublishInputModel(session.AppendTextCapture(*character));
+            }
+            return true;
+        }
+
         if (!MenuInputRouter::IsMenuKey(a_event.idCode)) {
             return false;
         }
@@ -177,6 +261,35 @@ namespace AbsoluteControlPanelResearch::Input
             a_virtualKey == VK_RWIN;
     }
 
+    std::optional<char> NativeMenuInputAdapter::TextCharacter(
+        std::int32_t a_virtualKey, bool a_shift) noexcept
+    {
+        if (a_virtualKey >= 'A' && a_virtualKey <= 'Z') {
+            const auto upper = static_cast<char>(a_virtualKey);
+            return a_shift ? upper : static_cast<char>(upper - 'A' + 'a');
+        }
+        if (a_virtualKey >= '0' && a_virtualKey <= '9') {
+            constexpr std::string_view shifted{")!@#$%^&*("};
+            return a_shift ? shifted[static_cast<std::size_t>(a_virtualKey - '0')] :
+                             static_cast<char>(a_virtualKey);
+        }
+        switch (a_virtualKey) {
+        case VK_SPACE: return ' ';
+        case VK_OEM_1: return a_shift ? ':' : ';';
+        case VK_OEM_PLUS: return a_shift ? '+' : '=';
+        case VK_OEM_COMMA: return a_shift ? '<' : ',';
+        case VK_OEM_MINUS: return a_shift ? '_' : '-';
+        case VK_OEM_PERIOD: return a_shift ? '>' : '.';
+        case VK_OEM_2: return a_shift ? '?' : '/';
+        case VK_OEM_3: return a_shift ? '~' : '`';
+        case VK_OEM_4: return a_shift ? '{' : '[';
+        case VK_OEM_5: return a_shift ? '|' : '\\';
+        case VK_OEM_6: return a_shift ? '}' : ']';
+        case VK_OEM_7: return a_shift ? '"' : '\'';
+        default: return std::nullopt;
+        }
+    }
+
     std::string_view NativeMenuInputAdapter::CommandName(
         MenuSession::CommandKind a_kind) noexcept
     {
@@ -186,6 +299,7 @@ namespace AbsoluteControlPanelResearch::Input
         case MenuSession::CommandKind::Write: return "write";
         case MenuSession::CommandKind::Invoke: return "invoke";
         case MenuSession::CommandKind::BeginBindingCapture: return "beginBindingCapture";
+        case MenuSession::CommandKind::BeginTextCapture: return "beginTextCapture";
         case MenuSession::CommandKind::Apply: return "apply";
         case MenuSession::CommandKind::Cancel: return "cancel";
         case MenuSession::CommandKind::Close: return "close";

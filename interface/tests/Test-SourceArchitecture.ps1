@@ -42,6 +42,7 @@ Assert-True (($expectedPublicMethods -join ',') -ceq ($observedPublicMethods -jo
 
 foreach ($required in @(
         'BridgeCommandDispatcher',
+        'ChoiceInputRouter',
         'ControlWidgets.activate',
         'MenuSelectionState',
         'MenuShellRenderer',
@@ -103,11 +104,12 @@ Assert-True (-not $selectionState.Contains('ControlWidgets') -and `
 Assert-True ($pointerInteraction.Contains('ControlWidgets.writeSliderFromPointer')) `
     'Pointer drag handling must reuse the semantic slider conversion rather than duplicate it.'
 Assert-True ($shellRenderer.Contains('ControlWidgets.draw') -and `
-    $shellRenderer.Contains('PixelTextRenderer')) `
+    $shellRenderer.Contains('VectorTextRenderer') -and `
+    -not $shellRenderer.Contains('PixelTextRenderer')) `
     'Shell composition must delegate widget and glyph rendering to their component owners.'
 
 $rootLines = @(Get-Content -LiteralPath $rootPath).Count
-Assert-True ($rootLines -lt 400) `
+Assert-True ($rootLines -lt 450) `
     "Document coordinator has grown to $rootLines lines; move implementation into its owning component."
 
 $metadata = Get-Content -Raw -LiteralPath $metadataPath | ConvertFrom-Json

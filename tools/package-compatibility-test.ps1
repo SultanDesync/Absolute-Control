@@ -7,6 +7,18 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+function Get-PackageSha256 {
+    param([Parameter(Mandatory = $true)][string]$LiteralPath)
+    $stream = [IO.File]::OpenRead($LiteralPath)
+    $digest = [Security.Cryptography.SHA256]::Create()
+    try {
+        return ([BitConverter]::ToString($digest.ComputeHash($stream))).Replace('-', '')
+    } finally {
+        $digest.Dispose()
+        $stream.Dispose()
+    }
+}
+
 $repoRoot = (Resolve-Path (Split-Path -Parent $PSScriptRoot)).Path
 if ([string]::IsNullOrWhiteSpace($ArtifactManifest)) {
     $ArtifactManifest = Join-Path $repoRoot 'build\artifact-manifests\AbsoluteControlPanel.artifacts.json'
@@ -74,4 +86,8 @@ Compress-Archive -Path (Join-Path $stageRoot '*') -DestinationPath $archive -Com
 & (Join-Path $repoRoot 'tools\build-artifacts\Test-PackageContent.ps1') `
     -ArtifactManifest $ArtifactManifest `
     -ArchivePath $archive
-Get-FileHash -LiteralPath $archive -Algorithm SHA256
+[pscustomobject]@{
+    Algorithm = 'SHA256'
+    Hash = Get-PackageSha256 -LiteralPath $archive
+    Path = $archive
+}

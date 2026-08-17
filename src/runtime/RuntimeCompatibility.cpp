@@ -31,11 +31,15 @@ namespace AbsoluteControlPanelResearch::Runtime
             VerifiedRelocation{ "IMenu::OnButtonEvent", 130632, 0x025533D0 },
             VerifiedRelocation{ "IMenu::LoadMovie", 130618, 0x02551AB0 },
             VerifiedRelocation{ "IMenu::ProcessMessage", 130624, 0x02552070 },
+            VerifiedRelocation{ "IMenu::Unk18", 130625, 0x02552090 },
+            VerifiedRelocation{ "IMenu::Unk1A", 130630, 0x02552C80 },
             VerifiedRelocation{ "IMenu::Unk09", 42815, 0x00481670 },
             VerifiedRelocation{ "IMenu::Unk0E", 130622, 0x02551D70 },
             VerifiedRelocation{ "IMenu::Unk12", 42816, 0x00481680 },
             VerifiedRelocation{ "IMenu::Unk13", 39540, 0x003AE910 },
             VerifiedRelocation{ "IMenu::Unk19", 130634, 0x02553940 },
+            VerifiedRelocation{
+                "IMenu::ProcessEvent(UpdateSceneRectEvent)", 130642, 0x02554370 },
             VerifiedRelocation{ "UI::IsMenuOpen", 130475, 0x02544EC0 }
         };
     }

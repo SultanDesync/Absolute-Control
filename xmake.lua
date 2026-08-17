@@ -69,6 +69,7 @@ local release_sources = {
     "src/EvidenceLog.cpp",
     "src/diagnostics/AsyncLineSink.cpp",
     "src/Main.cpp",
+    "src/LiveComponentsRegistry.cpp",
     "src/MenuApiHost.cpp",
     "src/MenuInputRouter.cpp",
     "src/MenuSession.cpp",
@@ -85,7 +86,6 @@ local release_sources = {
 }
 
 local research_only_sources = {
-    "src/LiveComponentsRegistry.cpp",
     "src/ResearchInputCapture.cpp",
     "src/ResearchModule.cpp",
     "src/research/ResearchSupport.cpp"
@@ -139,7 +139,8 @@ target("AbsoluteControlPanel", function()
         "docs/TEST-MATRIX.md", {
         prefixdir = "Documentation"
     })
-    add_installfiles("include/AbsoluteControlPanelAPI.h", "include/SlopAPI.h", {
+    add_installfiles("include/AbsoluteControlPanelAPI.h", "include/SlopAPI.h",
+        "include/LiveComponentsExperimentalAPI.h", {
         prefixdir = "SDK"
     })
     add_installfiles("interface/dist/AbsoluteControlPanelMenu.swf", {
@@ -212,7 +213,21 @@ target("slop_api_test", function()
     add_tests("contract")
     add_defines("SLOP_EXPORTS", "ABSOLUTE_CONTROL_PANEL_EXPORTS")
     add_includedirs("include")
-    add_files("src/MenuApiHost.cpp", "src/MenuInputRouter.cpp", "src/MenuSession.cpp", "tests/SlopApiTests.cpp")
+    add_files("src/LiveComponentsRegistry.cpp", "src/MenuApiHost.cpp",
+        "src/MenuInputRouter.cpp", "src/MenuSession.cpp", "tests/SlopApiTests.cpp")
+end)
+
+target("host_hardening_stress_test", function()
+    set_kind("binary")
+    set_default(false)
+    add_tests("registry_refresh_snapshot_stress")
+    add_defines("SLOP_EXPORTS", "ABSOLUTE_CONTROL_PANEL_EXPORTS")
+    add_includedirs("include")
+    add_files(
+        "src/MenuApiHost.cpp",
+        "src/LiveComponentsRegistry.cpp",
+        "src/MenuSession.cpp",
+        "tests/HostHardeningStressTests.cpp")
 end)
 
 target("scaleform_bridge_source_test", function()

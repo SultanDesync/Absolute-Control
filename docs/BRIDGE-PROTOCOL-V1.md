@@ -19,11 +19,19 @@ model = {
   focusedAction: uint,
   dirty: Boolean,
   bindingCaptureActive: Boolean,
+  textCaptureActive: Boolean,
   captureModuleId: String,
   capturePageId: String,
   captureControlId: String,
   error: String,
+  modules: [ module ... ],
   pages: [ page ... ]
+}
+
+module = {
+  moduleId: String,
+  moduleTitle: String,
+  pageId: String  // first registered page, used as the module navigation target
 }
 
 page = {
@@ -58,15 +66,17 @@ control = {
 them). Only the field selected by `valueKind` is authoritative. Integer/generation values crossing
 Scaleform must be exactly representable as `Number`.
 
-The registry and render model share these admission bounds: 32 modules, 32 pages, 128 controls per
-page, 512 controls total, and the public fixed-capacity strings. Registration returns
-`CapacityExceeded` rather than admitting an unrenderable graph. A provider read failure marks that
-control unavailable without removing other controls/pages.
+Registry admission is bounded at 512 modules, 2,048 pages, 32 pages per module, 128 controls per
+page, 512 controls per module, and 32,768 controls total, plus the public fixed-capacity strings.
+Each model contains the compact module directory, page metadata only for the active module, and
+controls/values only for the active page. Registration returns `CapacityExceeded` rather than
+admitting a graph outside those bounds. A provider read failure marks only that control unavailable.
 
-`generation` increments for each session snapshot/publication attempt and is the stale-command
-token. `revision` describes registry/refresh changes. ActionScript calls
-`modelApplied(generation)` after rebuilding and every third frame as a cheap UI-thread refresh
-heartbeat. Native republishes only when the refresh cursor advanced.
+`generation` increments for each session snapshot/publication attempt. The bridge acknowledges a
+generation only after `applyModel` succeeds, and commands are compared with that visible generation
+rather than a newer deferred snapshot. `revision` describes registry/refresh changes. ActionScript calls
+`modelApplied(generation)` after rebuilding and every frame as a UI-thread publication/refresh
+heartbeat. Native stays idle when no command model or refresh is pending.
 
 ## ActionScript-to-native commands
 
@@ -98,18 +108,21 @@ model carries the bounded error so the UI can recover.
 | `selectPage` | module/page | Select page and publish. |
 | `selectControl` | module/page/control | Update selection and publish. |
 | `write` | module/page/control + typed value | Validate, call leased `writeDraft`, pin transaction, mark page dirty, publish. |
-| `invoke` | module/page/control | Require Action, call leased `invokeAction`, publish. |
+| `invoke` | module/page/control | Require Action. `kControlMutatesDraft` pins the page transaction and marks success dirty. `kControlAppliesDraftBeforeInvoke` applies an existing draft first, suppresses invocation on apply failure, and invokes only after successful persistence. Other actions invoke immediately. Publish. |
 | `beginBindingCapture` | module/page/control | Require writable InputBinding/device flags, enter capture, publish. |
-| `apply` | module/page | Call `apply`; on success release transaction/dirty state and publish. |
-| `cancel` | module/page | Call `cancel`, release transaction/dirty state, reread, and publish. |
+| `beginTextCapture` | module/page/control | Require writable TextInput, read its opening string, enter bounded native text capture, and publish. Enter writes the edited string through the ordinary draft transaction; Escape cancels capture without a write. |
+| `apply` | dirty module/page | Call `apply`; on success release transaction/dirty state and publish. Clean calls are rejected without a provider callback. |
+| `cancel` | dirty module/page | Call `cancel`, release transaction/dirty state, reread, and publish. Clean calls are rejected without a provider callback. |
 | `close` | active session | Cancel a normal dirty session, publish, and hide only without error. |
 
 ## Refresh and slider cadence
 
 `requestRefresh(moduleId,pageId)` validates that the page exists, advances registry and refresh
-revisions, and returns. The open bridge consumes the latest revision on `modelApplied`; multiple
-requests before a poll coalesce into one full replacement model. Opening a new menu reads current
-values and initializes its cursor, so it does not need to replay old wakeups.
+revisions, and returns. The open bridge consumes the latest revision on `modelApplied`; inactive
+page-only refreshes do not rebuild the active view, while registry mutations wake it. Commands and
+multiple relevant refreshes before the next frame coalesce into one replacement model. Dynamic
+replacement publication never occurs inside the pointer/keyboard command callback. Opening a new
+menu reads current values and initializes its cursor, so it does not need to replay old wakeups.
 
 During pointer drag, `SliderWriteCoordinator` stores only the latest pointer-derived value and its
 generation/page/control identity. `ENTER_FRAME` flushes at most one provider write per SWF frame.
@@ -123,10 +136,14 @@ Apply or Cancel. Callback leases run outside host locks. Unregister returns retr
 while any callback or transaction is active; it never blocks the UI thread waiting for provider
 code. Runtime DLL unloading is unsupported.
 
-Normal Close performs provider Cancel. If a menu is externally destroyed without the normal close
-command, session destruction performs one best-effort provider rollback while the unregister lease
-is still held, then releases the lease and clears dirty/capture state. The v1 `CancelCallback`
-cannot report rollback failure.
+The current v1 implementation's normal Close performs provider Cancel; the accepted release flow
+will first present the guarded dirty decision documented in
+`SCALABILITY-TRANSACTIONS-AND-TEARDOWN.md`. A successful Close enters a terminal bridge state,
+drops deferred publications, and queues Hide without applying another display tree. If a menu is
+externally hidden or destroyed without the normal close command, the idempotent Hide/destructor
+teardown performs one best-effort provider rollback while the unregister lease is still held, then
+releases the lease and clears dirty/capture state without building another movie model. The v1
+`CancelCallback` cannot report rollback failure.
 
 ## Other bridge functions
 

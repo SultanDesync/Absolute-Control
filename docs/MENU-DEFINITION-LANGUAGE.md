@@ -1,8 +1,9 @@
 # Absolute Control Panel menu definition language
 
-> **Status:** Accepted target language with an implemented ABI-v1 subset. The checked-in compiler
-> currently rejects choice labels, text input, rendered sections, formatting, and presentation
-> hints that the runtime ABI cannot preserve. See [current state](CURRENT-STATE.md).
+> **Status:** Accepted target language with an implemented ABI-v1 subset. Direct ABI providers can
+> publish labeled choices and bounded text inputs, but the checked-in JSON compiler does not yet
+> generate them and still rejects rendered sections, formatting, and presentation hints. See
+> [current state](CURRENT-STATE.md).
 
 ## Decision
 
@@ -113,15 +114,17 @@ an arbitrary INI file.
 
 The checked-in ABI v1 profile and compiler live in [`sdk/`](../sdk/README.md). Developers may
 handwrite descriptors or generate them; generated output is ordinary compile-time descriptor data
-and callback wiring. The v1 compiler rejects semantics the current ABI cannot preserve, including
-choice labels and text editors. Sections currently group and order source controls but cannot render
-headings until the public ABI gains a section descriptor.
+and callback wiring. The compiler has not yet caught up with the appended ABI-v1 labeled-choice
+callback or `TextInput`, so definitions using those features are rejected instead of silently
+degraded. Sections currently group and order source controls but cannot render headings until the
+public ABI gains a section descriptor.
 
 Generated definitions require control IDs unique across the module because generated pages share
 one callback/context set and one module-wide `ParseControlId`. Direct ABI consumers may use
-page-local IDs when each page's context/callbacks disambiguate them. The host admits 32 modules,
-32 pages, 128 controls per page, and 512 controls total; generator enforcement of the total-512
-limit remains an SDK-freeze gate.
+page-local IDs when each page's context/callbacks disambiguate them. The host admits 512 modules,
+2,048 pages globally, 32 pages per module, 128 controls per page, 512 controls per module, and
+32,768 controls globally. The generator now rejects a subscriber definition above its 512-control
+module limit before emitting C++.
 
 ## Styling
 
@@ -134,7 +137,9 @@ replace a validated token set; individual subscribers do not resize or restyle s
 
 Before freezing the public SDK:
 
-- choice labels, bounded strings, sections, formatting, and presentation hints exist in the ABI;
+- labeled-choice and bounded-string semantics are frozen and generated deterministically; rendered
+  sections, formatting, and presentation hints are either added through a compatible extension or
+  explicitly deferred from the first SDK;
 - JSON schema validation and C++ generation are deterministic;
 - every component has keyboard, controller, pointer, and wheel tests;
 - rendered elements own their hit regions and semantic events;

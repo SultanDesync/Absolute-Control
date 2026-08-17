@@ -1,5 +1,18 @@
 Set-StrictMode -Version Latest
 
+function Get-Sha256FileHash {
+    param([Parameter(Mandatory = $true)][string]$LiteralPath)
+    $stream = [System.IO.File]::OpenRead($LiteralPath)
+    $digest = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return ([System.BitConverter]::ToString(
+                $digest.ComputeHash($stream))).Replace('-', '')
+    } finally {
+        $digest.Dispose()
+        $stream.Dispose()
+    }
+}
+
 $script:SchemaVersion = 1
 $script:ProductName = 'Absolute Control Panel'
 $script:MovieDestination = 'Interface/AbsoluteControlPanelMenu.swf'
@@ -118,7 +131,7 @@ function Test-ArtifactHash {
     if ($item.Length -ne $ExpectedSize) {
         throw "$Label size changed after the manifest was created (expected $ExpectedSize, observed $($item.Length)): $Path"
     }
-    $observed = (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash
+    $observed = Get-Sha256FileHash -LiteralPath $Path
     if ($observed -ine $ExpectedHash) {
         throw "$Label hash changed after the manifest was created (expected $ExpectedHash, observed $observed): $Path"
     }
@@ -208,13 +221,13 @@ function Test-AcpInterfaceProvenance {
         -Expected $observedSources.sources `
         -Context 'Scaleform build metadata'
 
-    $movieHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $moviePath).Hash
+    $movieHash = Get-Sha256FileHash -LiteralPath $moviePath
     $metadataOutputHash = [string](Get-RequiredProperty `
         $metadata 'outputSha256' 'interface build metadata')
     if ($metadataOutputHash -ine $movieHash) {
         throw "Scaleform dist hash is stale (metadata $metadataOutputHash, observed $movieHash). Rebuild the interface."
     }
-    $rootSourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $rootSourcePath).Hash
+    $rootSourceHash = Get-Sha256FileHash -LiteralPath $rootSourcePath
     if ($metadata.PSObject.Properties.Name -contains 'sourceSha256' -and
         -not [string]::IsNullOrWhiteSpace([string]$metadata.sourceSha256) -and
         [string]$metadata.sourceSha256 -ine $rootSourceHash) {
@@ -333,7 +346,7 @@ function New-AcpBuildArtifactManifest {
                 kind = 'sfse-plugin'
                 path = Get-NormalizedRelativePath -RepositoryRoot $root -Path $pluginPath
                 destination = $definition.Destination
-                sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $pluginPath).Hash
+                sha256 = Get-Sha256FileHash -LiteralPath $pluginPath
                 size = $pluginItem.Length
                 lastWriteUtc = $pluginItem.LastWriteTimeUtc.ToString('o')
             }

@@ -94,6 +94,7 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
 
             ~AbsoluteControlPanelMenu() override
             {
+                (void)bridge.OnHidden();
                 MenuApiHost::SetMenuOpen(false);
                 EvidenceLog::Event(
                     "menu_destructor_entered",
@@ -128,14 +129,18 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
             bool ShouldHandleEvent(const RE::InputEvent* a_event) override
             {
                 if (!a_event || (a_event->deviceType != RE::InputEvent::DeviceType::kKeyboard &&
-                                    a_event->deviceType != RE::InputEvent::DeviceType::kMouse)) {
+                                    a_event->deviceType != RE::InputEvent::DeviceType::kMouse &&
+                                    a_event->deviceType != RE::InputEvent::DeviceType::kGamepad)) {
                     return false;
                 }
                 return RE::IMenu::ShouldHandleEvent(a_event);
             }
 
-            // Address Library v22 contains no offsets for these inherited placeholders.
-            // Keep the research menu fail-closed instead of ever resolving ID 0.
+            // CommonLibSF's generated declarations still carry ID 0 for several
+            // inherited menu virtuals even though Address Library 1.16.244 exposes
+            // their current mappings.  Delegate explicitly: calling the inherited
+            // wrappers would resolve the executable base, while replacing viewport
+            // behavior with a stub leaves an ultrawide game in the movie's 16:9 rect.
             bool Unk0A() override
             {
                 // Current IMenu ID 130619 implements this slot as
@@ -144,21 +149,53 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
                 return uiMovie != nullptr;
             }
             bool Unk15(void*) override { return false; }
-            std::uint64_t Unk18(void*, std::uint64_t) override { return 0; }
-            float Unk1A() override { return 0.0F; }
+            std::uint64_t Unk10() override
+            {
+                using func_t = std::uint64_t (*)(RE::IMenu*);
+                static REL::Relocation<func_t> func{ REL::ID(93620) };
+                return func(this);
+            }
+            std::uint64_t Unk11() override
+            {
+                using func_t = std::uint64_t (*)(RE::IMenu*);
+                static REL::Relocation<func_t> func{ REL::ID(93621) };
+                return func(this);
+            }
+            std::uint64_t Unk18(void* a_arg1, std::uint64_t a_arg2) override
+            {
+                using func_t = std::uint64_t (*)(RE::IMenu*, void*, std::uint64_t);
+                static REL::Relocation<func_t> func{ REL::ID(130625) };
+                return func(this, a_arg1, a_arg2);
+            }
+            std::uint64_t Unk19(
+                void* a_arg1, std::int32_t a_arg2, std::int32_t a_arg3) override
+            {
+                using func_t = std::uint64_t (*)(
+                    RE::IMenu*, void*, std::int32_t, std::int32_t);
+                static REL::Relocation<func_t> func{ REL::ID(130634) };
+                return func(this, a_arg1, a_arg2, a_arg3);
+            }
+            float Unk1A() override
+            {
+                using func_t = float (*)(RE::IMenu*);
+                static REL::Relocation<func_t> func{ REL::ID(130630) };
+                return func(this);
+            }
 
             RE::BSEventNotifyControl ProcessEvent(
-                const RE::UpdateSceneRectEvent&,
-                RE::BSTEventSource<RE::UpdateSceneRectEvent>*) override
+                const RE::UpdateSceneRectEvent& a_event,
+                RE::BSTEventSource<RE::UpdateSceneRectEvent>* a_source) override
             {
-                return RE::BSEventNotifyControl::kContinue;
+                using sink_t = RE::BSTEventSink<RE::UpdateSceneRectEvent>;
+                using func_t = RE::BSEventNotifyControl (*)(
+                    sink_t*, const RE::UpdateSceneRectEvent&,
+                    RE::BSTEventSource<RE::UpdateSceneRectEvent>*);
+                static REL::Relocation<func_t> func{ REL::ID(130642) };
+                return func(static_cast<sink_t*>(this), a_event, a_source);
             }
 
             bool Unk09(const RE::InputEvent* a_event) override
             {
-                if (a_event && a_event->deviceType == RE::InputEvent::DeviceType::kGamepad) {
-                    return false;
-                }
                 bool handled = false;
                 if (a_event && inputEventHandlingEnabled) {
                     switch (a_event->eventType) {
@@ -198,12 +235,19 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
             RE::UI_MESSAGE_RESULT ProcessMessage(RE::UIMessageData& a_message) override
             {
                 const auto typeBefore = a_message.type;
+                bool returnToPause{};
                 EvidenceLog::Event(
                     "menu_message_entered",
                     std::format(
                         "type={} caller_rva=0x{:08X}",
                         static_cast<std::uint32_t>(typeBefore),
                         Runtime::ToImageRva(_ReturnAddress())));
+                if (typeBefore == RE::UI_MESSAGE_TYPE::kHide) {
+                    // Disarm before the base class starts tearing down the movie.
+                    // Pointer tasks already queued by the polling thread must become
+                    // harmless before any Scaleform object can be invalidated.
+                    returnToPause = bridge.OnHidden();
+                }
                 const auto result = RE::IMenu::ProcessMessage(a_message);
                 EvidenceLog::Event(
                     "menu_message_base_completed",
@@ -213,6 +257,7 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
                         static_cast<std::uint32_t>(a_message.type),
                         static_cast<std::int64_t>(result)));
                 if (typeBefore == RE::UI_MESSAGE_TYPE::kShow) {
+                    bridge.OnShown();
                     MenuApiHost::SetMenuOpen(true);
                     Runtime::Transition(ProbeEvent::MenuOpened);
                     EvidenceLog::Event(
@@ -230,6 +275,14 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
                     EvidenceLog::Event(
                         "research_pause_state_after_probe_close",
                         std::format("open={}", pauseOpen));
+                    if (returnToPause) {
+                        Ui::QueueNamedMenuMessage(
+                            "PauseMenu", RE::UI_MESSAGE_TYPE::kShow,
+                            "control-panel-return");
+                        EvidenceLog::Event(
+                            "control_panel_return_queued",
+                            "target=PauseMenu source=session-hide");
+                    }
                 }
                 return result;
             }
@@ -317,10 +370,12 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
                 RegisterNativeFunction(
                     "dispatch", static_cast<std::uint64_t>(Scaleform::NativeFunction::Dispatch));
                 RegisterNativeFunction(
+                    "compound", static_cast<std::uint64_t>(Scaleform::NativeFunction::Compound));
+                RegisterNativeFunction(
                     "focus", static_cast<std::uint64_t>(Scaleform::NativeFunction::Focus));
                 RegisterNativeFunction(
                     "modelApplied", static_cast<std::uint64_t>(Scaleform::NativeFunction::ModelApplied));
-                EvidenceLog::Event("bridge_functions_mapped", "version=1 count=5");
+                EvidenceLog::Event("bridge_functions_mapped", "version=1 count=6");
             }
 
             void Call(

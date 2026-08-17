@@ -89,8 +89,8 @@
       "id": "visualization.range-meter",
       "kind": "visualization",
       "name": "Live range and detent meter",
-      "status": "specified",
-      "confidence": "source-mapped",
+      "status": "implemented-runtime-pending",
+      "confidence": "automated-verified",
       "features": ["live-marker", "colored-bands", "detents", "deadzone", "saturation", "stale-state", "editable-marker-roadmap"],
       "notes": "Covers AbsoluteHOTAS throttle/bipolar graphs and Absolute Head Tracking output bars without requiring a general time-series plot.",
       "tags": ["telemetry", "axis", "hotas", "head-tracking"]
@@ -99,8 +99,8 @@
       "id": "visualization.telemetry-plot",
       "kind": "visualization",
       "name": "Bounded telemetry plot",
-      "status": "specified",
-      "confidence": "design-approved",
+      "status": "implemented-runtime-pending",
+      "confidence": "automated-verified",
       "features": ["bounded-series", "host-ring-buffer", "downsampling", "bands", "markers", "stale-state"],
       "notes": "Used only when history over time is useful; current-sample axis displays use the cheaper range meter.",
       "tags": ["telemetry", "graph", "bounded"]
@@ -122,7 +122,7 @@
       "status": "specified",
       "confidence": "design-approved",
       "path": "docs/LIVE-COMPONENTS.md",
-      "notes": "Separates immutable configuration snapshots from targeted live frames, caps cadence and payloads, marks stale data, and suspends hidden channels.",
+      "notes": "Product registry and MenuSession now separate immutable configuration snapshots from visible-route live frames, cap payloads, mark stale data, suspend hidden channels, and attach compound edits to the page transaction.",
       "tags": ["telemetry", "abi-roadmap", "scaleform", "performance"]
     },
     {
@@ -258,6 +258,18 @@
       "controlKinds": ["Toggle", "IntegerSlider", "FloatSlider"],
       "notes": "Independent one-page subscriber used with Absolute Head Tracking to observe multi-mod discovery, vertical sidebar navigation, and page-tab isolation in game. The exact subscriber artifact and persistence transcript were not retained, so confidence remains build-verified.",
       "tags": ["subscriber", "integration", "multi-module"]
+    },
+    {
+      "id": "subscriber.absolute-power",
+      "kind": "subscriber-example",
+      "name": "Absolute Power",
+      "status": "implemented",
+      "confidence": "runtime-mechanical",
+      "moduleId": "absolute.power",
+      "pages": ["power-presets", "power-automation", "power-diagnostics"],
+      "controlKinds": ["Toggle", "Action", "InputBinding"],
+      "notes": "Fail-optional product-query subscriber. A current ResearchDev run confirmed three-page registration, native movie load, bridge readiness, and publication in a combined five-page model. Provider-owned persistence and Control-absent execution have automated coverage; visual and in-game persistence acceptance remain pending.",
+      "tags": ["subscriber", "integration", "power", "bindings", "headless"]
     },
     {
       "id": "protocol.binding.keyboard-v1",

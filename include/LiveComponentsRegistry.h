@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstddef>
+#include <vector>
 
 namespace AbsoluteControlPanelResearch::LiveComponents
 {
@@ -59,6 +60,15 @@ namespace AbsoluteControlPanelResearch::LiveComponents
             const char* moduleId, const char* pageId, const char* channelId,
             TelemetryHistoryV1& history) const noexcept;
         [[nodiscard]] std::size_t ChannelCount() const noexcept;
+
+        // UI-thread integration lane. PollVisiblePage invokes only channels on
+        // the active route and reports whether any valid sequence advanced.
+        // SnapshotPage copies the latest bounded frames without provider calls.
+        [[nodiscard]] bool PollVisiblePage() noexcept;
+        [[nodiscard]] std::vector<PollPublication> SnapshotPage(
+            const char* moduleId, const char* pageId) const;
+        [[nodiscard]] bool HasPageChannels(
+            const char* moduleId, const char* pageId) const noexcept;
 
     private:
         struct Slot

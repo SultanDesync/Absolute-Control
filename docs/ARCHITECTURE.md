@@ -12,7 +12,7 @@ that host with automation and synthetic providers; subscriber gameplay remains i
 | Role | xmake target and DLL | Manifest | Package policy |
 |---|---|---|---|
 | Canonical host | `AbsoluteControlPanel` / `AbsoluteControlPanel.dll` | `build/artifact-manifests/AbsoluteControlPanel.artifacts.json` | Default target; `role=release`, `packageable=true`. This identifies package inputs but does not mean the product is release-ready. |
-| Research host | `AbsoluteControlPanelResearchDev` / `AbsoluteControlPanelResearchDev.dll` | `build/artifact-manifests/AbsoluteControlPanelResearchDev.artifacts.json` | Explicit opt-in; `role=research-dev`, `packageable=false`; contains the synthetic provider, mailbox/SendInput automation, DirectInput experiments, and experimental live components. |
+| Research host | `AbsoluteControlPanelResearchDev` / `AbsoluteControlPanelResearchDev.dll` | `build/artifact-manifests/AbsoluteControlPanelResearchDev.artifacts.json` | Explicit opt-in; `role=research-dev`, `packageable=false`; contains the synthetic provider, mailbox/SendInput automation, and DirectInput experiments. |
 
 `xmake.lua` lists release and research sources explicitly. Adding a file beneath `src/` cannot
 silently add it to the product. Research deployment consumes only the ResearchDev manifest and
@@ -33,13 +33,13 @@ SFSE entry (Main)
        -> process-lived input services
 
 public C ABI -> MenuApiHost registry/leases -> MenuSession transactions
+live/compound ABI -> LiveComponentsRegistry -> MenuSession page transaction
                                               -> MenuInputRouter
 native menu factory -> ScaleformMenuBridge -> MenuSession / input adapter
                                          -> UI message queue
 all runtime layers -> EvidenceLog -> bounded AsyncLineSink -> disk worker
 
 ResearchDev only -> ResearchModule / ResearchSupport / ResearchInputCapture
-                 -> experimental LiveComponentsRegistry
 ```
 
 Responsibilities and dependency rules:
@@ -47,21 +47,24 @@ Responsibilities and dependency rules:
 - `AbsoluteControlPanelAPI.h` is the product ABI authority. `SlopAPI.h` may depend on it as a
   legacy source/ABI-prefix adapter; product code must not derive ABI values from the legacy header.
 - `MenuApiHost` owns copied descriptors, capacity admission, readiness, provider callback leases,
-  unregister policy, and refresh revisions. It knows no Scaleform geometry or research provider.
+  unregister policy, linearized compact catalog snapshots, and scoped refresh revisions. It knows
+  no Scaleform geometry or research provider.
 - `MenuSession` owns one UI-thread transaction, selection, dirty state, capture state, generation,
-  and typed command validation. It invokes providers only through `MenuApiHost` lease functions.
+  and typed command validation. Scalar callbacks use `MenuApiHost` leases; compound edits attach
+  that same transaction before calling the bounded visible-route component registry.
 - `MenuInputRouter` and `input/NativeMenuInputAdapter` translate semantic navigation/capture input;
   they do not own provider state or render geometry.
 - `scaleform/ScaleformMenuBridge` is the only native serializer/parser for the internal movie
   protocol. It depends inward on session/input services and outward on Scaleform and UI messaging.
 - `ui/ControlPanelMenu` owns the engine menu object/factory and bridge attachment.
-  `ui/PauseMenuIntegration` owns only the version-sensitive additive vanilla entry seam.
+  `ui/PauseMenuIntegration` owns the version-sensitive additive vanilla entry seam and the pending
+  invocation origin claimed by a displayed bridge session.
 - `runtime/RuntimeCompatibility` owns exact game-version/relocation checks. Runtime offsets and
   object-layout assumptions must not spread into the API, session, or ActionScript layers.
 - `EvidenceLog` exposes best-effort structured events. Only `diagnostics/AsyncLineSink` performs
   evidence-file writes, on its worker.
-- `research/**`, `ResearchModule`, `ResearchInputCapture`, and live-component experiments may
-  depend on product seams for testing. The canonical product target must never depend on them.
+- `research/**`, `ResearchModule`, and `ResearchInputCapture` may depend on product seams for
+  testing. The canonical product target must never depend on those research-only sources.
 
 The remaining large native files are not automatically defects. PauseMenu composition and the
 native/Scaleform adapter are version-sensitive integration boundaries with tightly related state.
@@ -95,7 +98,9 @@ plus `sourceTreeSha256`; artifact manifests carry the same inventory. The root-o
 ## Lifecycle and threading
 
 - Scaleform calls, session dispatch, provider callbacks, and queued menu messages run on the
-  native UI/game-task path. A `Session` is deliberately single-thread-owned.
+  native UI/game-task path. A `Session` is deliberately single-thread-owned. Command callbacks
+  queue replacement models; the bridge coalesces and applies the newest model at the next movie
+  frame boundary so it never rebuilds a display tree inside pointer/keyboard dispatch.
 - Polling workers never call Scaleform or providers directly. They queue work through SFSE using a
   `CallbackGate`; stopping a cooperative service deactivates queued callbacks, requests worker
   cancellation, joins it, and waits for already-running callbacks.
@@ -110,5 +115,8 @@ plus `sourceTreeSha256`; artifact manifests carry the same inventory. The root-o
 
 Runtime unloading of the host or subscriber DLLs remains unsupported. Normal menu close is
 expected to cancel a dirty provider transaction before the menu object is destroyed. Abnormal
-external hide/destruction now has tested session-level rollback semantics but still needs explicit
-runtime validation through the engine menu lifecycle.
+external Hide/destruction calls the same idempotent session teardown and has automated rollback
+coverage, but still needs explicit runtime fault injection through the engine menu lifecycle. The
+scale target and route/close transaction
+state machine are specified in
+[scalability, transactions, and teardown](SCALABILITY-TRANSACTIONS-AND-TEARDOWN.md).

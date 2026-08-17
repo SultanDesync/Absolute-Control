@@ -119,7 +119,7 @@ if ($script:Starfield.MainWindowHandle -eq [IntPtr]::Zero) {
 
 $documents = [Environment]::GetFolderPath('MyDocuments')
 $script:PluginEvidencePath = Join-Path $documents (
-    'My Games\Starfield\SFSE\Logs\AbsoluteControlPanelResearch.evidence.jsonl')
+    'My Games\Starfield\SFSE\Logs\AbsoluteControlPanel.evidence.jsonl')
 $script:InputPath = Join-Path (Split-Path -Parent $script:PluginEvidencePath) (
     "AbsoluteControlPanelResearch.$($script:RunId).input")
 

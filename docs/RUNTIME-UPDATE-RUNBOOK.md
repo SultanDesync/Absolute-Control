@@ -90,7 +90,7 @@ At minimum revalidate:
 
 Stop at the first unsafe layer; do not use a heavy profile to discover basic ownership corruption.
 
-1. **Automated:** the current product validator passes build, 8 native test targets, 6 SDK tests,
+1. **Automated:** the current product validator passes build, 9 native test targets, 7 SDK tests,
    codegen/compile fixture, catalogue, complete SWF provenance, artifact fixtures, canonical
    manifest, and package checks. Record actual counts if they change; runtime/UX remains not run.
 2. **Host absent:** Head Tracking and AbsoluteZero still load and retain legacy configuration.

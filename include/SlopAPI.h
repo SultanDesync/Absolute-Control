@@ -21,6 +21,8 @@ namespace SlopApi
         AbsoluteControlPanelApi::kDescriptionCapacity;
     inline constexpr auto kStringValueCapacity =
         AbsoluteControlPanelApi::kStringValueCapacity;
+    inline constexpr auto kMaximumChoiceOptions =
+        AbsoluteControlPanelApi::kMaximumChoiceOptions;
 
     using Result = AbsoluteControlPanelApi::Result;
     using ControlKind = AbsoluteControlPanelApi::ControlKind;
@@ -32,6 +34,12 @@ namespace SlopApi
     inline constexpr auto kControlRequiresRestart =
         AbsoluteControlPanelApi::kControlRequiresRestart;
     inline constexpr auto kControlAdvanced = AbsoluteControlPanelApi::kControlAdvanced;
+    inline constexpr auto kControlMutatesDraft =
+        AbsoluteControlPanelApi::kControlMutatesDraft;
+    inline constexpr auto kControlAppliesDraftBeforeInvoke =
+        AbsoluteControlPanelApi::kControlAppliesDraftBeforeInvoke;
+    inline constexpr auto kControlTransientChoice =
+        AbsoluteControlPanelApi::kControlTransientChoice;
     inline constexpr auto kBindingKeyboard = AbsoluteControlPanelApi::kBindingKeyboard;
     inline constexpr auto kBindingMouse = AbsoluteControlPanelApi::kBindingMouse;
     inline constexpr auto kBindingController = AbsoluteControlPanelApi::kBindingController;
@@ -45,6 +53,9 @@ namespace SlopApi
     using InvokeActionCallback = AbsoluteControlPanelApi::InvokeActionCallback;
     using ApplyCallback = AbsoluteControlPanelApi::ApplyCallback;
     using CancelCallback = AbsoluteControlPanelApi::CancelCallback;
+    using ChoiceOptionV1 = AbsoluteControlPanelApi::ChoiceOptionV1;
+    using ReadChoiceOptionsCallback =
+        AbsoluteControlPanelApi::ReadChoiceOptionsCallback;
     using ModuleDescriptorV1 = AbsoluteControlPanelApi::ModuleDescriptorV1;
     using PageDescriptorV1 = AbsoluteControlPanelApi::PageDescriptorV1;
 

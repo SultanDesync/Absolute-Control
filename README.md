@@ -20,9 +20,13 @@ Absolute Head Tracking, or AbsoluteZero.
 - [Current implementation state](docs/CURRENT-STATE.md) — authoritative implemented, verified,
   pending, and specified capability matrix.
 - [Design decisions](docs/DECISIONS.md) — architectural choices and their rationale.
+- [Scalability, transactions, and teardown](docs/SCALABILITY-TRANSACTIONS-AND-TEARDOWN.md) —
+  hundreds-scale target, dirty route/close policy, publication boundary, and teardown order.
 - [SDK status](docs/SDK-STATUS.md) — public-contract sources and release gates.
 - [Architecture map](docs/ARCHITECTURE.md) — product/research, native, ActionScript, threading,
   and dependency boundaries.
+- [Absolute Control UX and visual design brief](docs/ABSOLUTE-CONTROL-DESIGN-BRIEF.md) —
+  full-canvas layout, interaction, branding, Absolute Power screens, and design constraints.
 - [Technical debt register](docs/DEBT-REGISTER.md) — resolved audit findings, current risks, and
   manual evidence still required.
 - [Starfield runtime update runbook](docs/RUNTIME-UPDATE-RUNBOOK.md) — patch-cycle recovery and
@@ -56,7 +60,8 @@ It includes:
 - retained guarded title, Continue, save-load, and PauseMenu research commands performed through
   game tasks rather than used as the default UX-validation path;
 - a repeatable PauseMenu build/teardown and readiness trace;
-- a copied-descriptor C ABI and synthetic subscriber with toggle, slider, and binding controls;
+- a copied-descriptor C ABI, synthetic subscriber, and fail-optional product subscribers including
+  Absolute Power;
 - an ImGui parity inventory and acceptance matrix; and
 - staged research gates, failure policy, and promotion criteria.
 
@@ -78,7 +83,7 @@ General, Axes, and Bindings pages are runtime-verified. Mods occupy the vertical
 the horizontal tab row. No ESM/ESP is required.
 
 The current architecture-hardening tree has passed the automated product process: release build,
-8/8 native tests, 6 SDK generator tests, generated-header compile, 25-entry catalogue, complete
+9/9 native tests, 7 SDK generator tests, generated-header compile, 26-entry catalogue, complete
 10-source SWF provenance, artifact fixtures, canonical manifest, and compatibility ZIP. Runtime
 and UX are explicitly `not_run` for that tree.
 

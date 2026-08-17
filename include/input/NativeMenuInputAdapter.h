@@ -8,6 +8,7 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <optional>
 #include <string_view>
 
 namespace AbsoluteControlPanelResearch::Input
@@ -28,6 +29,7 @@ namespace AbsoluteControlPanelResearch::Input
     {
     public:
         void BeginBindingCapture(bool a_awaitingRelease) noexcept;
+        void BeginTextCapture(bool a_awaitingRelease) noexcept;
         [[nodiscard]] bool HandleButtonInput(
             const RE::ButtonEvent& a_event, NativeMenuInputSink& a_sink);
 
@@ -37,10 +39,13 @@ namespace AbsoluteControlPanelResearch::Input
             std::int32_t a_right) const noexcept;
         [[nodiscard]] static bool IsModifierVirtualKey(
             std::int32_t a_virtualKey) noexcept;
+        [[nodiscard]] static std::optional<char> TextCharacter(
+            std::int32_t a_virtualKey, bool a_shift) noexcept;
         [[nodiscard]] static std::string_view CommandName(
             MenuSession::CommandKind a_kind) noexcept;
 
         std::array<bool, 256> keyDown_{};
+        bool gamepadBackDown_{};
         bool captureAwaitingRelease_{};
         std::int32_t lastWheelIdCode_{};
         std::uint32_t lastWheelTimeCode_{};

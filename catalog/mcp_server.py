@@ -149,7 +149,7 @@ def validate_subscriber(manifest):
             elif kind not in supported:
                 errors.append(f"{page_id}/{control_id}: unsupported kind {kind}")
     if total > 512:
-        errors.append("host model accepts at most 512 controls")
+        errors.append("one subscriber module accepts at most 512 controls")
     return {"valid": not errors, "errors": errors, "warnings": warnings,
             "pageCount": len(pages), "controlCount": total}
 

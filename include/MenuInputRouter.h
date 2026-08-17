@@ -8,6 +8,7 @@
 namespace AbsoluteControlPanelResearch::MenuInputRouter
 {
     inline constexpr std::int32_t kEscape = 27;
+    inline constexpr std::int32_t kTab = 9;
     inline constexpr std::int32_t kAccept = 'E';
     inline constexpr std::int32_t kEnter = 13;
     inline constexpr std::int32_t kSpace = 32;

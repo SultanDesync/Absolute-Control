@@ -55,34 +55,26 @@ package acp.ui
                 return;
             }
             selectedRow = Math.max(0, Math.min(selectedRow, current.controls.length - 1));
+            var visibleRows:int = current.liveComponents != null &&
+                current.liveComponents.length > 0 ? 5 : PanelLayout.VISIBLE_ROWS;
             if (selectedRow < firstVisibleRow) firstVisibleRow = selectedRow;
-            if (selectedRow > firstVisibleRow + PanelLayout.VISIBLE_ROWS - 1) {
-                firstVisibleRow = selectedRow - PanelLayout.VISIBLE_ROWS + 1;
+            if (selectedRow > firstVisibleRow + visibleRows - 1) {
+                firstVisibleRow = selectedRow - visibleRows + 1;
             }
         }
 
         public function modulePageStarts():Array
         {
             var result:Array = [];
-            if (model == null || model.pages == null) return result;
-            for (var i:int = 0; i < model.pages.length; ++i) {
-                var moduleId:String = String(model.pages[i].moduleId);
-                var known:Boolean = false;
-                for (var found:int = 0; found < result.length; ++found) {
-                    if (String(model.pages[int(result[found])].moduleId) == moduleId) {
-                        known = true;
-                        break;
-                    }
-                }
-                if (!known) result.push(i);
-            }
+            if (model == null || model.modules == null) return result;
+            for (var i:int = 0; i < model.modules.length; ++i) result.push(i);
             return result;
         }
 
         public function activeModulePosition(starts:Array):int
         {
             for (var i:int = 0; i < starts.length; ++i) {
-                if (String(model.pages[int(starts[i])].moduleId) == currentPageModule()) return i;
+                if (String(model.modules[int(starts[i])].moduleId) == currentPageModule()) return i;
             }
             return 0;
         }
@@ -91,10 +83,7 @@ package acp.ui
         {
             var result:Array = [];
             if (model == null || model.pages == null) return result;
-            var moduleId:String = currentPageModule();
-            for (var i:int = 0; i < model.pages.length; ++i) {
-                if (String(model.pages[i].moduleId) == moduleId) result.push(i);
-            }
+            for (var i:int = 0; i < model.pages.length; ++i) result.push(i);
             return result;
         }
 
@@ -118,12 +107,12 @@ package acp.ui
 
         public function moduleTarget(direction:int):Object
         {
-            if (model == null || model.pages.length == 0) return null;
+            if (model == null || model.modules == null || model.modules.length == 0) return null;
             var starts:Array = modulePageStarts();
             if (starts.length == 0) return null;
             var modulePosition:int = activeModulePosition(starts);
             var next:int = int(starts[(modulePosition + direction + starts.length) % starts.length]);
-            return model.pages[next];
+            return model.modules[next];
         }
 
         public function currentPageModule():String

@@ -18,6 +18,9 @@ namespace AbsoluteControlPanelResearch::ResearchSupport
     };
 
     [[nodiscard]] Config LoadConfig(const std::filesystem::path& a_path) noexcept;
+    // ResearchDev-only title handshake. It starts before PostDataLoad so the
+    // runner can advance the title prompt that gates PostDataLoad itself.
+    void StartTitleAdvance(const Config& a_config) noexcept;
     void Start(const Config& a_config, bool a_providerReady) noexcept;
     void Stop() noexcept;
 }

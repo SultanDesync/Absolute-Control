@@ -17,10 +17,11 @@ logs and screenshots remain ignored.
 
 ## Accepted runtime evidence
 
-The current architecture-hardening tree has no new runtime/UX result. Its automated product
-process passed the release build, 8/8 native tests, 6 SDK tests, generated fixture check/compile,
-25-entry catalogue, complete ten-source SWF provenance, artifact fixtures, canonical manifest, and
-compatibility ZIP. Runtime rows below are retained evidence from earlier artifacts unless stated.
+The current architecture-hardening tree has a new mechanical runtime result for the Absolute
+Power subscriber but no new human visual/UX acceptance. Its automated product process passed the
+release build, 9/9 native tests, 7 SDK tests, generated fixture check/compile, 26-entry catalogue,
+complete ten-source SWF provenance, artifact fixtures, canonical manifest, and compatibility ZIP.
+Other runtime rows below are retained evidence from earlier artifacts unless stated.
 
 | Area | Status | Environment/evidence | Result |
 |---|---|---|---|
@@ -30,6 +31,15 @@ compatibility ZIP. Runtime rows below are retained evidence from earlier artifac
 | Multiple subscriber modules | Observed | Absolute Head Tracking plus AbsoluteZero installed together | Both modules appeared in the vertical sidebar and exposed usable, isolated pages/tabs. |
 | Absolute Head Tracking | Verified | Three-page integration on Starfield 1.16.244 | General, one scrollable 12-control Axes page, and Bindings rendered and applied provider-owned values. |
 | AbsoluteZero | Observed | Paired subscriber run plus build/contract tests | Mouse Alignment page was present and usable. Exact subscriber artifact/persistence transcript was not retained, so the catalog remains conservatively build-verified. |
+| Absolute Power | Complete mechanical menu exposure verified; UX/persistence and live Automation backend pending | Starfield 1.16.244; 2026-08-15 isolated run `ap-native-smoke-20260815-074145`; ResearchDev SHA256 `CFF8D3D2DF6159E75B5B67BA7C090DB303EF41112CF0FC720B9457BE5EFAE993`; SWF SHA256 `D2DC4B8E1FE0E26F68179C169DF9F81F8F600743BAD6A1B276F14ED22510A80F`; Power SHA256 `9EAF799165D208F5F18C41BFB2DB7D16DA3B2489FA8A4C5CC04D30BFF549B889` | Product-query registration accepted Presets, Automation / Cheats, and Diagnostics; Power logged fixed 37-preset/23-automation/17-diagnostic control surfaces and `grid=ready`. Native input selected Power, traversed all three pages, and the bridge published each three-page model without error. The exact-gated executor acquired a fresh ship snapshot and settled Balanced through 22 one-pip, next-frame-confirmed mutations to convergence. Escape produced normal Hide, the process remained responsive, normal window close succeeded, and no new dump appeared. The Automation page truthfully reports live event sources as not ready. Bounded rename, source-aware rule actions, collision-free allocation, and apply-before-invoke ordering pass automated tests; human preset/rule edit persistence, Save & Activate/Disable All interaction, headless shortcut execution, and live Automation event-source/telemetry implementation remain pending. |
+| Power preset shortcut persistence | Verified for native keyboard capture and Mod Organizer overwrite-path fallback | Starfield 1.16.244; run `ap-native-smoke-20260815-081600`; same ResearchDev/SWF artifacts; Power SHA256 `8E23F0BF504BE6483490059B7AC666AC4B538224721D177E86EF926CEA6AB829` | The first exact reproduction proved capture and draft validation succeeded but `ReplaceFileW` rejected the verified overlay on the Mod Organizer `overwrite` target. Power now falls back to same-directory write-through `MoveFileExW`. The repeated real-menu journey captured `W`, accepted Apply, committed configuration generation 1 -> 2, and read back `Balanced=W`; normal close/exit succeeded with zero new dumps. The original custom INI was restored after the test. |
+| Power Automation selected-record UX | Registration and live rendering verified; dropdown interaction pending | Starfield 1.16.244; targeted run `ap-native-smoke-20260815-110205`; ResearchDev SHA256 `32944C2B9759788ACE9C6FE55A3FC2F4AEFEE7F428E10991A41F5EAED77F7A24`; SWF SHA256 `C65598476D3729B7EBB0274307692DC2334AAC03D01F74AD615E609954746326`; Power SHA256 `C7C0B3EA84294222BE888341A3258E7962E410DEDBEEA91D0C2ADD47E4BD2073` | Power registered the 35-preset/21-automation/17-diagnostic labeled-choice surfaces with a ready grid. The harness hit the known guarded-W title-selection false negative, but Starfield continued and auto-opened Control. Live inspection confirmed Automation rendered without Previous/Next or a redundant selected-rule summary and remained clean. User input ended automation before the rule popover was exercised. |
+| Deferred model publication | Mechanically verified for native keyboard; exact pointer regression pending | Same current Absolute Power artifact set; structured event sequence and dump delta | Twelve accepted `selectPage` commands each logged `bridge_model_deferred`, returned through native input handling, and then logged a later `bridge_model_flush`/applied/published sequence. Clean Close queued Hide with no replacement publication. Starfield remained responsive and produced no new dump. |
+| Pause-origin Back, ultrawide repair, and reopen | Verified for one two-open cycle; continued monitoring | Starfield 1.16.244 at 3440x1440; ResearchDev SHA256 `EDE27E967BD54AC3D255F5DB4189AB59B7752E2FF7D43FC53110C04C12A156B1`; runtime SWF SHA256 `33A7E2F7089A67C102827CDD338AE49E5543651C747278E29D000A485336B769`; Power SHA256 `38D758AEB11E95CCEB51DB3969588E763B176B8707B39CEDD5571E674B281D58`; ordered evidence plus visual inspection | First Pause entry populated five pages; pointer Back queued PauseMenu after panel Hide; closing Pause restored full-width gameplay; second Pause entry populated the panel again with the pointer barrier armed only after release and one frame. No new dump appeared. The exact held-mouse entry gesture was not directly driven. |
+| Back inputs | Tab automated; Xbox B implemented, runtime pending | Native router/source tests plus ActionScript source contract; current hardening SWF SHA256 `253DA25E2996B6F7D61A1B6502B4818B3774008250A2E81816647979D75EBF68` | Tab and Escape dispatch Close. Xbox B cancels an active binding capture or dispatches Close with held/repeat suppression. Pause origin is now bound to the displayed session and queues PauseMenu only after native Hide; direct/F2 origin closes to gameplay. Physical-controller and current-runtime hardening evidence remain pending. |
+| 512-module lazy catalog | Build verified; runtime performance pending | `slop_api_test`, `host_hardening_stress_test`, bridge/source tests; 512 × 3 × 16 fixture | Registry holds 1,536 pages/24,576 controls; one snapshot carries 512 summaries, three page records, 16 controls, and performs 16 reads. In-game UI-frame, payload, and memory budgets remain open. |
+| Concurrent registry/lifetime stress | Build verified | 64 modules registered in parallel; four snapshot readers, four refresh producers, eight unregister workers; reentrant provider refresh | No deadlock or invalid snapshot; unregister is retryable while leased; terminal lifecycle rejects later mutation. This is deterministic host stress, not ThreadSanitizer or engine runtime evidence. |
+| External teardown semantics | Build verified; engine fault injection pending | Session and bridge source tests | Hide/destruction teardown is idempotent, clears capture/pending publication, rolls a dirty provider back once under its transaction pin, and does not build a dying movie model. |
 | Keyboard binding capture | Verified | Head Tracking integration | Single keys and Ctrl/Alt/Shift chords recorded through the native input stream and round-tripped through provider draft/persistence. Escape cancel and clear behavior have automated coverage. |
 | Slider pointer drag | Verified | DLL SHA256 `407B1A8E509830B1580BF959A032167B4E148FC35CCCD61CD646FFB249BED207`; SWF SHA256 `9387416553805EF554ECDEFA4F6B7126E25B51775FF3B0142A78196AA0A26917` | Click-to-position, continuous bidirectional movement, redraw survival, reversal, and clean release worked. Runtime evidence recorded down, repeated writes, and up; human judgment rated the sliders as working well. |
 | Mouse pointer navigation | Observed | Current semantic hit-target movie | Module/page/control/footer clicks were usable; rendered sprites owned hit testing. |
@@ -37,6 +47,23 @@ compatibility ZIP. Runtime rows below are retained evidence from earlier artifac
 
 ## Known observations requiring continued monitoring
 
+- The 2026-08-14 first Absolute Power interaction run crashed immediately while selecting a page.
+  The initial dump records a Scaleform pure-virtual path and the semantic log ends inside pointer
+  down after a replacement model was synchronously applied. The bridge now defers and coalesces
+  dynamic publication to `ENTER_FRAME`. The native-keyboard route regression now passes with 12
+  module switches and no new dump; the exact pointer interaction and a longer repeated cycle remain
+  pending, so the original incident is not closed solely by this result.
+- A later manual run completed many exact pointer page switches through the deferred publication
+  path, then exposed two lifecycle defects. Closing the panel left a 21:9 game in the movie's
+  letterboxed 16:9 scene rect, and reopening from PauseMenu crashed before the second Show message
+  completed. The new dump is an access violation reached from `MenuBridge::HandlePointerPhase`:
+  the global pointer poller treated `UI::IsMenuOpen` as readiness and invoked the freshly created
+  movie with the PauseMenu click still in flight. The hardened build (a) delegates
+  `UpdateSceneRectEvent` and related viewport slots to vanilla, (b) quarantines pointer input until
+  Show completion, observed button release, and one additional movie frame, and (c) returns a
+  Pause-origin user Close to PauseMenu so native teardown repairs the viewport. One 21:9 cycle
+  restored 3440x1440 and reopened the panel without a new dump. Longer repetition and an exact
+  held-mouse activation remain required before closing monitoring.
 - Two infrequent PauseMenu/close crashes occurred in earlier builds. The later lifecycle-owned
   revision was introduced after those reports and did not reproduce them in 25 consecutive cycles.
   This reduces but does not close crash monitoring.
@@ -54,7 +81,7 @@ compatibility ZIP. Runtime rows below are retained evidence from earlier artifac
 |---|---|---|
 | Mouse wheel up and down | Pending clean regression | Scroll overflowing Axes controls in both directions, plus hovered sidebar and overflowing tabs; confirm no setting mutation. |
 | Keyboard-only full route | Pending formal regression | Open from PauseMenu/F2, traverse modules/pages/controls/footer, edit, Apply, Cancel, and Close without mouse. |
-| Xbox-compatible controller only | Not connected | The native menu currently rejects gamepad events. Implement routing/suppression first, then prove full navigation, edit, Apply/Cancel/Close, no leaked command, and no ghost/stuck axis. |
+| Xbox-compatible controller only | Back-only implemented; runtime pending | Prove physical B cancellation/Back, then implement and prove full navigation, edit, Apply/Cancel, no leaked command, and no ghost/stuck axis. |
 | Input-device transition | Partly blocked | Mouse/keyboard switching needs a current regression; controller transition/reseed awaits controller routing. |
 | Mouse binding capture | Not implemented | Capture, clear, cancel, conflict behavior, and round-trip. |
 | Controller/HOTAS binding capture | Not implemented | Device identity, noisy axes, held buttons/POV, cancel/timeout, and reseed. |
@@ -82,7 +109,7 @@ compatibility ZIP. Runtime rows below are retained evidence from earlier artifac
 | 1920x1080 | Verified design canvas; broader UI-scale combinations pending |
 | 2560x1440 | Observed; formal layout record pending |
 | 3840x2160 | Pending |
-| 21:9 and 32:9 | Observed during research; current shell regression pending |
+| 21:9 and 32:9 | 21:9 close exposed stale scene-rect restoration; exact vanilla delegation is build-verified and runtime regression is pending. 32:9 remains pending. |
 | Starfield UI scaling/accessibility settings | Pending |
 | Long/pseudo-localized labels and missing glyphs | Pending; pixel glyph set is temporary |
 

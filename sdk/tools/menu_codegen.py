@@ -134,6 +134,7 @@ def validate(data: Any) -> dict[str, Any]:
     seen_page_symbols: set[str] = set()
     seen_controls: set[str] = set()
     seen_control_symbols: set[str] = set()
+    total_control_count = 0
     for pi, raw_page in enumerate(pages):
         path = f"$.pages[{pi}]"
         page = object_at(raw_page, path, PAGE_KEYS, {"id", "title", "sections"})
@@ -160,8 +161,11 @@ def validate(data: Any) -> dict[str, Any]:
             text_at(section["title"], f"{section_path}.title", 96)
             options = array_at(section["options"], f"{section_path}.options", 1, 128)
             control_count += len(options)
+            total_control_count += len(options)
             if control_count > 128:
                 fail(f"{path}.sections", "page exceeds the ABI-v1 limit of 128 controls")
+            if total_control_count > 512:
+                fail("$.pages", "module exceeds the ABI-v1 limit of 512 controls")
             for oi, option in enumerate(options):
                 option_path = f"{section_path}.options[{oi}]"
                 validated = validate_option(option, option_path, seen_controls)

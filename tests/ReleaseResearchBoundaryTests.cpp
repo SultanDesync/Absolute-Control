@@ -64,21 +64,21 @@ int main()
     CHECK(releaseSources.find("src/research/ResearchSupport.cpp") == std::string::npos);
     CHECK(releaseSources.find("ResearchModule.cpp") == std::string::npos);
     CHECK(releaseSources.find("ResearchInputCapture.cpp") == std::string::npos);
-    CHECK(releaseSources.find("LiveComponentsRegistry.cpp") == std::string::npos);
+    CHECK(releaseSources.find("LiveComponentsRegistry.cpp") != std::string::npos);
 
     const auto researchSources = Between(
         build, "local research_only_sources = {",
         "local function add_control_panel_core_sources");
     CHECK(researchSources.find("ResearchModule.cpp") != std::string::npos);
     CHECK(researchSources.find("ResearchInputCapture.cpp") != std::string::npos);
-    CHECK(researchSources.find("LiveComponentsRegistry.cpp") != std::string::npos);
+    CHECK(researchSources.find("LiveComponentsRegistry.cpp") == std::string::npos);
     CHECK(researchSources.find("src/research/ResearchSupport.cpp") != std::string::npos);
 
     const auto releaseTarget = Between(
         build, "target(\"AbsoluteControlPanel\"", "target(\"AbsoluteControlPanelResearchDev\"");
     CHECK(releaseTarget.find("set_default(true)") != std::string::npos);
     CHECK(releaseTarget.find("add_installfiles") != std::string::npos);
-    CHECK(releaseTarget.find("LiveComponentsExperimentalAPI.h") == std::string::npos);
+    CHECK(releaseTarget.find("LiveComponentsExperimentalAPI.h") != std::string::npos);
     CHECK(releaseTarget.find("dinput8") == std::string::npos);
     CHECK(releaseTarget.find("ACP_ENABLE_RESEARCH_TOOLS") == std::string::npos);
     CHECK(releaseTarget.find("New-BuildArtifactManifest.ps1") != std::string::npos);

@@ -15,6 +15,7 @@ namespace AbsoluteControlPanelResearch::Scaleform
         Ready,
         Close,
         Dispatch,
+        Compound,
         Focus,
         ModelApplied
     };
@@ -31,6 +32,10 @@ namespace AbsoluteControlPanelResearch::Scaleform
             const RE::Scaleform::GFx::Value& a_menuObject);
         void LogMovieState(std::string_view a_phase);
         void Call(const RE::Scaleform::GFx::FunctionHandler::Params& a_params);
+        void OnShown();
+        // Returns true only when this displayed session originated in PauseMenu
+        // and reached Hide through its accepted user-close path.
+        [[nodiscard]] bool OnHidden();
         [[nodiscard]] bool HandleButtonInput(const RE::ButtonEvent& a_event);
         void HandlePointerPhase(Input::PointerPhase a_phase);
 

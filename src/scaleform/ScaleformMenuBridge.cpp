@@ -5,10 +5,12 @@
 #include "MenuApiHost.h"
 #include "MenuInputRouter.h"
 #include "MenuSession.h"
+#include "LiveComponentsRegistry.h"
 #include "SlopAPI.h"
 #include "input/NativeMenuInputAdapter.h"
 #include "input/PlatformInputServices.h"
 #include "ui/MenuMessaging.h"
+#include "ui/PauseMenuIntegration.h"
 
 #include <array>
 #include <chrono>
@@ -16,9 +18,11 @@
 #include <cstring>
 #include <format>
 #include <limits>
+#include <optional>
 #include <ranges>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace AbsoluteControlPanelResearch::Scaleform
 {
@@ -30,6 +34,25 @@ namespace AbsoluteControlPanelResearch::Scaleform
     class MenuBridge::Impl final : public Input::NativeMenuInputSink
     {
     public:
+        ~Impl() override
+        {
+            // External menu destruction can bypass the normal close command.  Do
+            // not leave product input capture armed, and do not let a deferred
+            // movie publication survive the movie object that owns this bridge.
+            if (session.IsCaptureActive()) {
+                EvidenceLog::Event(
+                    session.IsTextCaptureActive() ? "text_capture_cancelled" :
+                                                    "binding_capture_cancelled",
+                    "source=bridge-teardown");
+            }
+            session.Teardown();
+            LiveComponents::HostRegistry().SetMenuActive(false);
+            MenuApiHost::SetInputCaptureActive(false);
+            pendingModel.reset();
+            movie = nullptr;
+            EvidenceLog::Event("bridge_teardown", "deferred model cleared");
+        }
+
         void Attach(RE::Scaleform::GFx::Movie* a_movie,
             const RE::Scaleform::GFx::Value& a_menuObject)
         {
@@ -79,13 +102,16 @@ namespace AbsoluteControlPanelResearch::Scaleform
                     // before the movie became ready. Start the wakeup cursor there so the
                     // first acknowledgement does not immediately publish a duplicate model.
                     refreshCursor = MenuApiHost::RefreshRevision();
-                    PublishModel(session.Snapshot());
+                    DeferModel(session.Snapshot(), "bridge-ready");
                     break;
                 case NativeFunction::Close:
                     CloseSession();
                     break;
                 case NativeFunction::Dispatch:
                     DispatchFlat(a_params);
+                    break;
+                case NativeFunction::Compound:
+                    DispatchCompound(a_params);
                     break;
                 case NativeFunction::Focus: {
                     const auto region = a_params.argCount >= 1 ?
@@ -117,7 +143,23 @@ namespace AbsoluteControlPanelResearch::Scaleform
                             "bridge_model_applied",
                             std::format("generation={}", generation));
                     }
-                    PollRefresh();
+                    // applyModel acknowledges synchronously.  Publishing another
+                    // replacement model from that acknowledgement would recurse
+                    // through Scaleform.  Only the later ENTER_FRAME heartbeat may
+                    // flush work queued by a pointer/keyboard/provider callback.
+                    if (!modelPublicationActive) {
+                        PollRefresh();
+                        const auto now = std::chrono::steady_clock::now();
+                        if (lastLivePoll.time_since_epoch().count() == 0 ||
+                            now - lastLivePoll >= std::chrono::milliseconds(100)) {
+                            lastLivePoll = now;
+                            if (auto live = session.RefreshLive()) {
+                                DeferModel(std::move(*live), "live-component");
+                            }
+                        }
+                        FlushDeferredModel();
+                        AdvancePointerInputBarrier();
+                    }
                     break;
                 }
                 }
@@ -140,7 +182,7 @@ namespace AbsoluteControlPanelResearch::Scaleform
                         SlopApi::kStringValueCapacity) {
                     command.schemaVersion = 0;
                     EvidenceLog::Event("bridge_command_rejected", "invalid flat dispatch arguments");
-                    PublishModel(session.Dispatch(command));
+                    DeferModel(session.Dispatch(command), "invalid-dispatch");
                     return;
                 }
                 command.schemaVersion = ReadUnsigned(a_params.args[0]);
@@ -158,6 +200,7 @@ namespace AbsoluteControlPanelResearch::Scaleform
                 else if (name == "write") command.kind = MenuSession::CommandKind::Write;
                 else if (name == "invoke") command.kind = MenuSession::CommandKind::Invoke;
                 else if (name == "beginBindingCapture") command.kind = MenuSession::CommandKind::BeginBindingCapture;
+                else if (name == "beginTextCapture") command.kind = MenuSession::CommandKind::BeginTextCapture;
                 else if (name == "apply") command.kind = MenuSession::CommandKind::Apply;
                 else if (name == "cancel") command.kind = MenuSession::CommandKind::Cancel;
                 else if (name == "close") command.kind = MenuSession::CommandKind::Close;
@@ -165,20 +208,105 @@ namespace AbsoluteControlPanelResearch::Scaleform
                 DispatchCommand(command, name, "scaleform");
             }
 
+            void DispatchCompound(
+                const RE::Scaleform::GFx::FunctionHandler::Params& a_params)
+            {
+                MenuSession::Command command;
+                command.kind = MenuSession::CommandKind::Compound;
+                std::uint64_t generation{};
+                const auto operation = a_params.argCount == 10 ?
+                    ReadUnsigned(a_params.args[7]) :
+                    std::numeric_limits<std::uint32_t>::max();
+                const auto count = a_params.argCount == 10 ?
+                    ReadUnsigned(a_params.args[8]) :
+                    std::numeric_limits<std::uint32_t>::max();
+                if (a_params.argCount != 10 || !a_params.args[1].IsString() ||
+                    !a_params.args[2].IsString() || !a_params.args[3].IsString() ||
+                    !a_params.args[4].IsString() || !a_params.args[5].IsString() ||
+                    !a_params.args[6].IsString() || operation > 2 ||
+                    count == std::numeric_limits<std::uint32_t>::max() ||
+                    !ReadExactGeneration(a_params.args[9], generation)) {
+                    command.schemaVersion = 0;
+                    DeferModel(session.Dispatch(command), "invalid-compound-dispatch");
+                    return;
+                }
+                command.schemaVersion = ReadUnsigned(a_params.args[0]);
+                command.expectedGeneration = generation;
+                command.moduleId = a_params.args[1].GetString();
+                command.pageId = a_params.args[2].GetString();
+                command.channelId = a_params.args[3].GetString();
+                command.controlId = a_params.args[4].GetString();
+                command.columnId = a_params.args[5].GetString();
+                command.tierId = a_params.args[6].GetString();
+                command.compoundKind =
+                    static_cast<AbsoluteControlPanelExperimental::CompoundOperationKind>(
+                        operation);
+                command.count = count;
+                DispatchCommand(command, "compound", "scaleform");
+            }
+
             void PollRefresh()
             {
-                if (!MenuApiHost::ConsumeRefresh(refreshCursor)) {
+                if (closing || !MenuApiHost::ConsumeRefresh(
+                        refreshCursor, session.ActiveModuleId(),
+                        session.ActivePageId())) {
                     return;
                 }
                 EvidenceLog::Event(
                     "bridge_refresh_consumed",
                     std::format("refresh_revision={}", refreshCursor));
-                PublishModel(session.Snapshot());
+                DeferModel(session.Snapshot(), "provider-refresh");
+            }
+
+            void DeferModel(MenuSession::Model a_model, std::string_view a_source)
+            {
+                if (pendingModel &&
+                    a_model.generation < pendingModel->generation) {
+                    EvidenceLog::Event(
+                        "bridge_model_discarded",
+                        std::format(
+                            "generation={} pending_generation={} source={}",
+                            a_model.generation, pendingModel->generation, a_source));
+                    return;
+                }
+                const bool replaced = pendingModel.has_value();
+                const auto generation = a_model.generation;
+                pendingModel = std::move(a_model);
+                EvidenceLog::Event(
+                    "bridge_model_deferred",
+                    std::format(
+                        "generation={} source={} replaced={}", generation,
+                        a_source, replaced));
+            }
+
+            void FlushDeferredModel()
+            {
+                if (closing) {
+                    pendingModel.reset();
+                    return;
+                }
+                if (!pendingModel || modelPublicationActive) {
+                    return;
+                }
+                auto model = std::move(*pendingModel);
+                pendingModel.reset();
+                EvidenceLog::Event(
+                    "bridge_model_flush",
+                    std::format("generation={} boundary=enter-frame", model.generation));
+                PublishModel(model);
             }
 
             void DispatchCommand(const MenuSession::Command& a_command,
                 std::string_view a_name, std::string_view a_source)
             {
+                if (closing) {
+                    EvidenceLog::Event(
+                        "bridge_command_rejected",
+                        std::format(
+                            "command={} source={} error=menu closing",
+                            a_name, a_source));
+                    return;
+                }
                 EvidenceLog::Event("bridge_command",
                     std::format("command={} source={}", a_name, a_source));
                 const auto model = session.Dispatch(a_command);
@@ -204,37 +332,87 @@ namespace AbsoluteControlPanelResearch::Scaleform
                             "binding_capture_armed", "source=pointer-or-scaleform");
                     }
                 }
+                if (a_command.kind == MenuSession::CommandKind::BeginTextCapture &&
+                    model.error.empty() && model.textCaptureActive) {
+                    const bool awaitingRelease = a_source == "native-keyboard";
+                    inputAdapter.BeginTextCapture(awaitingRelease);
+                    MenuApiHost::SetInputCaptureActive(true);
+                    EvidenceLog::Event(
+                        "text_capture_started",
+                        std::format(
+                            "module={} page={} control={} awaiting_release={}",
+                            model.captureModuleId, model.capturePageId,
+                            model.captureControlId, awaitingRelease));
+                    if (!awaitingRelease) {
+                        EvidenceLog::Event(
+                            "text_capture_armed", "source=pointer-or-scaleform");
+                    }
+                }
                 EvidenceLog::Event(
                     model.error.empty() ? "bridge_command_accepted" :
                                           "bridge_command_rejected",
 
                     std::format("command={} source={} error={}",
                         a_name, a_source, model.error));
-                PublishModel(model);
                 if (a_command.kind == MenuSession::CommandKind::Close &&
                     model.error.empty()) {
+                    // A successful close needs no replacement display tree.  The
+                    // queued UI message is processed only after this command stack
+                    // unwinds; teardown drops any older deferred publication.
+                    closing = true;
+                    pendingModel.reset();
+                    MenuApiHost::SetInputCaptureActive(false);
                     Ui::QueueControlPanelMessage(RE::UI_MESSAGE_TYPE::kHide, "bridge");
+                    return;
                 }
+                DeferModel(model, a_source);
             }
 
             void CloseSession()
             {
-                if (session.IsBindingCaptureActive()) {
-                    (void)session.CancelBindingCapture();
+                if (closing) {
+                    return;
+                }
+                if (session.IsCaptureActive()) {
+                    if (session.IsTextCaptureActive()) {
+                        (void)session.CancelTextCapture();
+                    } else {
+                        (void)session.CancelBindingCapture();
+                    }
                     MenuApiHost::SetInputCaptureActive(false);
                 }
                 const auto model = session.Dispatch(MenuSession::Command{ .kind = MenuSession::CommandKind::Close });
-                PublishModel(model);
-                if (model.error.empty()) Ui::QueueControlPanelMessage(RE::UI_MESSAGE_TYPE::kHide, "bridge");
+                if (model.error.empty()) {
+                    closing = true;
+                    pendingModel.reset();
+                    MenuApiHost::SetInputCaptureActive(false);
+                    Ui::QueueControlPanelMessage(RE::UI_MESSAGE_TYPE::kHide, "bridge");
+                } else {
+                    DeferModel(model, "native-close");
+                }
             }
 
             [[nodiscard]] bool HandleButtonInput(const RE::ButtonEvent& a_event)
             {
+                if (closing) {
+                    return true;
+                }
                 return inputAdapter.HandleButtonInput(a_event, *this);
             }
 
             void HandlePointerPhase(Input::PointerPhase a_phase)
             {
+                if (closing || !menuShown || !pointerInputArmed) {
+                    if (a_phase != Input::PointerPhase::Move) {
+                        EvidenceLog::Event(
+                            "pointer_phase_suppressed",
+                            std::format(
+                                "phase={} closing={} shown={} armed={}",
+                                static_cast<std::uint32_t>(a_phase), closing,
+                                menuShown, pointerInputArmed));
+                    }
+                    return;
+                }
                 const auto method = a_phase == Input::PointerPhase::Down ? "handlePointerDown" :
                     (a_phase == Input::PointerPhase::Move ? "handlePointerMove" :
                                                      "handlePointerUp");
@@ -276,6 +454,14 @@ namespace AbsoluteControlPanelResearch::Scaleform
 
             void HandlePointerWheel(std::int32_t a_direction)
             {
+                if (closing || !menuShown || !pointerInputArmed) {
+                    EvidenceLog::Event(
+                        "mouse_wheel_suppressed",
+                        std::format(
+                            "direction={} closing={} shown={} armed={}",
+                            a_direction, closing, menuShown, pointerInputArmed));
+                    return;
+                }
                 POINT point{};
                 double stageX{};
                 double stageY{};
@@ -312,7 +498,21 @@ namespace AbsoluteControlPanelResearch::Scaleform
                 const MenuSession::Control& a_control) const
             {
                 const auto& descriptor = a_control.descriptor;
-                return SetString(a_target, "controlId", descriptor.controlId) &&
+                auto* root = movie->asMovieRoot.get();
+                RE::Scaleform::GFx::Value choiceOptions;
+                root->CreateArray(&choiceOptions);
+                bool ok = choiceOptions.IsArray();
+                for (const auto& source : a_control.choiceOptions) {
+                    RE::Scaleform::GFx::Value option;
+                    root->CreateObject(&option);
+                    ok = ok && option.IsObject() &&
+                        option.SetMember("value", RE::Scaleform::GFx::Value(
+                            static_cast<double>(source.value))) &&
+                        SetString(option, "label", source.label) &&
+                        choiceOptions.PushBack(option);
+                    if (!ok) return false;
+                }
+                return ok && SetString(a_target, "controlId", descriptor.controlId) &&
                     a_target.SetMember("kind", RE::Scaleform::GFx::Value(static_cast<std::uint32_t>(descriptor.kind))) &&
                     a_target.SetMember("flags", RE::Scaleform::GFx::Value(descriptor.flags)) &&
                     SetString(a_target, "label", descriptor.label) && SetString(a_target, "description", descriptor.description) &&
@@ -324,7 +524,93 @@ namespace AbsoluteControlPanelResearch::Scaleform
                     a_target.SetMember("booleanValue", RE::Scaleform::GFx::Value(a_control.value.booleanValue != 0)) &&
                     a_target.SetMember("integerValue", RE::Scaleform::GFx::Value(static_cast<double>(a_control.value.integerValue))) &&
                     a_target.SetMember("floatValue", RE::Scaleform::GFx::Value(a_control.value.floatValue)) &&
-                    SetString(a_target, "stringValue", a_control.value.stringValue) && SetString(a_target, "error", a_control.error);
+                    SetString(a_target, "stringValue", a_control.value.stringValue) &&
+                    SetString(a_target, "error", a_control.error) &&
+                    a_target.SetMember("choiceOptions", choiceOptions);
+            }
+
+            [[nodiscard]] bool SerializeLiveComponent(
+                RE::Scaleform::GFx::Value& target,
+                const MenuSession::Page::LiveComponent& component) const
+            {
+                auto* root = movie->asMovieRoot.get();
+                const auto& descriptor = component.descriptor;
+                bool ok = SetString(target, "channelId", descriptor.channelId) &&
+                    SetString(target, "title", descriptor.title) &&
+                    target.SetMember("kind", RE::Scaleform::GFx::Value(
+                        static_cast<std::uint32_t>(descriptor.kind))) &&
+                    target.SetMember("available", RE::Scaleform::GFx::Value(
+                        component.available)) &&
+                    SetString(target, "error", component.error);
+                if (!ok || descriptor.kind !=
+                        AbsoluteControlPanelExperimental::ComponentKind::SegmentedAllocationGrid) {
+                    return ok;
+                }
+
+                const auto& grid = descriptor.segmentedGrid;
+                const auto& frame = component.frame.segmentedGrid;
+                RE::Scaleform::GFx::Value columns, tiers;
+                root->CreateArray(&columns);
+                root->CreateArray(&tiers);
+                ok = columns.IsArray() && tiers.IsArray() &&
+                    SetString(target, "controlId", grid.controlId) &&
+                    target.SetMember("sequence", RE::Scaleform::GFx::Value(
+                        static_cast<double>(component.frame.sequence))) &&
+                    target.SetMember("flags", RE::Scaleform::GFx::Value(
+                        component.frame.flags));
+                for (std::uint32_t tierIndex = 0;
+                     ok && tierIndex < grid.tierCount; ++tierIndex) {
+                    RE::Scaleform::GFx::Value tier;
+                    root->CreateObject(&tier);
+                    const auto& source = grid.tiers[tierIndex];
+                    ok = tier.IsObject() &&
+                        SetString(tier, "tierId", source.tierId) &&
+                        SetString(tier, "label", source.label) &&
+                        tier.SetMember("visualRole", RE::Scaleform::GFx::Value(
+                            static_cast<std::uint32_t>(source.visualRole))) &&
+                        tiers.PushBack(tier);
+                }
+                for (std::uint32_t columnIndex = 0;
+                     ok && columnIndex < grid.columnCount; ++columnIndex) {
+                    RE::Scaleform::GFx::Value column, segments;
+                    root->CreateObject(&column);
+                    root->CreateArray(&segments);
+                    const auto& source = grid.columns[columnIndex];
+                    const auto& state = frame.columns[columnIndex];
+                    ok = column.IsObject() && segments.IsArray() &&
+                        SetString(column, "columnId", source.columnId) &&
+                        SetString(column, "label", source.label) &&
+                        column.SetMember("maximumSegments", RE::Scaleform::GFx::Value(
+                            source.maximumSegments)) &&
+                        column.SetMember("segmentCount", RE::Scaleform::GFx::Value(
+                            state.segmentCount)) &&
+                        column.SetMember("currentCount", RE::Scaleform::GFx::Value(
+                            state.currentCount)) &&
+                        column.SetMember("maximumCount", RE::Scaleform::GFx::Value(
+                            state.maximumCount)) &&
+                        column.SetMember("targetCount", RE::Scaleform::GFx::Value(
+                            state.targetCount));
+                    for (std::uint32_t segmentIndex = 0;
+                         ok && segmentIndex < state.segmentCount; ++segmentIndex) {
+                        RE::Scaleform::GFx::Value segment;
+                        root->CreateObject(&segment);
+                        const auto& pip = state.segments[segmentIndex];
+                        ok = segment.IsObject() &&
+                            segment.SetMember("tierIndex", RE::Scaleform::GFx::Value(
+                                pip.tierIndex)) &&
+                            segment.SetMember("live", RE::Scaleform::GFx::Value(
+                                pip.live != 0)) &&
+                            segment.SetMember("preview", RE::Scaleform::GFx::Value(
+                                pip.preview != 0)) &&
+                            segment.SetMember("interactive", RE::Scaleform::GFx::Value(
+                                pip.interactive != 0)) &&
+                            segments.PushBack(segment);
+                    }
+                    ok = ok && column.SetMember("segments", segments) &&
+                        columns.PushBack(column);
+                }
+                return ok && target.SetMember("tiers", tiers) &&
+                    target.SetMember("columns", columns);
             }
 
             void PublishModel(const MenuSession::Model& a_model)
@@ -333,9 +619,15 @@ namespace AbsoluteControlPanelResearch::Scaleform
                     EvidenceLog::Event("bridge_model_publish_failed", "movie root unavailable");
                     return;
                 }
+                if (modelPublicationActive) {
+                    DeferModel(a_model, "reentrant-publication");
+                    return;
+                }
                 auto* root = movie->asMovieRoot.get();
-                RE::Scaleform::GFx::Value model, pages;
-                root->CreateObject(&model); root->CreateArray(&pages);
+                RE::Scaleform::GFx::Value model, modules, pages;
+                root->CreateObject(&model);
+                root->CreateArray(&modules);
+                root->CreateArray(&pages);
                 std::uint32_t activePage{};
                 std::uint32_t selectedControl{};
                 for (std::uint32_t i = 0; i < a_model.pages.size(); ++i) {
@@ -350,7 +642,7 @@ namespace AbsoluteControlPanelResearch::Scaleform
                         break;
                     }
                 }
-                bool populated = model.IsObject() && pages.IsArray() &&
+                bool populated = model.IsObject() && modules.IsArray() && pages.IsArray() &&
                     model.SetMember("schemaVersion", RE::Scaleform::GFx::Value(a_model.schemaVersion)) &&
                     model.SetMember("generation", RE::Scaleform::GFx::Value(
                         static_cast<double>(a_model.generation))) &&
@@ -364,15 +656,30 @@ namespace AbsoluteControlPanelResearch::Scaleform
                     model.SetMember("dirty", RE::Scaleform::GFx::Value(a_model.dirty)) &&
                     model.SetMember("bindingCaptureActive", RE::Scaleform::GFx::Value(
                         a_model.bindingCaptureActive)) &&
+                    model.SetMember("textCaptureActive", RE::Scaleform::GFx::Value(
+                        a_model.textCaptureActive)) &&
                     SetString(model, "captureModuleId", a_model.captureModuleId) &&
                     SetString(model, "capturePageId", a_model.capturePageId) &&
                     SetString(model, "captureControlId", a_model.captureControlId) &&
                     SetString(model, "error", a_model.error);
+                for (std::uint32_t moduleIndex = 0;
+                     populated && moduleIndex < a_model.modules.size(); ++moduleIndex) {
+                    const auto& source = a_model.modules[moduleIndex];
+                    RE::Scaleform::GFx::Value module;
+                    root->CreateObject(&module);
+                    populated = module.IsObject() &&
+                        SetString(module, "moduleId", source.moduleId) &&
+                        SetString(module, "moduleTitle", source.title) &&
+                        SetString(module, "pageId", source.firstPageId) &&
+                        modules.PushBack(module);
+                }
                 for (std::uint32_t pageIndex = 0; populated && pageIndex < a_model.pages.size(); ++pageIndex) {
                     const auto& source = a_model.pages[pageIndex];
-                    RE::Scaleform::GFx::Value page, controls;
+                    RE::Scaleform::GFx::Value page, controls, liveComponents;
                     root->CreateObject(&page); root->CreateArray(&controls);
+                    root->CreateArray(&liveComponents);
                     populated = page.IsObject() && controls.IsArray() &&
+                        liveComponents.IsArray() &&
                         SetString(page, "moduleId", source.moduleId) &&
                         SetString(page, "moduleTitle", source.moduleTitle) &&
                         SetString(page, "pageId", source.pageId) &&
@@ -383,16 +690,33 @@ namespace AbsoluteControlPanelResearch::Scaleform
                         populated = control.IsObject() && SerializeControl(control, source.controls[controlIndex]) &&
                             controls.PushBack(control);
                     }
-                    populated = populated && page.SetMember("controls", controls) && pages.PushBack(page);
+                    for (std::uint32_t componentIndex = 0; populated &&
+                         componentIndex < source.liveComponents.size(); ++componentIndex) {
+                        RE::Scaleform::GFx::Value component;
+                        root->CreateObject(&component);
+                        populated = component.IsObject() &&
+                            SerializeLiveComponent(component,
+                                source.liveComponents[componentIndex]) &&
+                            liveComponents.PushBack(component);
+                    }
+                    populated = populated && page.SetMember("controls", controls) &&
+                        page.SetMember("liveComponents", liveComponents) &&
+                        pages.PushBack(page);
                 }
-                populated = populated && model.SetMember("pages", pages);
+                populated = populated && model.SetMember("modules", modules) &&
+                    model.SetMember("pages", pages);
+                modelPublicationActive = true;
                 const bool invoked = populated && menuObj.Invoke("applyModel", nullptr, &model, 1);
+                modelPublicationActive = false;
+                if (invoked) {
+                    session.AcknowledgePublishedGeneration(a_model.generation);
+                }
                 EvidenceLog::Event(
                     "bridge_model_published",
                     std::format(
-                        "generation={} revision={} pages={} populated={} invoked={}",
-                        a_model.generation, a_model.revision, a_model.pages.size(),
-                        populated, invoked));
+                        "generation={} revision={} modules={} pages={} populated={} invoked={}",
+                        a_model.generation, a_model.revision, a_model.modules.size(),
+                        a_model.pages.size(), populated, invoked));
             }
 
             [[nodiscard]] static std::uint32_t ReadUnsigned(
@@ -481,7 +805,7 @@ namespace AbsoluteControlPanelResearch::Scaleform
 
             void PublishInputModel(const MenuSession::Model& a_model) override
             {
-                PublishModel(a_model);
+                DeferModel(a_model, "native-input");
             }
 
             void DispatchInputCommand(const MenuSession::Command& a_command,
@@ -495,12 +819,90 @@ namespace AbsoluteControlPanelResearch::Scaleform
                 HandlePointerWheel(a_direction);
             }
 
+            void OnShown()
+            {
+                // UI::IsMenuOpen becomes true while the factory and Show lifecycle are
+                // still in flight.  The platform pointer worker can therefore deliver
+                // the click that selected the PauseMenu entry to this new movie.  Do
+                // not Invoke into Scaleform until Show has completed and that click has
+                // crossed a release + one-frame quarantine.
+                if (!menuShown) {
+                    returnToPauseOnClose =
+                        Ui::PauseMenuIntegration::ConsumeReturnToPauseOnClose();
+                    EvidenceLog::Event(
+                        "control_panel_session_origin",
+                        std::format(
+                            "return_target={}",
+                            returnToPauseOnClose ? "PauseMenu" : "none"));
+                }
+                menuShown = true;
+                LiveComponents::HostRegistry().SetMenuActive(true);
+                closing = false;
+                pointerInputArmed = false;
+                pointerReleaseObserved = false;
+                EvidenceLog::Event(
+                    "bridge_pointer_barrier_started", "reason=menu-shown");
+            }
+
+            [[nodiscard]] bool OnHidden()
+            {
+                const bool returnToPause = closing && returnToPauseOnClose;
+                menuShown = false;
+                LiveComponents::HostRegistry().SetMenuActive(false);
+                pointerInputArmed = false;
+                pointerReleaseObserved = false;
+                returnToPauseOnClose = false;
+                // Discard an origin queued by a duplicate Show while this
+                // session was already active; it must not leak to the next one.
+                (void)Ui::PauseMenuIntegration::ConsumeReturnToPauseOnClose();
+                if (session.IsCaptureActive()) {
+                    EvidenceLog::Event(
+                        session.IsTextCaptureActive() ? "text_capture_cancelled" :
+                                                        "binding_capture_cancelled",
+                        "source=menu-hidden");
+                }
+                session.Teardown();
+                MenuApiHost::SetInputCaptureActive(false);
+                pendingModel.reset();
+                EvidenceLog::Event(
+                    "bridge_pointer_disarmed", "reason=menu-hidden");
+                return returnToPause;
+            }
+
+            void AdvancePointerInputBarrier()
+            {
+                if (!menuShown || pointerInputArmed) {
+                    return;
+                }
+                if ((::GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0) {
+                    pointerReleaseObserved = false;
+                    return;
+                }
+                if (!pointerReleaseObserved) {
+                    pointerReleaseObserved = true;
+                    EvidenceLog::Event(
+                        "bridge_pointer_release_observed", "armed=false");
+                    return;
+                }
+                pointerInputArmed = true;
+                EvidenceLog::Event(
+                    "bridge_pointer_armed", "release_barrier_frames=2");
+            }
+
             MenuSession::Session session;
             MenuInputRouter::FocusState inputFocus;
             Input::NativeMenuInputAdapter inputAdapter;
 
             std::uint64_t refreshCursor{};
             std::uint64_t lastAppliedGeneration{};
+            std::chrono::steady_clock::time_point lastLivePoll{};
+            std::optional<MenuSession::Model> pendingModel;
+            bool modelPublicationActive{};
+            bool closing{};
+            bool menuShown{};
+            bool pointerInputArmed{};
+            bool pointerReleaseObserved{};
+            bool returnToPauseOnClose{};
 
             RE::Scaleform::GFx::Movie* movie{};
             RE::Scaleform::GFx::Value menuObj;
@@ -524,6 +926,16 @@ namespace AbsoluteControlPanelResearch::Scaleform
         const RE::Scaleform::GFx::FunctionHandler::Params& a_params)
     {
         impl_->Call(a_params);
+    }
+
+    void MenuBridge::OnShown()
+    {
+        impl_->OnShown();
+    }
+
+    bool MenuBridge::OnHidden()
+    {
+        return impl_->OnHidden();
     }
 
     bool MenuBridge::HandleButtonInput(const RE::ButtonEvent& a_event)

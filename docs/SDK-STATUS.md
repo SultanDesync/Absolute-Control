@@ -11,6 +11,8 @@ historical research instructions and records what must be true before an SDK tag
 - `docs/CURRENT-STATE.md` — authoritative capability status and known limitations.
 - `docs/DECISIONS.md` — accepted and provisional architectural decisions.
 - `include/AbsoluteControlPanelAPI.h` — current public C ABI candidate.
+- `include/LiveComponentsExperimentalAPI.h` — active bounded live/compound ABI candidate; name
+  retained until performance and accessibility qualification.
 - `docs/MODULE-API.md` — ownership, discovery, transactions, and failure behavior.
 - `sdk/menu-definition.schema.json` — strict authoring schema.
 - `sdk/tools/menu_codegen.py` — deterministic descriptor generator.
@@ -39,10 +41,12 @@ registration/refresh and treat terminal `Rejected` as non-fatal host unavailabil
 are copied; callback/context lifetime continues until unregister succeeds or process exit.
 Unregister returns retryable `Rejected` while a callback lease or dirty transaction is active.
 
-Host limits are 32 modules, 32 pages, 128 controls per page, and 512 controls total. Raw ABI IDs
-are page-local because pages may have distinct contexts/callbacks. Generated pages share one
-`ProviderCallbacks` set and module-wide parser, so generated definitions require module-wide unique
-control IDs. The generator still needs a mechanical total-512 check before SDK freeze.
+Host limits are 512 modules, 2,048 pages globally, 32 pages per module, 128 controls per page, 512
+controls per module, and 32,768 controls globally. Raw ABI IDs are page-local because pages may have
+distinct contexts/callbacks. Generated pages share one `ProviderCallbacks` set and module-wide
+parser, so generated definitions require module-wide unique control IDs. The generator rejects a
+definition above the 512-control module limit; a shared machine-readable limits authority remains
+an SDK-freeze maintenance task.
 
 Subscriber gameplay must remain fully operational when the host is absent, incompatible, or
 rejects registration. Existing Workbench, Dear ImGui, INI, and hotkey paths may coexist during the
@@ -51,9 +55,11 @@ experimental period; the host is not a loader dependency.
 ## Required before the first SDK release
 
 - Freeze ABI v1 structure sizes, flags, capacities, calling conventions, and compatibility rules.
-- Decide whether choice labels, text editing, sections, and presentation hints extend ABI v1 or
-  require ABI v2.
-- Promote or remove the experimental live/compound-component protocol.
+- Freeze the appended ABI-v1 labeled-choice callback and bounded `TextInput` semantics, then add
+  deterministic schema/code-generator coverage. Decide whether rendered sections and presentation
+  hints use a compatible extension or require ABI v2.
+- Rename/freeze or revise the active live/compound-component protocol after Absolute Power and
+  AbsoluteHOTAS performance/accessibility qualification.
 - Package the public header, schema, generator, examples, licence/notice files, and version notes
   without research-only sources.
 - Provide CMake and xmake consumption examples while allowing subscribers to keep an existing
@@ -64,7 +70,7 @@ experimental period; the host is not a loader dependency.
 - Complete the privacy gate: no local paths, mod-list locations, account names, logs, screenshots,
   tokens, or device-specific identifiers in the package or repository diff.
 - Publish an upgrade/migration note for every future ABI or schema change.
-- Resolve the generator/host total-control check.
+- Source generator/catalog/host limits from one machine-readable authority to prevent drift.
 
 ## Checkpoint discipline
 
@@ -73,7 +79,7 @@ fallback UI, build/test commands, runtime validation, and known limitations in t
 README. Every accepted host capability updates the component catalogue and test matrix in the same
 change so SDK documentation follows executable behavior rather than anticipated behavior.
 
-The current product validator passes the canonical build, 8/8 native tests, 6 generator tests,
-generated fixture check/compile, 25 catalogue entries, ten-source SWF provenance, artifact
+The current product validator passes the canonical build, 9/9 native tests, 7 generator tests,
+generated fixture check/compile, 26 catalogue entries, ten-source SWF provenance, artifact
 fixtures, canonical manifest, and compatibility ZIP. Runtime/UX is `not_run`; this is not an SDK
 release or support declaration.

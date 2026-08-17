@@ -35,6 +35,10 @@ namespace AbsoluteControlPanelResearch::Ui::PauseMenuIntegration
         std::atomic<std::uint32_t> g_advanceAttemptCount{};
         std::atomic<std::int32_t> g_lastAdvanceResult{ -1 };
         std::atomic<std::uint32_t> g_requestedCommand{};
+        // -1 has no queued origin, 0 is direct/F2, and 1 is PauseMenu. The
+        // first queued Show wins until the displayed session claims it, so a
+        // duplicate overlapping Show cannot rewrite that session's back stack.
+        std::atomic<std::int32_t> g_returnToPauseOnClose{ -1 };
 
         struct ActiveMenuArraySnapshot
         {
@@ -504,5 +508,17 @@ namespace AbsoluteControlPanelResearch::Ui::PauseMenuIntegration
     void RequestInjection(std::uint32_t a_commandId) noexcept
     {
         g_requestedCommand.store(a_commandId, std::memory_order_release);
+    }
+
+    bool SetReturnToPauseOnClose(bool a_enabled) noexcept
+    {
+        std::int32_t expected = -1;
+        return g_returnToPauseOnClose.compare_exchange_strong(
+            expected, a_enabled ? 1 : 0, std::memory_order_acq_rel);
+    }
+
+    bool ConsumeReturnToPauseOnClose() noexcept
+    {
+        return g_returnToPauseOnClose.exchange(-1, std::memory_order_acq_rel) == 1;
     }
 }

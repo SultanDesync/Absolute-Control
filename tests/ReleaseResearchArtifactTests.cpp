@@ -41,17 +41,21 @@ int main(int a_argc, char** a_argv)
     CHECK(Contains(release, "applyModel"));
     CHECK(Contains(release, "handlePointerDown"));
 
-    // Research facilities and the experimental ABI are absent from the product.
+    // Research automation remains absent from the product. The bounded live /
+    // compound ABI is now a product lane because Absolute Power consumes it.
     for (const auto forbidden : {
              "research_input_mailbox_registered",
              "foreign_menu_probe_queued",
              "watchdog_fired",
              "Control Panel Research",
-             "AbsoluteControlPanelResearch.dummy.ini",
-             "AbsoluteControlPanel_QueryLiveComponentsExperimental" }) {
+             "AbsoluteControlPanelResearch.dummy.ini" }) {
         CHECK(!Contains(release, forbidden));
         CHECK(Contains(research, forbidden));
     }
+    CHECK(Contains(release,
+        "AbsoluteControlPanel_QueryLiveComponentsExperimental"));
+    CHECK(Contains(research,
+        "AbsoluteControlPanel_QueryLiveComponentsExperimental"));
 
     // The supported public ABI remains available in both compositions.
     CHECK(Contains(release, "AbsoluteControlPanel_QueryApi"));

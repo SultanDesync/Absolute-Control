@@ -3,12 +3,14 @@
 #include "SlopAPI.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cctype>
 #include <cmath>
 #include <cstring>
 #include <mutex>
 #include <ranges>
+#include <unordered_set>
 #include <utility>
 
 namespace AbsoluteControlPanelResearch::MenuApiHost
@@ -27,6 +29,7 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
         AbsoluteControlPanelApi::InvokeActionCallback invokeAction{};
         AbsoluteControlPanelApi::ApplyCallback apply{};
         AbsoluteControlPanelApi::CancelCallback cancel{};
+        AbsoluteControlPanelApi::ReadChoiceOptionsCallback readChoiceOptions{};
     };
 
     namespace
@@ -45,6 +48,9 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
         std::vector<Page> g_pages;
         std::atomic<std::uint64_t> g_revision{ 0 };
         std::atomic<std::uint64_t> g_refreshRevision{ 0 };
+        // Protected by g_registryMutex. Registry mutations wake every open
+        // session; value refreshes wake only the matching active page.
+        std::uint64_t g_directoryRefreshRevision{};
         std::atomic<HostLifecycle> g_lifecycle{ HostLifecycle::Initializing };
         std::atomic_bool g_menuOpen{ false };
         std::atomic_bool g_inputCaptureActive{ false };
@@ -102,24 +108,62 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
             AbsoluteControlPanelApi::ControlKind a_kind) noexcept
         {
             return a_kind >= AbsoluteControlPanelApi::ControlKind::Toggle &&
-                   a_kind <= AbsoluteControlPanelApi::ControlKind::InputBinding;
+                   a_kind <= AbsoluteControlPanelApi::ControlKind::TextInput;
         }
 
         [[nodiscard]] bool ValidControlDescriptor(
             const AbsoluteControlPanelApi::ControlDescriptorV1& a_control) noexcept
         {
             using Kind = AbsoluteControlPanelApi::ControlKind;
+            constexpr auto kCommonFlags =
+                AbsoluteControlPanelApi::kControlReadOnly |
+                AbsoluteControlPanelApi::kControlRequiresRestart |
+                AbsoluteControlPanelApi::kControlAdvanced |
+                AbsoluteControlPanelApi::kControlMutatesDraft |
+                AbsoluteControlPanelApi::kControlAppliesDraftBeforeInvoke |
+                AbsoluteControlPanelApi::kControlTransientChoice;
+            constexpr auto kBindingFlags =
+                AbsoluteControlPanelApi::kBindingKeyboard |
+                AbsoluteControlPanelApi::kBindingMouse |
+                AbsoluteControlPanelApi::kBindingController |
+                AbsoluteControlPanelApi::kBindingModifiers |
+                AbsoluteControlPanelApi::kBindingClearable;
             if (a_control.structSize < sizeof(a_control) ||
                 !IsTerminated(a_control.controlId) ||
                 !IsIdentifier(a_control.controlId) ||
                 !IsTerminated(a_control.label) || a_control.label[0] == '\0' ||
                 !IsTerminated(a_control.description) ||
-                !ValidControlKind(a_control.kind)) {
+                !ValidControlKind(a_control.kind) ||
+                (a_control.flags & ~(kCommonFlags | kBindingFlags)) != 0 ||
+                ((a_control.flags & AbsoluteControlPanelApi::kControlMutatesDraft) != 0 &&
+                    a_control.kind != Kind::Action) ||
+                ((a_control.flags &
+                     AbsoluteControlPanelApi::kControlAppliesDraftBeforeInvoke) != 0 &&
+                    a_control.kind != Kind::Action) ||
+                ((a_control.flags &
+                     AbsoluteControlPanelApi::kControlTransientChoice) != 0 &&
+                    a_control.kind != Kind::Choice) ||
+                ((a_control.flags & AbsoluteControlPanelApi::kControlMutatesDraft) != 0 &&
+                    (a_control.flags &
+                        AbsoluteControlPanelApi::kControlAppliesDraftBeforeInvoke) != 0) ||
+                (a_control.kind != Kind::InputBinding &&
+                    (a_control.flags & kBindingFlags) != 0)) {
                 return false;
             }
             if (a_control.kind == Kind::Toggle || a_control.kind == Kind::Action ||
                 a_control.kind == Kind::InputBinding) {
                 return true;
+            }
+            if (a_control.kind == Kind::TextInput) {
+                return std::isfinite(a_control.minimumValue) &&
+                       std::isfinite(a_control.maximumValue) &&
+                       std::isfinite(a_control.stepValue) &&
+                       a_control.minimumValue == 0.0 &&
+                       a_control.maximumValue >= 1.0 &&
+                       a_control.maximumValue <
+                           AbsoluteControlPanelApi::kStringValueCapacity &&
+                       std::floor(a_control.maximumValue) == a_control.maximumValue &&
+                       a_control.stepValue == 1.0;
             }
             if (!std::isfinite(a_control.minimumValue) ||
                 !std::isfinite(a_control.maximumValue) ||
@@ -149,6 +193,34 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
             std::size_t result{};
             for (const auto& page : g_pages) result += page.controls.size();
             return result;
+        }
+
+        [[nodiscard]] std::size_t RegisteredPageCount(
+            std::string_view a_moduleId) noexcept
+        {
+            return static_cast<std::size_t>(std::ranges::count_if(
+                g_pages, [&](const Page& a_page) {
+                    return a_page.moduleId == a_moduleId;
+                }));
+        }
+
+        [[nodiscard]] std::size_t RegisteredControlCount(
+            std::string_view a_moduleId) noexcept
+        {
+            std::size_t result{};
+            for (const auto& page : g_pages) {
+                if (page.moduleId == a_moduleId) {
+                    result += page.controls.size();
+                }
+            }
+            return result;
+        }
+
+        void PublishRegistryMutation() noexcept
+        {
+            g_revision.fetch_add(1, std::memory_order_release);
+            g_directoryRefreshRevision =
+                g_refreshRevision.fetch_add(1, std::memory_order_acq_rel) + 1;
         }
 
         [[nodiscard]] bool KnowsModule(std::string_view a_moduleId) noexcept
@@ -182,7 +254,9 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
             }
             try {
                 using Kind = AbsoluteControlPanelApi::ControlKind;
-                if (!a_descriptor || a_descriptor->structSize < sizeof(*a_descriptor) ||
+                if (!a_descriptor ||
+                    a_descriptor->structSize <
+                        AbsoluteControlPanelApi::kPageDescriptorV1BaseSize ||
                     !IsTerminated(a_descriptor->moduleId) ||
                     !IsTerminated(a_descriptor->pageId) ||
                     !IsTerminated(a_descriptor->displayName) ||
@@ -206,7 +280,8 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
                 page.controls.reserve(a_descriptor->controlCount);
 
                 bool needsRead{};
-                bool editable{};
+                bool writable{};
+                bool transactionalEditable{};
                 for (std::uint32_t index = 0; index < a_descriptor->controlCount; ++index) {
                     const auto& source = a_descriptor->controls[index];
                     if (!ValidControlDescriptor(source) ||
@@ -216,15 +291,21 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
                         return Api::InvalidArgument;
                     }
                     needsRead = needsRead || source.kind != Kind::Action;
-                    editable = editable || (source.kind != Kind::Action &&
-                        (source.flags & AbsoluteControlPanelApi::kControlReadOnly) == 0);
+                    const bool editableControl = source.kind != Kind::Action &&
+                        (source.flags & AbsoluteControlPanelApi::kControlReadOnly) == 0;
+                    writable = writable || editableControl;
+                    transactionalEditable = transactionalEditable ||
+                        (editableControl &&
+                         (source.flags &
+                            AbsoluteControlPanelApi::kControlTransientChoice) == 0);
                     page.controls.push_back(Control{ source.kind, source.flags,
                         source.controlId, source.label, source.description,
                         source.minimumValue, source.maximumValue, source.stepValue });
                 }
                 if ((needsRead && !a_descriptor->readValue) ||
-                    (editable && (!a_descriptor->writeDraft || !a_descriptor->apply ||
-                                     !a_descriptor->cancel))) {
+                    (writable && !a_descriptor->writeDraft) ||
+                    (transactionalEditable &&
+                        (!a_descriptor->apply || !a_descriptor->cancel))) {
                     return Api::InvalidArgument;
                 }
 
@@ -235,13 +316,28 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
                 page.provider->invokeAction = a_descriptor->invokeAction;
                 page.provider->apply = a_descriptor->apply;
                 page.provider->cancel = a_descriptor->cancel;
+                constexpr auto choiceOptionsEnd =
+                    offsetof(AbsoluteControlPanelApi::PageDescriptorV1,
+                        readChoiceOptions) +
+                    sizeof(AbsoluteControlPanelApi::ReadChoiceOptionsCallback);
+                if (a_descriptor->structSize >= choiceOptionsEnd) {
+                    page.provider->readChoiceOptions =
+                        a_descriptor->readChoiceOptions;
+                }
                 page.canInvokeAction = a_descriptor->invokeAction != nullptr;
                 page.canApply = a_descriptor->apply != nullptr;
                 page.canCancel = a_descriptor->cancel != nullptr;
 
                 std::scoped_lock lock{ g_registryMutex };
+                if (const auto availability = MutationAvailability();
+                    availability != Api::Ok) {
+                    return availability;
+                }
                 if (g_pages.size() >= kMaximumPages ||
+                    RegisteredPageCount(page.moduleId) >= kMaximumPagesPerModule ||
                     RegisteredControlCount() + page.controls.size() > kMaximumControls ||
+                    RegisteredControlCount(page.moduleId) + page.controls.size() >
+                        kMaximumControlsPerModule ||
                     (!KnowsModule(page.moduleId) &&
                         KnownModuleCount() >= kMaximumModules)) {
                     return Api::CapacityExceeded;
@@ -256,7 +352,7 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
                     [&](const Module& a_module) { return a_module.moduleId == page.moduleId; });
                 if (module != g_modules.end()) page.moduleDisplayName = module->displayName;
                 g_pages.push_back(std::move(page));
-                g_revision.fetch_add(1, std::memory_order_release);
+                PublishRegistryMutation();
                 return Api::Ok;
             } catch (...) {
                 return Api::Rejected;
@@ -281,6 +377,10 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
                 Module module{ a_descriptor->moduleId, a_descriptor->displayName,
                     a_descriptor->description };
                 std::scoped_lock lock{ g_registryMutex };
+                if (const auto availability = MutationAvailability();
+                    availability != Api::Ok) {
+                    return availability;
+                }
                 if (std::ranges::any_of(g_modules, [&](const Module& a_module) {
                         return a_module.moduleId == module.moduleId;
                     })) {
@@ -296,7 +396,7 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
                     }
                 }
                 g_modules.push_back(std::move(module));
-                g_revision.fetch_add(1, std::memory_order_release);
+                PublishRegistryMutation();
                 return Api::Ok;
             } catch (...) {
                 return Api::Rejected;
@@ -334,7 +434,7 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
                     [&](const Page& a_page) { return a_page.moduleId == moduleId; });
                 std::erase_if(g_modules,
                     [&](const Module& a_module) { return a_module.moduleId == moduleId; });
-                g_revision.fetch_add(1, std::memory_order_release);
+                PublishRegistryMutation();
                 return Api::Ok;
             } catch (...) {
                 return Api::Rejected;
@@ -355,12 +455,18 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
                     return Api::InvalidArgument;
                 }
                 std::scoped_lock lock{ g_registryMutex };
-                if (!std::ranges::any_of(g_pages, [&](const Page& a_page) {
-                        return a_page.moduleId == moduleId && a_page.pageId == pageId;
-                    })) {
+                if (const auto availability = MutationAvailability();
+                    availability != Api::Ok) {
+                    return availability;
+                }
+                const auto page = std::ranges::find_if(g_pages, [&](const Page& a_page) {
+                    return a_page.moduleId == moduleId && a_page.pageId == pageId;
+                });
+                if (page == g_pages.end()) {
                     return Api::NotFound;
                 }
-                g_refreshRevision.fetch_add(1, std::memory_order_release);
+                page->refreshRevision =
+                    g_refreshRevision.fetch_add(1, std::memory_order_acq_rel) + 1;
                 g_revision.fetch_add(1, std::memory_order_release);
                 return Api::Ok;
             } catch (...) {
@@ -446,11 +552,54 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
         }
     }
 
-    std::vector<Page> Pages() noexcept
+    CatalogSnapshot SnapshotCatalog(
+        std::string_view a_moduleId, std::string_view a_pageId) noexcept
     {
         try {
             std::scoped_lock lock{ g_registryMutex };
-            return g_pages;
+            CatalogSnapshot result;
+            result.revision = g_revision.load(std::memory_order_relaxed);
+            result.modules.reserve((std::min)(g_pages.size(), kMaximumModules));
+            result.pages.reserve(kMaximumPagesPerModule);
+            std::unordered_set<std::string_view> knownModules;
+            knownModules.reserve((std::min)(g_pages.size(), kMaximumModules));
+            auto selected = std::ranges::find_if(g_pages, [&](const Page& a_page) {
+                return a_page.moduleId == a_moduleId && a_page.pageId == a_pageId;
+            });
+            if (selected == g_pages.end() && !a_moduleId.empty()) {
+                selected = std::ranges::find_if(g_pages, [&](const Page& a_page) {
+                    return a_page.moduleId == a_moduleId;
+                });
+            }
+            if (selected == g_pages.end() && !g_pages.empty()) {
+                selected = g_pages.begin();
+            }
+            for (auto source = g_pages.begin(); source != g_pages.end(); ++source) {
+                if (knownModules.insert(source->moduleId).second) {
+                    result.modules.push_back(ModuleSummary{
+                        source->moduleId, source->moduleDisplayName, source->pageId });
+                }
+                if (selected == g_pages.end() ||
+                    source->moduleId != selected->moduleId) {
+                    continue;
+                }
+                Page page;
+                page.moduleId = source->moduleId;
+                page.moduleDisplayName = source->moduleDisplayName;
+                page.pageId = source->pageId;
+                page.displayName = source->displayName;
+                page.description = source->description;
+                page.canInvokeAction = source->canInvokeAction;
+                page.canApply = source->canApply;
+                page.canCancel = source->canCancel;
+                page.refreshRevision = source->refreshRevision;
+                if (source == selected) {
+                    page.controls = source->controls;
+                    page.provider = source->provider;
+                }
+                result.pages.push_back(std::move(page));
+            }
+            return result;
         } catch (...) {
             return {};
         }
@@ -474,6 +623,34 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
         return true;
     }
 
+    bool ConsumeRefresh(std::uint64_t& a_cursor,
+        std::string_view a_activeModuleId,
+        std::string_view a_activePageId) noexcept
+    {
+        try {
+            std::scoped_lock lock{ g_registryMutex };
+            const auto previous = a_cursor;
+            const auto current =
+                g_refreshRevision.load(std::memory_order_acquire);
+            if (current <= previous) {
+                return false;
+            }
+            a_cursor = current;
+            if (g_directoryRefreshRevision > previous) {
+                return true;
+            }
+            const auto active = std::ranges::find_if(
+                g_pages, [&](const Page& a_page) {
+                    return a_page.moduleId == a_activeModuleId &&
+                        a_page.pageId == a_activePageId;
+                });
+            return active != g_pages.end() &&
+                active->refreshRevision > previous;
+        } catch (...) {
+            return false;
+        }
+    }
+
     Api ReadValue(const Page& a_page, std::string_view a_controlId,
         AbsoluteControlPanelApi::ValueV1& a_value) noexcept
     {
@@ -484,6 +661,47 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
             return a_page.provider->readValue(
                 a_page.provider->context, controlId.c_str(), &a_value);
         } catch (...) {
+            return Api::Rejected;
+        }
+    }
+
+    Api ReadChoiceOptions(const Page& a_page, std::string_view a_controlId,
+        std::vector<ChoiceOption>& a_options) noexcept
+    {
+        try {
+            a_options.clear();
+            CallbackLease lease{ a_page.provider };
+            if (!lease || !a_page.provider->readChoiceOptions) {
+                return Api::NotFound;
+            }
+            std::array<AbsoluteControlPanelApi::ChoiceOptionV1,
+                AbsoluteControlPanelApi::kMaximumChoiceOptions> records{};
+            for (auto& record : records) {
+                record.structSize = sizeof(record);
+            }
+            std::uint32_t count{};
+            const std::string controlId{ a_controlId };
+            const auto result = a_page.provider->readChoiceOptions(
+                a_page.provider->context, controlId.c_str(), records.data(),
+                static_cast<std::uint32_t>(records.size()), &count);
+            if (result != Api::Ok) return result;
+            if (count == 0 || count > records.size()) return Api::Rejected;
+            a_options.reserve(count);
+            for (std::uint32_t index = 0; index < count; ++index) {
+                const auto& record = records[index];
+                if (record.structSize < sizeof(record) ||
+                    !IsTerminated(record.label) || record.label[0] == '\0' ||
+                    std::ranges::any_of(a_options, [&](const ChoiceOption& option) {
+                        return option.value == record.value;
+                    })) {
+                    a_options.clear();
+                    return Api::Rejected;
+                }
+                a_options.push_back({ record.value, record.label });
+            }
+            return Api::Ok;
+        } catch (...) {
+            a_options.clear();
             return Api::Rejected;
         }
     }
@@ -508,6 +726,42 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
                 a_transaction.provider_ = a_page.provider;
             }
             return result;
+        } catch (...) {
+            return Api::Rejected;
+        }
+    }
+
+    Api WriteTransientChoice(const Page& a_page, std::string_view a_controlId,
+        const AbsoluteControlPanelApi::ValueV1& a_value) noexcept
+    {
+        try {
+            CallbackLease lease{ a_page.provider };
+            if (!lease || !a_page.provider->writeDraft) return Api::Rejected;
+            const std::string controlId{ a_controlId };
+            return a_page.provider->writeDraft(
+                a_page.provider->context, controlId.c_str(), &a_value);
+        } catch (...) {
+            return Api::Rejected;
+        }
+    }
+
+    Api AttachTransaction(const Page& a_page,
+        Transaction& a_transaction) noexcept
+    {
+        try {
+            if (!a_page.provider ||
+                (a_transaction.provider_ &&
+                 a_transaction.provider_ != a_page.provider)) {
+                return Api::Rejected;
+            }
+            if (a_transaction.provider_) return Api::Ok;
+            CallbackLease lease{ a_page.provider };
+            if (!lease) return Api::Rejected;
+            std::scoped_lock lock{ a_page.provider->mutex };
+            if (a_page.provider->retired) return Api::Rejected;
+            ++a_page.provider->transactions;
+            a_transaction.provider_ = a_page.provider;
+            return Api::Ok;
         } catch (...) {
             return Api::Rejected;
         }
@@ -543,6 +797,7 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
 
     void MarkRuntimeReady() noexcept
     {
+        const std::scoped_lock lock{ g_registryMutex };
         auto expected = HostLifecycle::Initializing;
         (void)g_lifecycle.compare_exchange_strong(expected, HostLifecycle::Ready,
             std::memory_order_acq_rel);
@@ -550,6 +805,7 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
 
     void MarkRuntimeRejected() noexcept
     {
+        const std::scoped_lock lock{ g_registryMutex };
         g_lifecycle.store(HostLifecycle::Rejected, std::memory_order_release);
     }
 
@@ -569,7 +825,8 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
         &RequestProductRefresh,
         &RegisterProductModule,
         &ProductIsOpen,
-        &ProductIsInputCaptureActive
+        &ProductIsInputCaptureActive,
+        AbsoluteControlPanelApi::kCapabilityLabeledChoices
     };
 
     const SlopApi::ApiV1 g_legacyApi{

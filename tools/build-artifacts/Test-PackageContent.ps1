@@ -46,6 +46,16 @@ function Get-StreamSha256 {
     }
 }
 
+function Get-FileSha256 {
+    param([Parameter(Mandatory = $true)][string]$LiteralPath)
+    $stream = [IO.File]::OpenRead($LiteralPath)
+    try {
+        return Get-StreamSha256 -Stream $stream
+    } finally {
+        $stream.Dispose()
+    }
+}
+
 $observed = @{}
 if ($PSCmdlet.ParameterSetName -eq 'Stage') {
     $root = (Resolve-Path -LiteralPath $StageRoot).Path
@@ -59,7 +69,7 @@ if ($PSCmdlet.ParameterSetName -eq 'Stage') {
         $relative = $file.FullName.Substring($rootPrefix.Length).Replace('\', '/')
         $observed[$relative] = [pscustomobject]@{
             Size = $file.Length
-            Hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName).Hash
+            Hash = Get-FileSha256 -LiteralPath $file.FullName
         }
     }
 } else {

@@ -29,11 +29,14 @@ The submodule remains pristine.
 | `IMenu::OnButtonEvent` | 130632 | `0x025533D0` |
 | `IMenu::LoadMovie` | 130618 | `0x02551AB0` |
 | `IMenu::ProcessMessage` | 130624 | `0x02552070` |
+| `IMenu::Unk18` | 130625 | `0x02552090` |
+| `IMenu::Unk1A` | 130630 | `0x02552C80` |
 | `IMenu::Unk09` | 42815 | `0x00481670` |
 | `IMenu::Unk0E` | 130622 | `0x02551D70` |
 | `IMenu::Unk12` | 42816 | `0x00481680` |
 | `IMenu::Unk13` | 39540 | `0x003AE910` |
 | `IMenu::Unk19` | 130634 | `0x02553940` |
+| `IMenu::ProcessEvent(UpdateSceneRectEvent)` | 130642 | `0x02554370` |
 | `UI::IsMenuOpen` | 130475 | `0x02544EC0` |
 
 The historical `GameMenuBase::ctor` ID 130577 is not the current constructor. The recovered
@@ -51,6 +54,14 @@ byte `+0x110`. Shipped derived constructors also clear the tail byte at `+0x130`
   callsite `0x0254181C`.
 - The current active render-order array is `UI + 0x430` (count) and `UI + 0x438` (data). It is
   sorted by the priority byte at `menu + 0x110`.
+- `IMenu`'s `UpdateSceneRectEvent` sink is not a no-op. It rebuilds/submits the movie viewport;
+  replacing it with `kContinue` left a 21:9 game in the custom 1920x1080 movie's letterboxed
+  scene rect until PauseMenu forced another update. The custom menu now delegates to the exact
+  vanilla handler, as well as the mapped `Unk18`, `Unk19`, and `Unk1A` scene/lifecycle slots.
+  Delegation alone does not guarantee a repairing event during Hide. Close records its invocation
+  origin: a PauseMenu-origin user Back hides the panel and queues PauseMenu Show, while direct/F2
+  origin returns to gameplay. Closing the restored PauseMenu runs native viewport teardown; this
+  restored 3440x1440 in the current ultrawide regression.
 - In observed runs, PauseMenu used priority 11 and CursorMenu priority 20. The research overlay
   uses 19, placing it above PauseMenu while preserving the cursor layer.
 - PauseMenu's observed runtime flags were `0x0800071B`; its constructor initially ORs
@@ -72,8 +83,9 @@ before mapping bridge functions. The verified sequence is:
 1. SWF constructor and vector drawing complete;
 2. native code creates/maps `BGSCodeObj` when necessary;
 3. native code invokes `onCodeObjCreate`;
-4. ActionScript calls native `ready(1)`; and
-5. the engine inserts the menu into the active render array.
+4. ActionScript calls native `ready(1)`, which defers the initial snapshot;
+5. the engine completes Show and inserts the menu into the active render array; and
+6. the next ActionScript frame publishes the model and advances the pointer release barrier.
 
 No ESM/ESP is needed for this DLL-to-factory-to-SWF path. A data plugin becomes relevant only if
 later product work requires forms, quests, Papyrus, or a data-defined launch entry.
@@ -81,7 +93,8 @@ later product work requires forms, quests, Papyrus, or a data-defined launch ent
 ## Research-only limitations
 
 The 312-byte custom object currently uses matching global C++ allocation/deallocation overrides.
-The older declared Scaleform heap virtual interface was not safe in this runtime. Several
-unresolved virtual slots remain conservative defaults. This compatibility layer is intentionally
-single-runtime and should be removed when maintained definitions provide independently verified
-bindings.
+The older declared Scaleform heap virtual interface was not safe in this runtime. One intentionally
+fail-closed inherited slot remains a conservative default; mapped scene/lifecycle slots delegate
+to vanilla explicitly rather than invoking CommonLibSF's ID-zero placeholders. This compatibility
+layer is intentionally single-runtime and should be removed when maintained definitions provide
+independently verified bindings.

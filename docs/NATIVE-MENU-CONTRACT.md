@@ -1,9 +1,10 @@
 # Native Menu Contract
 
 > **Status:** Target product contract. Implemented exceptions and validation confidence are tracked
-> in [current implementation state](CURRENT-STATE.md). In particular, dropdown labels, text/numeric
-> editors and confirmation modals are not implemented. Generation-numbered replacement models and
-> stale-command rejection are implemented through the current flat bridge.
+> in [current implementation state](CURRENT-STATE.md). Dynamic dropdown labels and bounded text
+> editing are implemented but await current in-game interaction qualification; direct numeric typing
+> and confirmation modals are not implemented. Generation-numbered replacement models and
+> stale-command rejection are implemented through the current bridge.
 
 ## Ownership
 

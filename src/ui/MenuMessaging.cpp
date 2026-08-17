@@ -3,6 +3,7 @@
 #include "EvidenceLog.h"
 #include "NativeMenuProbe.h"
 #include "runtime/ProbeRuntimeState.h"
+#include "ui/PauseMenuIntegration.h"
 
 #include <format>
 
@@ -30,6 +31,30 @@ namespace AbsoluteControlPanelResearch::Ui
     void QueueControlPanelMessage(
         RE::UI_MESSAGE_TYPE a_type, std::string_view a_source) noexcept
     {
+        if (a_type == RE::UI_MESSAGE_TYPE::kShow) {
+            if (!RE::UIMessageQueue::GetSingleton()) {
+                QueueNamedMenuMessage(
+                    NativeMenuProbe::kMenuName, a_type, a_source);
+                return;
+            }
+            const auto ui = RE::UI::GetSingleton();
+            if (ui && ui->IsMenuOpen(
+                    RE::BSFixedString(NativeMenuProbe::kMenuName.data()))) {
+                EvidenceLog::Event(
+                    "control_panel_show_ignored",
+                    std::format("source={} reason=already-open", a_source));
+                return;
+            }
+            const bool openedFromPause = a_source == "pause-entry";
+            const bool originAccepted =
+                PauseMenuIntegration::SetReturnToPauseOnClose(openedFromPause);
+            EvidenceLog::Event(
+                "control_panel_open_origin",
+                std::format(
+                    "source={} return_target={} accepted={}", a_source,
+                    openedFromPause ? "PauseMenu" : "none", originAccepted));
+        }
+
         QueueNamedMenuMessage(NativeMenuProbe::kMenuName, a_type, a_source);
         EvidenceLog::Event(
             a_type == RE::UI_MESSAGE_TYPE::kShow ? "menu_show_requested" :

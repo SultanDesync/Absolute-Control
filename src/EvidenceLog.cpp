@@ -94,18 +94,15 @@ namespace AbsoluteControlPanelResearch::EvidenceLog
             if (!a_options.pathOverride.empty()) {
                 return a_options.pathOverride;
             }
-            auto path = std::filesystem::path{ "Data" } / "SFSE" / "Plugins" /
-                        "AbsoluteControlPanel.evidence.jsonl";
+            auto path = std::filesystem::path{};
+            if (const auto logDirectory = SFSE::log::log_directory()) {
+                path = *logDirectory / "AbsoluteControlPanel.evidence.jsonl";
+            } else {
+                path = std::filesystem::path{ "Data" } / "SFSE" / "Plugins" /
+                       "AbsoluteControlPanel.evidence.jsonl";
+            }
             std::error_code directoryError;
             std::filesystem::create_directories(path.parent_path(), directoryError);
-            if (directoryError) {
-                if (const auto logDirectory = SFSE::log::log_directory()) {
-                    path = *logDirectory / "AbsoluteControlPanel.evidence.jsonl";
-                    directoryError.clear();
-                    std::filesystem::create_directories(
-                        path.parent_path(), directoryError);
-                }
-            }
             return directoryError ? std::filesystem::path{} : path;
         }
 

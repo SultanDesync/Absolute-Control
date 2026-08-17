@@ -24,6 +24,18 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+function Get-ResearchFileSha256 {
+    param([Parameter(Mandatory = $true)][string]$LiteralPath)
+    $stream = [IO.File]::OpenRead($LiteralPath)
+    $digest = [Security.Cryptography.SHA256]::Create()
+    try {
+        return ([BitConverter]::ToString($digest.ComputeHash($stream))).Replace('-', '')
+    } finally {
+        $digest.Dispose()
+        $stream.Dispose()
+    }
+}
+
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 if ([string]::IsNullOrWhiteSpace($ArtifactManifest)) {
     $ArtifactManifest = Join-Path $repositoryRoot 'build\artifact-manifests\AbsoluteControlPanelResearchDev.artifacts.json'
@@ -139,10 +151,16 @@ $deployedFiles = @(
 ) + @($resolvedAdditionalPlugins | ForEach-Object {
     Join-Path $pluginDirectory (Split-Path -Leaf $_)
 })
-$deployedPluginHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $deployedPlugin).Hash
-$deployedMovieHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $deployedMovie).Hash
+$deployedPluginHash = Get-ResearchFileSha256 -LiteralPath $deployedPlugin
+$deployedMovieHash = Get-ResearchFileSha256 -LiteralPath $deployedMovie
 if ($deployedPluginHash -ine $validatedArtifacts.Manifest.artifacts.plugin.sha256 -or
     $deployedMovieHash -ine $validatedArtifacts.Manifest.artifacts.interface.sha256) {
     throw 'Deployment copy verification failed: deployed product hashes do not match the canonical artifact manifest.'
 }
-Get-FileHash -Algorithm SHA256 -LiteralPath $deployedFiles
+$deployedFiles | ForEach-Object {
+    [pscustomobject]@{
+        Algorithm = 'SHA256'
+        Hash = Get-ResearchFileSha256 -LiteralPath $_
+        Path = $_
+    }
+}

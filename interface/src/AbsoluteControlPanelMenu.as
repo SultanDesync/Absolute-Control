@@ -1,21 +1,20 @@
 package
 {
     import acp.ui.ControlWidgets;
+    import acp.ui.ChoiceInputRouter;
     import acp.ui.BridgeCommandDispatcher;
     import acp.ui.MenuSelectionState;
     import acp.ui.MenuShellRenderer;
     import acp.ui.PanelLayout;
     import acp.ui.PointerInteraction;
     import acp.ui.SliderWriteCoordinator;
-
     import flash.display.MovieClip;
     import flash.display.Sprite;
     import flash.events.Event;
     import flash.events.KeyboardEvent;
     import flash.events.MouseEvent;
     import flash.ui.Keyboard;
-
-    [SWF(width="1920", height="1080", frameRate="30", backgroundColor="#071018")]
+    [SWF(width="1920", height="1080", frameRate="30", backgroundColor="#060E14")]
     public class AbsoluteControlPanelMenu extends MovieClip
     {
         // GameMenuBase installs this object and invokes the public methods below by name.
@@ -30,12 +29,13 @@ package
         private var sliderWrites:SliderWriteCoordinator = new SliderWriteCoordinator();
         private var commandBridge:BridgeCommandDispatcher;
         private var shell:MenuShellRenderer;
-        private var refreshPollFrame:int = 0;
+        private var choiceInput:ChoiceInputRouter;
 
         public function AbsoluteControlPanelMenu()
         {
             super();
             shell = new MenuShellRenderer(this, pointer);
+            choiceInput = new ChoiceInputRouter(shell);
             commandBridge = new BridgeCommandDispatcher(BGSCodeObj);
             ACPConstructed = true;
             if (stage != null) onAddedToStage(null);
@@ -62,7 +62,8 @@ package
 
         public function applyModel(next:Object):void
         {
-            if (next == null || uint(next.schemaVersion) != 1 || next.pages == null) return;
+            if (next == null || uint(next.schemaVersion) != 1 ||
+                next.modules == null || next.pages == null) return;
             if (sliderWrites.isStale(next)) {
                 sliderWrites.clear();
                 pointer.clearSliderDrag();
@@ -84,12 +85,14 @@ package
                 model, selection.page(), commandBridge.dispatchFlat,
                 pointer.clearSliderDrag);
 
-            // modelApplied doubles as a cheap UI-thread refresh heartbeat. Native
-            // only republishes when a provider refresh revision has advanced.
-            refreshPollFrame = (refreshPollFrame + 1) % 3;
-            if (refreshPollFrame == 0 && model != null && BGSCodeObj != null &&
-                BGSCodeObj.modelApplied != null) {
-                BGSCodeObj.modelApplied(Number(model.generation));
+            // modelApplied is the safe frame boundary for replacement models.
+            // Native command callbacks only queue work; rebuilding the display
+            // tree while pointer or keyboard dispatch is still unwinding can
+            // invalidate Scaleform event targets. Native also polls coalesced
+            // provider refreshes here and stays allocation-free when idle.
+            if (BGSCodeObj != null && BGSCodeObj.modelApplied != null) {
+                BGSCodeObj.modelApplied(
+                    model == null ? 0 : Number(model.generation));
             }
         }
 
@@ -127,10 +130,22 @@ package
                 send("selectControl", target.payload, false, 0, 0);
                 return true;
             }
+            if (kind == "choice") {
+                selection.focusRegion = PanelLayout.FOCUS_CONTROLS;
+                selection.selectedRow = int(target.index);
+                syncFocus();
+            }
+            if (choiceInput.handlePointer(kind, target, selection.page(), send)) {
+                redraw();
+                return true;
+            }
             if (kind == "activate") {
                 selection.focusRegion = PanelLayout.FOCUS_CONTROLS;
+                selection.selectedRow = int(target.index);
                 syncFocus();
-                ControlWidgets.activate(target.payload, send);
+                if (!choiceInput.activate(target.payload, selection.page(), send)) {
+                    ControlWidgets.activate(target.payload, send);
+                } else redraw();
                 return true;
             }
             if (kind == "slider") {
@@ -141,6 +156,20 @@ package
                 sliderWrites.prepare(model, current);
                 ControlWidgets.writeSliderFromPointer(target.view as Sprite,
                     target.payload, stageX, stageY, sliderWrites.queue);
+                return true;
+            }
+            if (kind == "gridTier") {
+                shell.setGridTier(String(target.payload.channelId),
+                    String(target.payload.tierId));
+                redraw();
+                return true;
+            }
+            if (kind == "compound") {
+                var operation:Object = target.payload;
+                commandBridge.sendCompound(model, selection.page(),
+                    operation.component, uint(operation.operationKind),
+                    String(operation.columnId), String(operation.tierId),
+                    uint(operation.count));
                 return true;
             }
             if (kind == "action") {
@@ -188,6 +217,10 @@ package
                 direction == 0) return false;
             inputMode = "mouse";
             direction = direction < 0 ? -1 : 1;
+            if (choiceInput.handleWheel(direction)) {
+                redraw();
+                return true;
+            }
             var region:String = pointer.wheelRegion(stageX, stageY);
             if (region == "modules") {
                 navigateModule(direction);
@@ -222,7 +255,8 @@ package
 
         private function onKeyDown(event:KeyboardEvent):void
         {
-            if (model != null && Boolean(model.bindingCaptureActive)) {
+            if (model != null && (Boolean(model.bindingCaptureActive) ||
+                Boolean(model.textCaptureActive))) {
                 event.preventDefault();
                 event.stopImmediatePropagation();
                 return;
@@ -234,7 +268,13 @@ package
 
             var current:Object = selection.page();
             var handled:Boolean = true;
-            if (event.keyCode == Keyboard.ESCAPE) sendPage("close");
+            var choiceHandled:int = choiceInput.handleKey(event.keyCode, send);
+            if (choiceHandled >= 0) {
+                handled = choiceHandled > 0;
+                if (handled) redraw();
+            } else if (event.keyCode == Keyboard.ESCAPE || event.keyCode == Keyboard.TAB) {
+                sendPage("close");
+            }
             else if (event.keyCode == Keyboard.A || event.keyCode == Keyboard.LEFT) {
                 moveFocusLeft();
             } else if (event.keyCode == Keyboard.D || event.keyCode == Keyboard.RIGHT) {
@@ -252,7 +292,10 @@ package
                 if (selection.focusRegion == PanelLayout.FOCUS_ACTIONS) activateAction();
                 else if (selection.focusRegion == PanelLayout.FOCUS_CONTROLS &&
                     current != null && current.controls.length > 0) {
-                    ControlWidgets.activate(current.controls[selection.selectedRow], send);
+                    var selected:Object = current.controls[selection.selectedRow];
+                    if (!choiceInput.activate(selected, current, send)) {
+                        ControlWidgets.activate(selected, send);
+                    } else redraw();
                 }
             } else if (event.keyCode == Keyboard.Z && current != null &&
                 current.controls.length > 0 &&
@@ -369,6 +412,7 @@ package
 
         private function sendSelectPage(target:Object):void
         {
+            shell.closeChoice();
             send("selectPage", target, false, 0, 0, false);
         }
 

@@ -531,6 +531,57 @@ namespace AbsoluteControlPanelResearch::LiveComponents
         }));
     }
 
+    bool Registry::PollVisiblePage() noexcept
+    {
+        if (!menuActive_ || visibleModuleId_[0] == '\0' ||
+            visiblePageId_[0] == '\0') return false;
+        bool advanced{};
+        // Poll performs the descriptor lookup again, but the channel cap keeps
+        // this bounded and avoids exposing provider callbacks to MenuSession.
+        for (const auto& slot : slots_) {
+            if (!slot.occupied ||
+                View(slot.descriptor.moduleId) != visibleModuleId_ ||
+                View(slot.descriptor.pageId) != visiblePageId_) continue;
+            const auto publication = Poll(
+                slot.descriptor.moduleId, slot.descriptor.pageId,
+                slot.descriptor.channelId);
+            advanced = advanced ||
+                (publication.publish != 0 && publication.result == Result::Ok);
+        }
+        return advanced;
+    }
+
+    std::vector<PollPublication> Registry::SnapshotPage(
+        const char* moduleId, const char* pageId) const
+    {
+        std::vector<PollPublication> result;
+        if (!moduleId || !pageId || !IsIdentifier(std::string_view{ moduleId }) ||
+            !IsIdentifier(std::string_view{ pageId })) return result;
+        result.reserve(kMaximumChannels);
+        for (const auto& slot : slots_) {
+            if (!slot.occupied || View(slot.descriptor.moduleId) != moduleId ||
+                View(slot.descriptor.pageId) != pageId) continue;
+            PollPublication publication;
+            publication.channel = slot.model;
+            publication.publish = slot.hasFrame ? 1U : 0U;
+            publication.result = slot.hasFrame ? Result::Ok : Result::NotReady;
+            if (slot.hasFrame) publication.frame = slot.latestFrame;
+            result.push_back(publication);
+        }
+        return result;
+    }
+
+    bool Registry::HasPageChannels(
+        const char* moduleId, const char* pageId) const noexcept
+    {
+        if (!moduleId || !pageId || !IsIdentifier(std::string_view{ moduleId }) ||
+            !IsIdentifier(std::string_view{ pageId })) return false;
+        return std::ranges::any_of(slots_, [&](const Slot& slot) {
+            return slot.occupied && View(slot.descriptor.moduleId) == moduleId &&
+                   View(slot.descriptor.pageId) == pageId;
+        });
+    }
+
     Registry& HostRegistry() noexcept
     {
         static Registry registry;
