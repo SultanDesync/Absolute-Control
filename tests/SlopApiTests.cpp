@@ -31,6 +31,13 @@ namespace
         bool failApply{};
         bool failInvoke{};
         bool wrongReadKind{};
+        int captureBegins{};
+        int capturePolls{};
+        int captureCancels{};
+        AbsoluteControlPanelApi::BindingCaptureState captureState{
+            AbsoluteControlPanelApi::BindingCaptureState::Capturing };
+        std::string captureBinding;
+        std::string captureDetail;
         SlopApi::ValueV1 lastWrite{};
     };
 
@@ -181,6 +188,51 @@ namespace
 
     void __cdecl Cancel(void* a_context) noexcept { ++static_cast<Provider*>(a_context)->cancels; }
 
+    AbsoluteControlPanelApi::Result __cdecl BeginProviderCapture(
+        void* a_context, const char* a_control) noexcept
+    {
+        auto& provider = *static_cast<Provider*>(a_context);
+        if (!a_control || std::string_view(a_control) != "controller-action") {
+            return AbsoluteControlPanelApi::Result::NotFound;
+        }
+        ++provider.captureBegins;
+        provider.captureState =
+            AbsoluteControlPanelApi::BindingCaptureState::Capturing;
+        provider.captureBinding.clear();
+        provider.captureDetail.clear();
+        return AbsoluteControlPanelApi::Result::Ok;
+    }
+
+    AbsoluteControlPanelApi::Result __cdecl PollProviderCapture(
+        void* a_context, const char* a_control,
+        AbsoluteControlPanelApi::BindingCaptureV1* a_capture) noexcept
+    {
+        auto& provider = *static_cast<Provider*>(a_context);
+        if (!a_control || !a_capture ||
+            std::string_view(a_control) != "controller-action") {
+            return AbsoluteControlPanelApi::Result::InvalidArgument;
+        }
+        ++provider.capturePolls;
+        *a_capture = {};
+        a_capture->state = provider.captureState;
+        strcpy_s(a_capture->binding, provider.captureBinding.c_str());
+        strcpy_s(a_capture->detail, provider.captureDetail.c_str());
+        return AbsoluteControlPanelApi::Result::Ok;
+    }
+
+    AbsoluteControlPanelApi::Result __cdecl CancelProviderCapture(
+        void* a_context, const char* a_control) noexcept
+    {
+        auto& provider = *static_cast<Provider*>(a_context);
+        if (!a_control || std::string_view(a_control) != "controller-action") {
+            return AbsoluteControlPanelApi::Result::NotFound;
+        }
+        ++provider.captureCancels;
+        provider.captureState =
+            AbsoluteControlPanelApi::BindingCaptureState::Cancelled;
+        return AbsoluteControlPanelApi::Result::Ok;
+    }
+
     SlopApi::Result __cdecl ReadChoiceOptions(void*, const char* a_control,
         SlopApi::ChoiceOptionV1* a_options, std::uint32_t a_capacity,
         std::uint32_t* a_count) noexcept
@@ -244,6 +296,8 @@ int main()
         capabilities) + sizeof(publicApi->capabilities));
     CHECK((publicApi->capabilities &
         AbsoluteControlPanelApi::kCapabilityLabeledChoices) != 0);
+    CHECK((publicApi->capabilities &
+        AbsoluteControlPanelApi::kCapabilityProviderBindingCapture) != 0);
     CHECK(std::string_view(publicApi->version) == ACP_PRODUCT_VERSION);
     CHECK(std::string_view(api->version) == ACP_PRODUCT_VERSION);
     CHECK(MenuApiHost::Lifecycle() == MenuApiHost::HostLifecycle::Initializing);
@@ -728,6 +782,80 @@ int main()
         choicesProvider.writes == 1 &&
         choicesProvider.lastWrite.integerValue == 7);
     CHECK(publicApi->unregisterModule("choices.module") == Result::Ok);
+
+    // Device recording is provider-owned while the shell owns the capture
+    // session, navigation lock, draft write, and cancellation surface.
+    ModuleDescriptorV1 captureModule;
+    strcpy_s(captureModule.moduleId, "capture.module");
+    strcpy_s(captureModule.displayName, "Capture Provider");
+    CHECK(publicApi->registerModule(&captureModule) == Result::Ok);
+    Provider captureProvider;
+    auto controllerControl = MakeDescriptor(ControlKind::InputBinding,
+        "controller-action");
+    controllerControl.flags = kBindingController | kBindingClearable;
+    PageDescriptorV1 capturePage;
+    strcpy_s(capturePage.moduleId, "capture.module");
+    strcpy_s(capturePage.pageId, "bindings");
+    strcpy_s(capturePage.displayName, "Bindings");
+    capturePage.controlCount = 1;
+    capturePage.controls = &controllerControl;
+    capturePage.context = &captureProvider;
+    capturePage.readValue = &ReadValue;
+    capturePage.writeDraft = &WriteDraft;
+    capturePage.apply = &Apply;
+    capturePage.cancel = &Cancel;
+    capturePage.beginBindingCapture = &BeginProviderCapture;
+    // A current-size descriptor must provide the complete capture callback set.
+    CHECK(publicApi->registerPage(&capturePage) == Result::InvalidArgument);
+    capturePage.pollBindingCapture = &PollProviderCapture;
+    capturePage.cancelBindingCapture = &CancelProviderCapture;
+    CHECK(publicApi->registerPage(&capturePage) == Result::Ok);
+
+    Session captureSession;
+    Command beginProviderCapture;
+    beginProviderCapture.kind = CommandKind::BeginBindingCapture;
+    beginProviderCapture.moduleId = "capture.module";
+    beginProviderCapture.pageId = "bindings";
+    beginProviderCapture.controlId = "controller-action";
+    auto captureModel = captureSession.Dispatch(beginProviderCapture);
+    CHECK(captureModel.bindingCaptureActive &&
+        captureProvider.captureBegins == 1);
+    CHECK(!captureSession.RefreshBindingCapture().has_value() &&
+        captureProvider.capturePolls == 1);
+    captureProvider.captureState =
+        AbsoluteControlPanelApi::BindingCaptureState::Captured;
+    captureProvider.captureBinding =
+        "{12345678-1234-1234-1234-123456789ABC}@button:7";
+    auto capturedModel = captureSession.RefreshBindingCapture();
+    CHECK(capturedModel && !capturedModel->bindingCaptureActive &&
+        capturedModel->dirty && captureProvider.writes == 1 &&
+        captureProvider.captureCancels == 0 &&
+        std::string_view(captureProvider.lastWrite.stringValue) ==
+            captureProvider.captureBinding);
+    Command cancelCaptureDraft;
+    cancelCaptureDraft.kind = CommandKind::Cancel;
+    cancelCaptureDraft.moduleId = "capture.module";
+    cancelCaptureDraft.pageId = "bindings";
+    captureModel = captureSession.Dispatch(cancelCaptureDraft);
+    CHECK(captureModel.error.empty() && !captureModel.dirty &&
+        captureProvider.cancels == 1);
+
+    captureModel = captureSession.Dispatch(beginProviderCapture);
+    CHECK(captureModel.bindingCaptureActive &&
+        captureProvider.captureBegins == 2);
+    captureModel = captureSession.CancelBindingCapture();
+    CHECK(!captureModel.bindingCaptureActive && captureModel.error.empty() &&
+        captureProvider.captureCancels == 1);
+
+    captureModel = captureSession.Dispatch(beginProviderCapture);
+    captureProvider.captureState =
+        AbsoluteControlPanelApi::BindingCaptureState::TimedOut;
+    captureProvider.captureDetail = "No controller input received";
+    auto timedOutModel = captureSession.RefreshBindingCapture();
+    CHECK(timedOutModel && !timedOutModel->bindingCaptureActive &&
+        timedOutModel->error == "No controller input received" &&
+        captureProvider.captureCancels == 1);
+    CHECK(publicApi->unregisterModule("capture.module") == Result::Ok);
 
     // Destruction is an abnormal close path: clean sessions are inert, while a
     // dirty session rolls back exactly once before releasing its transaction pin.

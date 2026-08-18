@@ -135,6 +135,13 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
     [[nodiscard]] AbsoluteControlPanelApi::Result ReadChoiceOptions(
         const Page& a_page, std::string_view a_controlId,
         std::vector<ChoiceOption>& a_options) noexcept;
+    [[nodiscard]] AbsoluteControlPanelApi::Result BeginBindingCapture(
+        const Page& a_page, std::string_view a_controlId) noexcept;
+    [[nodiscard]] AbsoluteControlPanelApi::Result PollBindingCapture(
+        const Page& a_page, std::string_view a_controlId,
+        AbsoluteControlPanelApi::BindingCaptureV1& a_capture) noexcept;
+    [[nodiscard]] AbsoluteControlPanelApi::Result CancelBindingCapture(
+        const Page& a_page, std::string_view a_controlId) noexcept;
     [[nodiscard]] AbsoluteControlPanelApi::Result WriteDraft(const Page& a_page,
         std::string_view a_controlId, const AbsoluteControlPanelApi::ValueV1& a_value,
         Transaction& a_transaction) noexcept;

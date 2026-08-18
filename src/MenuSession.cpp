@@ -617,6 +617,26 @@ namespace AbsoluteControlPanelResearch::MenuSession
                 SetError("Input capture unavailable");
                 return BuildSnapshot();
             }
+            const bool keyboardCapture =
+                (control.flags & AbsoluteControlPanelApi::kBindingKeyboard) != 0;
+            const bool providerCapture =
+                (control.flags & (AbsoluteControlPanelApi::kBindingMouse |
+                    AbsoluteControlPanelApi::kBindingController)) != 0;
+            providerCaptureActive_ = false;
+            if (providerCapture) {
+                const auto result = MenuApiHost::BeginBindingCapture(
+                    *page, control.controlId);
+                if (result == AbsoluteControlPanelApi::Result::Ok) {
+                    providerCaptureActive_ = true;
+                } else if (!keyboardCapture) {
+                    SetError(result == AbsoluteControlPanelApi::Result::NotReady
+                        ? "Input service is not ready" :
+                        (result == AbsoluteControlPanelApi::Result::NotFound
+                            ? "Provider capture unavailable" :
+                            "Input service is busy or rejected the request"));
+                    return BuildSnapshot();
+                }
+            }
             activeModuleId_ = page->moduleId;
             activePageId_ = page->pageId;
             selectedControlId_ = control.controlId;
@@ -725,6 +745,44 @@ namespace AbsoluteControlPanelResearch::MenuSession
         return BuildSnapshot();
     }
 
+    std::optional<Model> Session::RefreshBindingCapture()
+    {
+        if (!IsBindingCaptureActive() || !providerCaptureActive_) {
+            return std::nullopt;
+        }
+        const auto page = MenuApiHost::FindPage(
+            captureModuleId_, capturePageId_);
+        if (!page) {
+            return CancelBindingCapture("Binding provider disappeared during capture");
+        }
+        AbsoluteControlPanelApi::BindingCaptureV1 capture;
+        const auto result = MenuApiHost::PollBindingCapture(
+            *page, captureControlId_, capture);
+        if (result != AbsoluteControlPanelApi::Result::Ok) {
+            return CancelBindingCapture("Binding provider capture failed");
+        }
+        using State = AbsoluteControlPanelApi::BindingCaptureState;
+        if (capture.state == State::Idle || capture.state == State::Capturing) {
+            return std::nullopt;
+        }
+        const bool bindingTerminated =
+            std::memchr(capture.binding, '\0', sizeof(capture.binding)) != nullptr;
+        const bool detailTerminated =
+            std::memchr(capture.detail, '\0', sizeof(capture.detail)) != nullptr;
+        providerCaptureActive_ = false;
+        if (capture.state == State::Captured && bindingTerminated &&
+            capture.binding[0] != '\0') {
+            return CompleteBindingCapture(capture.binding);
+        }
+        const std::string_view detail = detailTerminated
+            ? std::string_view{ capture.detail } : std::string_view{};
+        if (capture.state == State::Cancelled) {
+            return CancelBindingCapture(detail);
+        }
+        return CancelBindingCapture(detail.empty()
+            ? "Provider input capture did not complete" : detail);
+    }
+
     Model Session::AppendTextCapture(char a_character)
     {
         error_.clear();
@@ -776,6 +834,14 @@ namespace AbsoluteControlPanelResearch::MenuSession
 
     void Session::ClearCapture() noexcept
     {
+        if (providerCaptureActive_) {
+            if (const auto page = MenuApiHost::FindPage(
+                    captureModuleId_, capturePageId_)) {
+                (void)MenuApiHost::CancelBindingCapture(
+                    *page, captureControlId_);
+            }
+        }
+        providerCaptureActive_ = false;
         captureModuleId_.clear();
         capturePageId_.clear();
         captureControlId_.clear();

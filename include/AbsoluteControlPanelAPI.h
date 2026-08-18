@@ -101,6 +101,29 @@ namespace AbsoluteControlPanelApi
     using ReadChoiceOptionsCallback = Result(__cdecl*)(void*, const char*,
         ChoiceOptionV1*, std::uint32_t, std::uint32_t*) noexcept;
 
+    enum class BindingCaptureState : std::uint32_t
+    {
+        Idle, Capturing, Captured, Cancelled, TimedOut, Error
+    };
+
+    struct BindingCaptureV1
+    {
+        std::uint32_t structSize{ sizeof(BindingCaptureV1) };
+        BindingCaptureState state{ BindingCaptureState::Idle };
+        char binding[kStringValueCapacity]{};
+        char detail[kDescriptionCapacity]{};
+    };
+
+    // Optional provider-owned capture tail. The host owns presentation and
+    // navigation lock; the provider owns device polling, capture policy, and the
+    // returned binding syntax. Callbacks are invoked only on the native UI thread.
+    using BeginBindingCaptureCallback = Result(__cdecl*)(
+        void*, const char*) noexcept;
+    using PollBindingCaptureCallback = Result(__cdecl*)(
+        void*, const char*, BindingCaptureV1*) noexcept;
+    using CancelBindingCaptureCallback = Result(__cdecl*)(
+        void*, const char*) noexcept;
+
     struct ModuleDescriptorV1
     {
         std::uint32_t structSize{ sizeof(ModuleDescriptorV1) };
@@ -127,6 +150,9 @@ namespace AbsoluteControlPanelApi
         // Optional appended v1 capability. Older descriptors end immediately
         // before this field and remain valid.
         ReadChoiceOptionsCallback readChoiceOptions{};
+        BeginBindingCaptureCallback beginBindingCapture{};
+        PollBindingCaptureCallback pollBindingCapture{};
+        CancelBindingCaptureCallback cancelBindingCapture{};
     };
 
     inline constexpr std::uint32_t kPageDescriptorV1BaseSize =
@@ -135,7 +161,8 @@ namespace AbsoluteControlPanelApi
     enum ApiCapabilities : std::uint64_t
     {
         kCapabilityNone = 0,
-        kCapabilityLabeledChoices = 1ULL << 0
+        kCapabilityLabeledChoices = 1ULL << 0,
+        kCapabilityProviderBindingCapture = 1ULL << 1
     };
 
     struct ApiV1
@@ -165,11 +192,14 @@ namespace AbsoluteControlPanelApi
     static_assert(std::is_trivially_copyable_v<ModuleDescriptorV1>);
     static_assert(std::is_standard_layout_v<ChoiceOptionV1>);
     static_assert(std::is_trivially_copyable_v<ChoiceOptionV1>);
+    static_assert(std::is_standard_layout_v<BindingCaptureV1>);
+    static_assert(std::is_trivially_copyable_v<BindingCaptureV1>);
     static_assert(std::is_standard_layout_v<PageDescriptorV1>);
     static_assert(std::is_standard_layout_v<ApiV1>);
     static_assert(sizeof(Result) == sizeof(std::uint32_t));
     static_assert(sizeof(ControlKind) == sizeof(std::uint32_t));
     static_assert(sizeof(ValueKind) == sizeof(std::uint32_t));
+    static_assert(sizeof(BindingCaptureState) == sizeof(std::uint32_t));
     static_assert(static_cast<std::uint32_t>(Result::Ok) == 0);
     static_assert(static_cast<std::uint32_t>(Result::Rejected) == 6);
     static_assert(static_cast<std::uint32_t>(ControlKind::Toggle) == 0);
@@ -190,6 +220,12 @@ namespace AbsoluteControlPanelApi
     static_assert(std::is_same_v<ReadChoiceOptionsCallback,
         Result(__cdecl*)(void*, const char*, ChoiceOptionV1*, std::uint32_t,
             std::uint32_t*) noexcept>);
+    static_assert(std::is_same_v<BeginBindingCaptureCallback,
+        Result(__cdecl*)(void*, const char*) noexcept>);
+    static_assert(std::is_same_v<PollBindingCaptureCallback,
+        Result(__cdecl*)(void*, const char*, BindingCaptureV1*) noexcept>);
+    static_assert(std::is_same_v<CancelBindingCaptureCallback,
+        Result(__cdecl*)(void*, const char*) noexcept>);
 }
 
 #if defined(ABSOLUTE_CONTROL_PANEL_EXPORTS)

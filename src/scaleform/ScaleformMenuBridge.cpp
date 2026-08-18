@@ -148,6 +148,18 @@ namespace AbsoluteControlPanelResearch::Scaleform
                     // through Scaleform.  Only the later ENTER_FRAME heartbeat may
                     // flush work queued by a pointer/keyboard/provider callback.
                     if (!modelPublicationActive) {
+                        if (auto capture = session.RefreshBindingCapture()) {
+                            if (!capture->bindingCaptureActive) {
+                                MenuApiHost::SetInputCaptureActive(false);
+                            }
+                            EvidenceLog::Event(
+                                capture->error.empty() ?
+                                    "provider_binding_capture_completed" :
+                                    "provider_binding_capture_ended",
+                                std::format("error={}", capture->error));
+                            DeferModel(std::move(*capture),
+                                "provider-binding-capture");
+                        }
                         PollRefresh();
                         const auto now = std::chrono::steady_clock::now();
                         if (lastLivePoll.time_since_epoch().count() == 0 ||

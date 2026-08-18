@@ -60,7 +60,7 @@
 | Priority | Debt | Current consequence / exit condition |
 |---|---|---|
 | P1 | Core controller routing now covers Xbox A/B and the D-pad with per-button edge suppression, including dirty-decision navigation. Reverse slider adjustment, page shortcuts, repeat cadence, and physical-device evidence remain incomplete. | Do not claim full controller parity. Complete the remaining edit routes, then run controller-only and device-transition regressions with no stuck/ghost axis. |
-| P1 | Mouse/controller/HOTAS binding capture is absent; only keyboard plus Ctrl/Alt/Shift is implemented. | Capability flags can describe devices the current adapter cannot capture. Either reject unsupported registrations/capture requests or implement bounded device-specific capture, cancellation, timeout, conflict, and reseed behavior. |
+| P1 | Provider-owned controller/HOTAS capture is runtime-verified through Head Tracking and Absolute Power, but the formal POV/cancel/clear/timeout/restart/reseed matrix and structured collision workflow remain open; host-owned mouse capture remains absent. | Complete the expanded Input Bus matrix, standardize the clear/unbound contract, and design provider-reported structured conflicts. Keep the host independent of device libraries and do not claim generic mouse capture. |
 | P1 | Dirty page/module switching is error-only and dirty Close silently invokes Cancel. | Implement the accepted host-owned Apply/Discard/Stay route and close modal without moving draft/persistence ownership out of the subscriber; prove mouse, keyboard, controller, failure, and disappearing-destination paths. |
 | P1 | The lazy 512-module representation is mechanically verified but has no in-game UI-thread/memory budget. Each replacement still serializes up to 512 summaries and redraws the visible window. | Benchmark the full acceptance fixture in game, record frame/payload/memory measurements, then tune/paginate further if the release budget is exceeded. |
 | P2 | Host, SDK generator, and catalogue enforce matching per-module bounds from separate constants. | Source limits from one machine-readable authority and add drift checks before SDK freeze. |
@@ -83,8 +83,8 @@ claim, record at least:
   slider drag/coalescing, Apply/Cancel/dirty close, and persisted provider read-back;
 - controller-only navigation, input-device transitions, focus loss/alt-tab, and absence of leaked,
   ghost, or stuck input after controller support exists;
-- mouse and controller/HOTAS binding capture only after implementation, including cancel, clear,
-  timeout, held input, conflicts, and reseed;
+- provider-owned controller/HOTAS binding capture only after runtime acceptance, including cancel,
+  clear, timeout, held input, conflicts, and reseed; host-owned mouse capture remains unimplemented;
 - missing/corrupt/old/new SWF, incompatible runtime/ABI, provider callback failure, disappearing
   provider, save failure, reload/read-back failure, and abnormal menu teardown;
 - 720p, 1080p UI-scale variants, 1440p, 4K, 21:9/32:9, long/pseudo-localized strings, complete

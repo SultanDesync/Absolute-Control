@@ -30,6 +30,9 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
         AbsoluteControlPanelApi::ApplyCallback apply{};
         AbsoluteControlPanelApi::CancelCallback cancel{};
         AbsoluteControlPanelApi::ReadChoiceOptionsCallback readChoiceOptions{};
+        AbsoluteControlPanelApi::BeginBindingCaptureCallback beginBindingCapture{};
+        AbsoluteControlPanelApi::PollBindingCaptureCallback pollBindingCapture{};
+        AbsoluteControlPanelApi::CancelBindingCaptureCallback cancelBindingCapture{};
     };
 
     namespace
@@ -323,6 +326,29 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
                 if (a_descriptor->structSize >= choiceOptionsEnd) {
                     page.provider->readChoiceOptions =
                         a_descriptor->readChoiceOptions;
+                }
+                constexpr auto providerCaptureEnd =
+                    offsetof(AbsoluteControlPanelApi::PageDescriptorV1,
+                        cancelBindingCapture) +
+                    sizeof(AbsoluteControlPanelApi::CancelBindingCaptureCallback);
+                if (a_descriptor->structSize >= providerCaptureEnd) {
+                    const bool anyCaptureCallback =
+                        a_descriptor->beginBindingCapture ||
+                        a_descriptor->pollBindingCapture ||
+                        a_descriptor->cancelBindingCapture;
+                    const bool allCaptureCallbacks =
+                        a_descriptor->beginBindingCapture &&
+                        a_descriptor->pollBindingCapture &&
+                        a_descriptor->cancelBindingCapture;
+                    if (anyCaptureCallback && !allCaptureCallbacks) {
+                        return Api::InvalidArgument;
+                    }
+                    page.provider->beginBindingCapture =
+                        a_descriptor->beginBindingCapture;
+                    page.provider->pollBindingCapture =
+                        a_descriptor->pollBindingCapture;
+                    page.provider->cancelBindingCapture =
+                        a_descriptor->cancelBindingCapture;
                 }
                 page.canInvokeAction = a_descriptor->invokeAction != nullptr;
                 page.canApply = a_descriptor->apply != nullptr;
@@ -706,6 +732,54 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
         }
     }
 
+    Api BeginBindingCapture(const Page& a_page,
+        std::string_view a_controlId) noexcept
+    {
+        try {
+            CallbackLease lease{ a_page.provider };
+            if (!lease || !a_page.provider->beginBindingCapture) {
+                return Api::NotFound;
+            }
+            const std::string controlId{ a_controlId };
+            return a_page.provider->beginBindingCapture(
+                a_page.provider->context, controlId.c_str());
+        } catch (...) {
+            return Api::Rejected;
+        }
+    }
+
+    Api PollBindingCapture(const Page& a_page, std::string_view a_controlId,
+        AbsoluteControlPanelApi::BindingCaptureV1& a_capture) noexcept
+    {
+        try {
+            CallbackLease lease{ a_page.provider };
+            if (!lease || !a_page.provider->pollBindingCapture) {
+                return Api::NotFound;
+            }
+            const std::string controlId{ a_controlId };
+            return a_page.provider->pollBindingCapture(
+                a_page.provider->context, controlId.c_str(), &a_capture);
+        } catch (...) {
+            return Api::Rejected;
+        }
+    }
+
+    Api CancelBindingCapture(const Page& a_page,
+        std::string_view a_controlId) noexcept
+    {
+        try {
+            CallbackLease lease{ a_page.provider };
+            if (!lease || !a_page.provider->cancelBindingCapture) {
+                return Api::NotFound;
+            }
+            const std::string controlId{ a_controlId };
+            return a_page.provider->cancelBindingCapture(
+                a_page.provider->context, controlId.c_str());
+        } catch (...) {
+            return Api::Rejected;
+        }
+    }
+
     Api WriteDraft(const Page& a_page, std::string_view a_controlId,
         const AbsoluteControlPanelApi::ValueV1& a_value,
         Transaction& a_transaction) noexcept
@@ -826,7 +900,8 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
         &RegisterProductModule,
         &ProductIsOpen,
         &ProductIsInputCaptureActive,
-        AbsoluteControlPanelApi::kCapabilityLabeledChoices
+        AbsoluteControlPanelApi::kCapabilityLabeledChoices |
+            AbsoluteControlPanelApi::kCapabilityProviderBindingCapture
     };
 
     const SlopApi::ApiV1 g_legacyApi{

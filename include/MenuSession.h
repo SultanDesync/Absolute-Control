@@ -120,6 +120,9 @@ namespace AbsoluteControlPanelResearch::MenuSession
         [[nodiscard]] Model Dispatch(const Command& a_command);
         [[nodiscard]] Model CompleteBindingCapture(std::string_view a_binding);
         [[nodiscard]] Model CancelBindingCapture(std::string_view a_reason = {});
+        // Polls an optional provider-owned recorder for the active binding row.
+        // Returns only on completion, cancellation, timeout, or error.
+        [[nodiscard]] std::optional<Model> RefreshBindingCapture();
         [[nodiscard]] Model AppendTextCapture(char a_character);
         [[nodiscard]] Model BackspaceTextCapture();
         [[nodiscard]] Model CompleteTextCapture();
@@ -157,6 +160,7 @@ namespace AbsoluteControlPanelResearch::MenuSession
         std::string capturePageId_;
         std::string captureControlId_;
         std::uint32_t captureFlags_{};
+        bool providerCaptureActive_{};
         enum class CaptureKind : std::uint8_t { None, Binding, Text };
         CaptureKind captureKind_{CaptureKind::None};
         std::string captureBuffer_;

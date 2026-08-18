@@ -92,6 +92,18 @@ transaction or mark the page dirty. The flag is rejected on other control kinds.
 feature-detect `kCapabilityLabeledChoices` from the appended `ApiV1::capabilities` field before
 registering this flag or callback; older providers and base-size page descriptors remain valid.
 
+An `InputBinding` row may request provider-owned mouse/controller recording by setting
+`kBindingMouse` or `kBindingController` and appending the complete
+`beginBindingCapture` / `pollBindingCapture` / `cancelBindingCapture` callback set to its page.
+Providers must first feature-detect `kCapabilityProviderBindingCapture`. The host owns the visible
+capture session, navigation lock, Escape/Back cancellation, clear action, and ordinary draft write;
+the provider owns device enumeration, debounce/timeout policy, and the stable binding string. Poll
+returns `Idle` or `Capturing` until a terminal `Captured`, `Cancelled`, `TimedOut`, or `Error` state.
+Callbacks run on the native UI thread and must return promptly. A captured non-empty string is
+submitted through the row's normal `writeDraft` callback, so Apply/Cancel and persistence remain
+provider-owned. All three callbacks must be present together; older page descriptors and
+keyboard-only providers remain valid.
+
 ## Discovery pattern
 
 An independent plugin should locate the already-loaded host module and resolve the query by
@@ -115,8 +127,9 @@ ABI v1. New integrations use the Absolute Control Panel name exclusively.
 - Absolute Control Panel may copy presentation metadata, but never caches a pointer to a provider descriptor.
 - Providers never call Starfield UI functions through this API.
 - The host never reads or writes a provider's configuration file directly.
-- The host may implement generic input capture; it submits the resulting binding string through
-  the provider's normal draft callback.
+- The host implements keyboard capture. Optional device providers may implement mouse/controller
+  capture through the appended callback set; either path submits the result through the provider's
+  normal draft callback.
 - Providers return errors instead of throwing across the boundary.
 - Provider callbacks must be short and must not block the game thread on filesystem or network
   work. ABI v1 callbacks are synchronous and cooperative; the host cannot safely preempt a hung
@@ -144,6 +157,11 @@ callback leases, dirty unregister, and retry without launching Starfield. A prio
 isolated game run additionally proves that the subscriber's values cross the native/Scaleform
 bridge and persist through its callback. Keyboard chord capture now has its own bounded host
 transaction and provider round-trip tests.
+
+Provider-owned controller capture has a deterministic host contract test covering callback-set
+validation, capture polling, stable device binding round-trip, user cancellation, timeout detail,
+and transaction rollback. Absolute Head Tracking is the first consumer: its provider invokes the
+optional AbsoluteHOTAS Input Bus while this host continues to own presentation and draft semantics.
 
 Absolute Head Tracking is the first product-named external subscriber and registers General,
 Axes, and Bindings through `AbsoluteControlPanel_QueryApi`. AbsoluteZero is the preserved legacy

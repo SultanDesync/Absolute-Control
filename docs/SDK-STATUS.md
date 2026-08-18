@@ -58,6 +58,9 @@ experimental period; the host is not a loader dependency.
 - Freeze the appended ABI-v1 labeled-choice callback and bounded `TextInput` semantics, then add
   deterministic schema/code-generator coverage. Decide whether rendered sections and presentation
   hints use a compatible extension or require ABI v2.
+- Freeze the appended provider-owned binding-capture callback set after the accepted Head Tracking
+  and Absolute Power Input Bus journeys. Before freeze, standardize clear/unbound semantics and a
+  provider-reported structured collision handshake; keep device libraries outside the host.
 - Rename/freeze or revise the active live/compound-component protocol after Absolute Power and
   AbsoluteHOTAS performance/accessibility qualification.
 - Package the public header, schema, generator, examples, licence/notice files, and version notes
