@@ -38,6 +38,37 @@ class MenuCodegenTests(unittest.TestCase):
         self.assertEqual(GENERATED.read_text(encoding="utf-8"), first)
         self.assertIn("ParseControlId", first)
         self.assertIn("MakePages", first)
+        self.assertIn("ControlKind::GroupHeader", first)
+        self.assertIn("ReassignBindingCallback reassignBinding", first)
+        self.assertIn("pages[0].reassignBinding = provider.reassignBinding", first)
+
+    def test_inline_actions_generate_and_non_actions_reject_flag(self):
+        valid = menu_codegen.load(EXAMPLE)
+        candidate = copy.deepcopy(valid)
+        first_action = candidate["pages"][2]["sections"][0]["options"][1]
+        first_action["flags"] = ["layoutInline"]
+        second_action = copy.deepcopy(first_action)
+        second_action["id"] = "bindings.reset"
+        second_action["label"] = "Reset tracking"
+        candidate["pages"][2]["sections"][0]["options"].append(second_action)
+        validated = menu_codegen.validate(candidate)
+        rendered = menu_codegen.generate(validated, "inline.menu.json")
+        structured = rendered.split("kBindingsControls", 1)[1].split(
+            "kBindingsLegacyControls", 1)[0]
+        legacy = rendered.split("kBindingsLegacyControls", 1)[1].split(
+            "struct ProviderCallbacks", 1)[0]
+        self.assertIn("kControlLayoutInline", structured)
+        self.assertNotIn("kControlLayoutInline", legacy)
+
+        invalid = copy.deepcopy(valid)
+        invalid["pages"][0]["sections"][0]["options"][0]["flags"] = [
+            "layoutInline"
+        ]
+        with self.assertRaisesRegex(
+            menu_codegen.ValidationError,
+            "layoutInline is supported only for actions",
+        ):
+            menu_codegen.validate(invalid)
 
     def test_forbidden_presentation_properties_fail(self):
         with self.assertRaisesRegex(menu_codegen.ValidationError, "unknown properties: color"):
@@ -66,7 +97,8 @@ class MenuCodegenTests(unittest.TestCase):
         candidate["pages"] = []
         for page_index in range(5):
             options = []
-            for control_index in range(128):
+            option_count = 127 if page_index < 4 else 1
+            for control_index in range(option_count):
                 option = copy.deepcopy(template)
                 option["id"] = f"value.{page_index}.{control_index}"
                 options.append(option)

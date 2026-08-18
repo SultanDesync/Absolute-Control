@@ -51,7 +51,8 @@ The promoted baseline includes:
 - dynamic vertical module navigation and provider-owned page tabs;
 - typed controls, actions, live components, selected-control help, and bounded text input;
 - draft/apply/cancel transactions, guarded close routing, and stale-setting handling;
-- provider-owned keyboard and physical-controller binding capture;
+- provider-owned keyboard and physical-controller binding capture with native conflict reassignment;
+- accessible segmented-grid editing, section headers, and compact inline action rows;
 - copied descriptors, callback leases, capacity admission, teardown, and fail-optional discovery;
 - runtime integrations for AbsoluteHOTAS, Absolute Head Tracking, AbsoluteZero, and Absolute Power;
   and
@@ -90,10 +91,10 @@ do not transfer state or configuration ownership to Absolute Control.
 Work on `sdk` currently focuses on:
 
 1. a header-only bridge between provider binding callbacks and the Absolute Input Bus;
-2. canonical unbinding and structured binding-conflict transactions;
-3. semantic sections and responsive compact action layout;
-4. allocation-grid interaction and accessibility; and
-5. declarative live-channel code generation after those descriptors stabilize.
+2. canonical unbinding semantics;
+3. labeled Choice and bounded `TextInput` definition-language support;
+4. declarative live-channel code generation after those descriptors stabilize; and
+5. packaging and cross-subscriber ABI qualification.
 
 ## Development standard
 

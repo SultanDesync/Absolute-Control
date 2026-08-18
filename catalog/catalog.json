@@ -70,9 +70,9 @@
       "id": "layout.semantic-widgets",
       "kind": "layout",
       "name": "Semantic dynamic widget layout",
-      "status": "schema-required",
-      "confidence": "design-approved",
-      "notes": "Toggles, sliders with numeric editors, dropdowns, text fields, bindings, and actions use measured type-appropriate geometry instead of uniform full-width cards.",
+      "status": "implemented-runtime-pending",
+      "confidence": "automated-verified",
+      "notes": "The capability-gated SDK and renderer emit non-focusable section headers and group two or three consecutive inline actions into one physical row, with header-free and non-inline generated fallbacks for older hosts.",
       "tags": ["layout", "widgets", "responsive", "sdk-roadmap"]
     },
     {
@@ -109,10 +109,10 @@
       "id": "control.segmented-allocation-grid",
       "kind": "compound-control",
       "name": "Segmented allocation grid",
-      "status": "specified",
-      "confidence": "source-mapped",
+      "status": "implemented-runtime-pending",
+      "confidence": "automated-verified",
       "bounds": { "columns": 8, "segmentsPerColumn": 32 },
-      "notes": "Covers Absolute Power's six-system tiered pip editor with live current state, target preview, and semantic add/trim interactions.",
+      "notes": "Power publishes six dynamic 12-pip rows with direct four-state cycling, high-contrast tier numbers, +G/+Y/+R/- quick steps, long labels, live current state, target preview, and keyboard/controller row adjustment.",
       "tags": ["power", "grid", "compound", "interactive"]
     },
     {
@@ -143,11 +143,11 @@
       "status": "implemented",
       "confidence": "runtime-verified",
       "valueKind": "String",
-      "interaction": ["begin-capture", "escape-cancel", "backspace-clear"],
+      "interaction": ["begin-capture", "escape-cancel", "backspace-clear", "conflict-reassign", "conflict-cancel"],
       "capabilityFlags": ["keyboard", "mouse", "controller", "modifiers", "clearable"],
-      "implementedCapabilities": ["keyboard", "modifiers", "clearable"],
+      "implementedCapabilities": ["keyboard", "controller", "modifiers", "clearable", "conflict-resolution"],
       "encoding": "keyboard:0xHH;ctrl=0|1;alt=0|1;shift=0|1",
-      "notes": "Keyboard activation waits for its initiating key to be released; pointer activation arms immediately so the first intended modifier is retained. Capture uses the native game/UI event stream and submits the encoded result through writeDraft. Single keys and modifier chords are runtime-verified.",
+      "notes": "Keyboard activation waits for its initiating key to be released; provider-owned controller capture remains optional. Duplicate writes or provider Error results open a host-owned Reassign/Cancel modal, and successful reassignment remains inside the ordinary provider draft and Apply/Cancel transaction.",
       "tags": ["input", "capture", "dynamic", "abi-v1"]
     },
     {

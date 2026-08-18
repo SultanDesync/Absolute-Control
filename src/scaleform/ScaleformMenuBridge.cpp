@@ -121,7 +121,7 @@ namespace AbsoluteControlPanelResearch::Scaleform
                         ReadUnsigned(a_params.args[1]) :
                         std::numeric_limits<std::uint32_t>::max();
                     if (a_params.argCount != 2 || region > static_cast<std::uint32_t>(
-                            MenuInputRouter::FocusRegion::Actions) || action > 2) {
+                            MenuInputRouter::FocusRegion::Grid) || action > 2) {
                         EvidenceLog::Event("bridge_focus_rejected", "invalid focus payload");
                         break;
                     }
@@ -209,6 +209,7 @@ namespace AbsoluteControlPanelResearch::Scaleform
                 const std::string_view name = a_params.args[1].GetString();
                 if (name == "selectPage") command.kind = MenuSession::CommandKind::SelectPage;
                 else if (name == "selectControl") command.kind = MenuSession::CommandKind::SelectControl;
+                else if (name == "selectGridColumn") command.kind = MenuSession::CommandKind::SelectGridColumn;
                 else if (name == "write") command.kind = MenuSession::CommandKind::Write;
                 else if (name == "invoke") command.kind = MenuSession::CommandKind::Invoke;
                 else if (name == "beginBindingCapture") command.kind = MenuSession::CommandKind::BeginBindingCapture;
@@ -219,7 +220,14 @@ namespace AbsoluteControlPanelResearch::Scaleform
                 else if (name == "dirtyApply") command.kind = MenuSession::CommandKind::ResolveDirtyApply;
                 else if (name == "dirtyDiscard") command.kind = MenuSession::CommandKind::ResolveDirtyDiscard;
                 else if (name == "dirtyStay") command.kind = MenuSession::CommandKind::ResolveDirtyStay;
+                else if (name == "bindingReassign") command.kind = MenuSession::CommandKind::ResolveBindingReassign;
+                else if (name == "bindingCancel") command.kind = MenuSession::CommandKind::ResolveBindingCancel;
                 else command.schemaVersion = 0;
+                if (name == "selectGridColumn") {
+                    command.columnId = command.controlId;
+                    command.channelId = command.value.stringValue;
+                    command.controlId.clear();
+                }
                 DispatchCommand(command, name, "scaleform");
             }
 
@@ -238,7 +246,7 @@ namespace AbsoluteControlPanelResearch::Scaleform
                 if (a_params.argCount != 10 || !a_params.args[1].IsString() ||
                     !a_params.args[2].IsString() || !a_params.args[3].IsString() ||
                     !a_params.args[4].IsString() || !a_params.args[5].IsString() ||
-                    !a_params.args[6].IsString() || operation > 2 ||
+                    !a_params.args[6].IsString() || operation > 3 ||
                     count == std::numeric_limits<std::uint32_t>::max() ||
                     !ReadExactGeneration(a_params.args[9], generation)) {
                     command.schemaVersion = 0;
@@ -564,6 +572,8 @@ namespace AbsoluteControlPanelResearch::Scaleform
                     SetString(target, "title", descriptor.title) &&
                     target.SetMember("kind", RE::Scaleform::GFx::Value(
                         static_cast<std::uint32_t>(descriptor.kind))) &&
+                    target.SetMember("interactionFlags", RE::Scaleform::GFx::Value(
+                        descriptor.flags)) &&
                     target.SetMember("available", RE::Scaleform::GFx::Value(
                         component.available)) &&
                     SetString(target, "error", component.error);
@@ -674,6 +684,8 @@ namespace AbsoluteControlPanelResearch::Scaleform
                     model.SetMember("revision", RE::Scaleform::GFx::Value(static_cast<double>(a_model.revision))) &&
                     model.SetMember("activePage", RE::Scaleform::GFx::Value(activePage)) &&
                     model.SetMember("selectedControl", RE::Scaleform::GFx::Value(selectedControl)) &&
+                    SetString(model, "selectedGridColumnId",
+                        a_model.selectedGridColumnId) &&
                     model.SetMember("focusRegion", RE::Scaleform::GFx::Value(
                         static_cast<std::uint32_t>(inputFocus.region))) &&
                     model.SetMember("focusedAction", RE::Scaleform::GFx::Value(
@@ -687,9 +699,13 @@ namespace AbsoluteControlPanelResearch::Scaleform
                         a_model.bindingCaptureActive)) &&
                     model.SetMember("textCaptureActive", RE::Scaleform::GFx::Value(
                         a_model.textCaptureActive)) &&
+                    model.SetMember("bindingConflictActive", RE::Scaleform::GFx::Value(
+                        a_model.bindingConflictActive)) &&
                     SetString(model, "captureModuleId", a_model.captureModuleId) &&
                     SetString(model, "capturePageId", a_model.capturePageId) &&
                     SetString(model, "captureControlId", a_model.captureControlId) &&
+                    SetString(model, "bindingConflictDetail",
+                        a_model.bindingConflictDetail) &&
                     SetString(model, "error", a_model.error);
                 for (std::uint32_t moduleIndex = 0;
                      populated && moduleIndex < a_model.modules.size(); ++moduleIndex) {

@@ -28,6 +28,9 @@ namespace AbsoluteControlPanelApi
     enum class ControlKind : std::uint32_t
     {
         Toggle, IntegerSlider, FloatSlider, Choice, Action, InputBinding, TextInput,
+        // Presentation-only control. The host never calls read/write callbacks
+        // for it; label and description define a lightweight section divider.
+        GroupHeader,
         ButtonBinding = InputBinding
     };
 
@@ -52,6 +55,9 @@ namespace AbsoluteControlPanelApi
         // configuration. Successful writes refresh the page without pinning a
         // transaction or marking the page dirty.
         kControlTransientChoice = 1U << 5,
+        // Consecutive Action controls carrying this flag may share one visual
+        // row. Providers should flag groups of two or three controls.
+        kControlLayoutInline = 1U << 6,
         kBindingKeyboard = 1U << 8,
         kBindingMouse = 1U << 9,
         kBindingController = 1U << 10,
@@ -123,6 +129,11 @@ namespace AbsoluteControlPanelApi
         void*, const char*, BindingCaptureV1*) noexcept;
     using CancelBindingCaptureCallback = Result(__cdecl*)(
         void*, const char*) noexcept;
+    // Optional conflict-resolution tail. The provider atomically removes the
+    // binding from its previous owner and assigns it to controlId in the active
+    // page draft. The host pins the normal Apply/Cancel transaction on success.
+    using ReassignBindingCallback = Result(__cdecl*)(
+        void*, const char*, const char*) noexcept;
 
     struct ModuleDescriptorV1
     {
@@ -153,6 +164,7 @@ namespace AbsoluteControlPanelApi
         BeginBindingCaptureCallback beginBindingCapture{};
         PollBindingCaptureCallback pollBindingCapture{};
         CancelBindingCaptureCallback cancelBindingCapture{};
+        ReassignBindingCallback reassignBinding{};
     };
 
     inline constexpr std::uint32_t kPageDescriptorV1BaseSize =
@@ -162,7 +174,10 @@ namespace AbsoluteControlPanelApi
     {
         kCapabilityNone = 0,
         kCapabilityLabeledChoices = 1ULL << 0,
-        kCapabilityProviderBindingCapture = 1ULL << 1
+        kCapabilityProviderBindingCapture = 1ULL << 1,
+        kCapabilityBindingConflictResolution = 1ULL << 2,
+        // The host accepts GroupHeader controls and kControlLayoutInline.
+        kCapabilityStructuredLayout = 1ULL << 3
     };
 
     struct ApiV1
@@ -205,6 +220,7 @@ namespace AbsoluteControlPanelApi
     static_assert(static_cast<std::uint32_t>(ControlKind::Toggle) == 0);
     static_assert(static_cast<std::uint32_t>(ControlKind::InputBinding) == 5);
     static_assert(static_cast<std::uint32_t>(ControlKind::TextInput) == 6);
+    static_assert(static_cast<std::uint32_t>(ControlKind::GroupHeader) == 7);
     static_assert(static_cast<std::uint32_t>(ValueKind::Boolean) == 0);
     static_assert(static_cast<std::uint32_t>(ValueKind::String) == 3);
     static_assert(offsetof(ValueV1, kind) == sizeof(std::uint32_t));
@@ -226,6 +242,8 @@ namespace AbsoluteControlPanelApi
         Result(__cdecl*)(void*, const char*, BindingCaptureV1*) noexcept>);
     static_assert(std::is_same_v<CancelBindingCaptureCallback,
         Result(__cdecl*)(void*, const char*) noexcept>);
+    static_assert(std::is_same_v<ReassignBindingCallback,
+        Result(__cdecl*)(void*, const char*, const char*) noexcept>);
 }
 
 #if defined(ABSOLUTE_CONTROL_PANEL_EXPORTS)

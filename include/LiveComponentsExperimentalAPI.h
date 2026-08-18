@@ -170,6 +170,14 @@ namespace AbsoluteControlPanelExperimental
         GridTierDescriptorV1 tiers[kMaximumGridTiers]{};
     };
 
+    enum SegmentedGridFlags : std::uint32_t
+    {
+        kSegmentedGridNone = 0,
+        // Each interactive pip advances directly through the provider's tier
+        // order and then back to the hollow tier.
+        kSegmentedGridCycleOnClick = 1U << 0
+    };
+
     struct RangeMeterFrameV1
     {
         std::uint32_t structSize{ sizeof(RangeMeterFrameV1) };
@@ -227,7 +235,9 @@ namespace AbsoluteControlPanelExperimental
     {
         SetSegmentCount,
         TrimColumn,
-        SetTier
+        SetTier,
+        // count is a zero-based segment index; tierId is the desired tier.
+        SetSegmentTier
     };
 
     struct CompoundOperationV1
@@ -274,7 +284,13 @@ namespace AbsoluteControlPanelExperimental
         void* context{};
         ReadLiveFrameCallback readLiveFrame{};
         ApplyCompoundOperationCallback applyCompoundOperation{};
+        // Additive descriptor tail. For segmented grids this accepts
+        // SegmentedGridFlags; other component kinds require zero.
+        std::uint32_t flags{kSegmentedGridNone};
     };
+
+    inline constexpr std::uint32_t kLiveChannelDescriptorV1BaseSize =
+        static_cast<std::uint32_t>(offsetof(LiveChannelDescriptorV1, flags));
 
     // Pointer-free copy intended for renderer/model publication. Provider
     // context and callbacks never enter this type or the ActionScript graph.
@@ -290,6 +306,7 @@ namespace AbsoluteControlPanelExperimental
         RangeMeterDescriptorV1 rangeMeter{};
         TelemetryPlotDescriptorV1 telemetryPlot{};
         SegmentedGridDescriptorV1 segmentedGrid{};
+        std::uint32_t flags{kSegmentedGridNone};
     };
 
     struct ExperimentalApiV1

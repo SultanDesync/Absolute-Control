@@ -19,7 +19,7 @@ package acp.ui
                 Math.min(int(model.activePage), model.pages.length - 1));
             selectedRow = Math.max(0, int(model.selectedControl));
             focusRegion = Math.max(PanelLayout.FOCUS_MODULES,
-                Math.min(PanelLayout.FOCUS_ACTIONS, int(model.focusRegion)));
+                Math.min(PanelLayout.FOCUS_GRID, int(model.focusRegion)));
             focusedAction = Math.max(0, Math.min(2, int(model.focusedAction)));
             normalize();
         }
@@ -55,12 +55,84 @@ package acp.ui
                 return;
             }
             selectedRow = Math.max(0, Math.min(selectedRow, current.controls.length - 1));
+            if (uint(current.controls[selectedRow].kind) == 7) {
+                var replacement:int = nextSelectableIndex(current, selectedRow, 1);
+                if (replacement < 0) replacement = nextSelectableIndex(
+                    current, selectedRow, -1);
+                selectedRow = Math.max(0, replacement);
+            }
             var visibleRows:int = current.liveComponents != null &&
                 current.liveComponents.length > 0 ? 5 : PanelLayout.VISIBLE_ROWS;
-            if (selectedRow < firstVisibleRow) firstVisibleRow = selectedRow;
-            if (selectedRow > firstVisibleRow + visibleRows - 1) {
-                firstVisibleRow = selectedRow - visibleRows + 1;
+            var rows:Array = controlRows(current);
+            if (rows.length == 0) return;
+            var selectedLayout:int = layoutRowForControl(rows, selectedRow);
+            var firstLayout:int = layoutRowForControl(rows, firstVisibleRow);
+            if (selectedLayout < firstLayout) firstLayout = selectedLayout;
+            if (selectedLayout > firstLayout + visibleRows - 1) {
+                firstLayout = selectedLayout - visibleRows + 1;
             }
+            firstLayout = Math.max(0, Math.min(firstLayout,
+                Math.max(0, rows.length - visibleRows)));
+            firstVisibleRow = int(rows[firstLayout][0]);
+        }
+
+        public function moveControl(direction:int):Object
+        {
+            var current:Object = page();
+            if (current == null || current.controls == null ||
+                current.controls.length == 0) return null;
+            var next:int = nextSelectableIndex(current, selectedRow, direction);
+            if (next < 0) return null;
+            selectedRow = next;
+            normalize();
+            return current.controls[selectedRow];
+        }
+
+        public function controlRows(current:Object):Array
+        {
+            var rows:Array = [];
+            if (current == null || current.controls == null) return rows;
+            var index:int = 0;
+            while (index < current.controls.length) {
+                var control:Object = current.controls[index];
+                var row:Array = [index];
+                if (uint(control.kind) == 4 &&
+                    (uint(control.flags) & 64) != 0) {
+                    while (row.length < 3 && index + row.length <
+                        current.controls.length) {
+                        var candidate:Object = current.controls[index + row.length];
+                        if (uint(candidate.kind) != 4 ||
+                            (uint(candidate.flags) & 64) == 0) break;
+                        row.push(index + row.length);
+                    }
+                }
+                rows.push(row);
+                index += row.length;
+            }
+            return rows;
+        }
+
+        private function layoutRowForControl(rows:Array, controlIndex:int):int
+        {
+            for (var row:int = 0; row < rows.length; ++row) {
+                for (var item:int = 0; item < rows[row].length; ++item) {
+                    if (int(rows[row][item]) == controlIndex) return row;
+                }
+            }
+            return 0;
+        }
+
+        private function nextSelectableIndex(current:Object, start:int,
+            direction:int):int
+        {
+            var count:int = current.controls.length;
+            if (count == 0) return -1;
+            var index:int = start;
+            for (var visited:int = 0; visited < count; ++visited) {
+                index = (index + (direction < 0 ? -1 : 1) + count) % count;
+                if (uint(current.controls[index].kind) != 7) return index;
+            }
+            return -1;
         }
 
         public function modulePageStarts():Array

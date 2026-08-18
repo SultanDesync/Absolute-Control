@@ -171,6 +171,17 @@ int main()
     invalidRange.rangeMeter.bands[0].visualRole = static_cast<VisualRole>(999);
     CHECK(registry.Register(invalidRange) == Result::InvalidArgument);
 
+    Provider legacyProvider;
+    auto legacy = Channel(ComponentKind::RangeMeter, "legacy", legacyProvider);
+    InitializeRange(legacy);
+    legacy.structSize = kLiveChannelDescriptorV1BaseSize;
+    legacy.flags = kSegmentedGridCycleOnClick;
+    Registry legacyRegistry;
+    CHECK(legacyRegistry.Register(legacy) == Result::Ok);
+    LiveChannelModelV1 legacyModel;
+    CHECK(legacyRegistry.Describe("test.module", "live", "legacy", legacyModel) ==
+        Result::Ok && legacyModel.flags == kSegmentedGridNone);
+
     static Registry capacityRegistry;
     for (std::size_t index = 0; index < kMaximumChannels; ++index) {
         char channelId[kIdentifierCapacity]{};
@@ -251,6 +262,10 @@ int main()
     Provider gridProvider;
     auto grid = Channel(ComponentKind::SegmentedAllocationGrid, "power", gridProvider);
     InitializeGrid(grid);
+    grid.flags = kSegmentedGridCycleOnClick;
+    auto invalidFlagOwner = range;
+    invalidFlagOwner.flags = kSegmentedGridCycleOnClick;
+    CHECK(registry.Register(invalidFlagOwner) == Result::InvalidArgument);
     auto invalidGrid = grid;
     invalidGrid.segmentedGrid.columnCount = static_cast<std::uint32_t>(kMaximumGridColumns + 1);
     CHECK(registry.Register(invalidGrid) == Result::InvalidArgument);
@@ -258,6 +273,9 @@ int main()
     invalidGrid.segmentedGrid.columns[0].maximumSegments = static_cast<std::uint32_t>(kMaximumGridSegments + 1);
     CHECK(registry.Register(invalidGrid) == Result::InvalidArgument);
     CHECK(registry.Register(grid) == Result::Ok);
+    LiveChannelModelV1 gridModel;
+    CHECK(registry.Describe("test.module", "live", "power", gridModel) ==
+        Result::Ok && gridModel.flags == kSegmentedGridCycleOnClick);
 
     gridProvider.frame = Frame(ComponentKind::SegmentedAllocationGrid, 1, 100);
     gridProvider.frame.segmentedGrid.columnCount = 2;
@@ -285,6 +303,13 @@ int main()
     operation.count = 20;
     compound = registry.Apply(operation);
     CHECK(compound.result == Result::Ok && compound.publish == 1 && gridProvider.operationCount == 1);
+
+    operation = Operation(CompoundOperationKind::SetSegmentTier);
+    Copy(operation.columnId, std::size(operation.columnId), "engines");
+    Copy(operation.tierId, std::size(operation.tierId), "yellow");
+    operation.count = 32;
+    CHECK(registry.Apply(operation).result == Result::InvalidArgument &&
+        gridProvider.operationCount == 1);
 
     operation = Operation(CompoundOperationKind::TrimColumn);
     Copy(operation.columnId, std::size(operation.columnId), "missing");

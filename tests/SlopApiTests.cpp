@@ -31,6 +31,9 @@ namespace
         bool failApply{};
         bool failInvoke{};
         bool wrongReadKind{};
+        bool duplicateWrites{};
+        int reassigns{};
+        std::string reassignedBinding;
         int captureBegins{};
         int capturePolls{};
         int captureCancels{};
@@ -168,7 +171,8 @@ namespace
         auto& provider = *static_cast<Provider*>(a_context);
         ++provider.writes;
         provider.lastWrite = *a_value;
-        return SlopApi::Result::Ok;
+        return provider.duplicateWrites ? SlopApi::Result::Duplicate :
+            SlopApi::Result::Ok;
     }
 
     SlopApi::Result __cdecl Invoke(void* a_context, const char*) noexcept
@@ -230,6 +234,20 @@ namespace
         ++provider.captureCancels;
         provider.captureState =
             AbsoluteControlPanelApi::BindingCaptureState::Cancelled;
+        return AbsoluteControlPanelApi::Result::Ok;
+    }
+
+    AbsoluteControlPanelApi::Result __cdecl ReassignProviderBinding(
+        void* a_context, const char* a_control, const char* a_binding) noexcept
+    {
+        auto& provider = *static_cast<Provider*>(a_context);
+        if (!a_control || !a_binding ||
+            std::string_view{a_control} != "controller-action" ||
+            std::string_view{a_binding}.empty()) {
+            return AbsoluteControlPanelApi::Result::InvalidArgument;
+        }
+        ++provider.reassigns;
+        provider.reassignedBinding = a_binding;
         return AbsoluteControlPanelApi::Result::Ok;
     }
 
@@ -298,6 +316,10 @@ int main()
         AbsoluteControlPanelApi::kCapabilityLabeledChoices) != 0);
     CHECK((publicApi->capabilities &
         AbsoluteControlPanelApi::kCapabilityProviderBindingCapture) != 0);
+    CHECK((publicApi->capabilities &
+        AbsoluteControlPanelApi::kCapabilityBindingConflictResolution) != 0);
+    CHECK((publicApi->capabilities &
+        AbsoluteControlPanelApi::kCapabilityStructuredLayout) != 0);
     CHECK(std::string_view(publicApi->version) == ACP_PRODUCT_VERSION);
     CHECK(std::string_view(api->version) == ACP_PRODUCT_VERSION);
     CHECK(MenuApiHost::Lifecycle() == MenuApiHost::HostLifecycle::Initializing);
@@ -661,6 +683,7 @@ int main()
     channel.context = &compoundProvider;
     channel.readLiveFrame = &ReadCompoundFrame;
     channel.applyCompoundOperation = &ApplyCompoundOperation;
+    channel.flags = Live::kSegmentedGridCycleOnClick;
     strcpy_s(channel.segmentedGrid.controlId, "allocation");
     channel.segmentedGrid.columnCount = 1;
     channel.segmentedGrid.tierCount = 2;
@@ -678,7 +701,26 @@ int main()
     auto compoundModel = compoundSession.Snapshot();
     CHECK(!compoundModel.pages.empty() &&
         compoundModel.pages[0].liveComponents.size() == 1 &&
-        compoundModel.pages[0].liveComponents[0].available);
+        compoundModel.pages[0].liveComponents[0].available &&
+        compoundModel.pages[0].liveComponents[0].descriptor.flags ==
+            Live::kSegmentedGridCycleOnClick);
+    auto gridFocus = MenuInputRouter::FocusState{
+        .region = MenuInputRouter::FocusRegion::Grid };
+    auto gridRoute = MenuInputRouter::Route(
+        compoundModel, MenuInputRouter::kRight, gridFocus);
+    CHECK(gridRoute.command && gridRoute.command->kind == CommandKind::Compound &&
+        gridRoute.command->compoundKind ==
+            Live::CompoundOperationKind::SetSegmentCount &&
+        gridRoute.command->columnId == "engines" &&
+        gridRoute.command->tierId == "green" && gridRoute.command->count == 1);
+    gridRoute = MenuInputRouter::Route(
+        compoundModel, MenuInputRouter::kDown, gridFocus);
+    CHECK(gridRoute.command && gridRoute.command->kind ==
+        CommandKind::SelectGridColumn && gridRoute.command->columnId == "engines");
+    auto controlsToGrid = MenuInputRouter::Route(
+        compoundModel, MenuInputRouter::kLeft);
+    CHECK(!controlsToGrid.command && controlsToGrid.focus.region ==
+        MenuInputRouter::FocusRegion::Grid);
     auto compound = MakeCommand(CommandKind::Compound, "general", "allocation");
     compound.channelId = "power";
     compound.columnId = "engines";
@@ -732,10 +774,48 @@ int main()
     CHECK(api->registerPage(&invalidFlagPage) == Result::InvalidArgument);
     invalidFlagControl.flags = kControlAppliesDraftBeforeInvoke;
     CHECK(api->registerPage(&invalidFlagPage) == Result::InvalidArgument);
+    invalidFlagControl.flags = kControlLayoutInline;
+    CHECK(api->registerPage(&invalidFlagPage) == Result::InvalidArgument);
     invalidFlagControl = MakeDescriptor(ControlKind::Action, "invalid.action-flags");
     invalidFlagControl.flags =
         kControlMutatesDraft | kControlAppliesDraftBeforeInvoke;
     CHECK(api->registerPage(&invalidFlagPage) == Result::InvalidArgument);
+
+    ModuleDescriptorV1 sectionsModule;
+    strcpy_s(sectionsModule.moduleId, "sections.module");
+    strcpy_s(sectionsModule.displayName, "Section Provider");
+    CHECK(publicApi->registerModule(&sectionsModule) == Result::Ok);
+    Provider sectionsProvider;
+    ControlDescriptorV1 sectionControls[]{
+        MakeDescriptor(ControlKind::GroupHeader, "profile-identity"),
+        MakeDescriptor(ControlKind::Action, "previous"),
+        MakeDescriptor(ControlKind::Action, "next")
+    };
+    sectionControls[1].flags = kControlLayoutInline;
+    sectionControls[2].flags = kControlLayoutInline;
+    PageDescriptorV1 sectionsPage;
+    strcpy_s(sectionsPage.moduleId, "sections.module");
+    strcpy_s(sectionsPage.pageId, "layout");
+    strcpy_s(sectionsPage.displayName, "Layout");
+    sectionsPage.controlCount = static_cast<std::uint32_t>(
+        std::size(sectionControls));
+    sectionsPage.controls = sectionControls;
+    sectionsPage.context = &sectionsProvider;
+    sectionsPage.invokeAction = &Invoke;
+    CHECK(publicApi->registerPage(&sectionsPage) == Result::Ok);
+    Session sectionsSession;
+    Command selectSections;
+    selectSections.kind = CommandKind::SelectPage;
+    selectSections.moduleId = "sections.module";
+    selectSections.pageId = "layout";
+    auto sectionsModel = sectionsSession.Dispatch(selectSections);
+    CHECK(sectionsModel.pages.size() == 1 &&
+        sectionsModel.pages[0].controls[0].available &&
+        sectionsProvider.reads == 0);
+    auto sectionRoute = MenuInputRouter::Route(
+        sectionsModel, MenuInputRouter::kUp);
+    CHECK(sectionRoute.command && sectionRoute.command->controlId == "next");
+    CHECK(publicApi->unregisterModule("sections.module") == Result::Ok);
 
     // A transient labeled Choice is provider-owned navigation state: all
     // options reach the model, the write succeeds, and no transaction/dirty
@@ -809,6 +889,7 @@ int main()
     CHECK(publicApi->registerPage(&capturePage) == Result::InvalidArgument);
     capturePage.pollBindingCapture = &PollProviderCapture;
     capturePage.cancelBindingCapture = &CancelProviderCapture;
+    capturePage.reassignBinding = &ReassignProviderBinding;
     CHECK(publicApi->registerPage(&capturePage) == Result::Ok);
 
     Session captureSession;
@@ -855,6 +936,58 @@ int main()
     CHECK(timedOutModel && !timedOutModel->bindingCaptureActive &&
         timedOutModel->error == "No controller input received" &&
         captureProvider.captureCancels == 1);
+
+    captureModel = captureSession.Dispatch(beginProviderCapture);
+    captureProvider.captureState =
+        AbsoluteControlPanelApi::BindingCaptureState::Error;
+    captureProvider.captureBinding = "controller:button:12";
+    captureProvider.captureDetail = "Binding already in use by 'Combat'";
+    auto conflictModel = captureSession.RefreshBindingCapture();
+    CHECK(conflictModel && conflictModel->bindingConflictActive &&
+        !conflictModel->bindingCaptureActive && conflictModel->error.empty() &&
+        conflictModel->bindingConflictDetail == captureProvider.captureDetail);
+    auto conflictRoute = MenuInputRouter::Route(
+        *conflictModel, MenuInputRouter::kDown);
+    CHECK(!conflictRoute.command && conflictRoute.focus.actionIndex == 1);
+    conflictRoute = MenuInputRouter::Route(
+        *conflictModel, MenuInputRouter::kAccept,
+        MenuInputRouter::FocusState{
+            .region = MenuInputRouter::FocusRegion::Actions,
+            .actionIndex = 0 });
+    CHECK(conflictRoute.command && conflictRoute.command->kind ==
+        CommandKind::ResolveBindingReassign);
+    captureModel = captureSession.Dispatch(*conflictRoute.command);
+    CHECK(!captureModel.bindingConflictActive && captureModel.dirty &&
+        captureProvider.reassigns == 1 &&
+        captureProvider.reassignedBinding == "controller:button:12");
+    captureModel = captureSession.Dispatch(cancelCaptureDraft);
+    CHECK(!captureModel.dirty && captureModel.error.empty());
+
+    captureModel = captureSession.Dispatch(beginProviderCapture);
+    captureProvider.captureState =
+        AbsoluteControlPanelApi::BindingCaptureState::Error;
+    captureProvider.captureBinding = "controller:button:13";
+    captureProvider.captureDetail = "Binding already in use";
+    conflictModel = captureSession.RefreshBindingCapture();
+    CHECK(conflictModel && conflictModel->bindingConflictActive);
+    Command dismissConflict;
+    dismissConflict.kind = CommandKind::ResolveBindingCancel;
+    captureModel = captureSession.Dispatch(dismissConflict);
+    CHECK(!captureModel.bindingConflictActive && !captureModel.dirty &&
+        captureProvider.reassigns == 1);
+
+    captureModel = captureSession.Dispatch(beginProviderCapture);
+    captureProvider.captureState =
+        AbsoluteControlPanelApi::BindingCaptureState::Captured;
+    captureProvider.captureBinding = "controller:button:14";
+    captureProvider.duplicateWrites = true;
+    conflictModel = captureSession.RefreshBindingCapture();
+    captureProvider.duplicateWrites = false;
+    CHECK(conflictModel && conflictModel->bindingConflictActive &&
+        conflictModel->bindingConflictDetail.find("already assigned") !=
+            std::string::npos);
+    captureModel = captureSession.Dispatch(dismissConflict);
+    CHECK(!captureModel.bindingConflictActive && !captureModel.dirty);
     CHECK(publicApi->unregisterModule("capture.module") == Result::Ok);
 
     // Destruction is an abnormal close path: clean sessions are inert, while a

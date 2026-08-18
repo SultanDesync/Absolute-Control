@@ -41,6 +41,9 @@ int main()
     const auto shell = Read("interface/src/acp/ui/MenuShellRenderer.as");
     const auto dirtyDecision =
         Read("interface/src/acp/ui/DirtyDecisionDialog.as");
+    const auto bindingConflict =
+        Read("interface/src/acp/ui/BindingConflictDialog.as");
+    const auto modalInput = Read("interface/src/acp/ui/ModalInputRouter.as");
     const auto pointer = Read("interface/src/acp/ui/PointerInteraction.as");
     const auto dispatcher = Read("interface/src/acp/ui/BridgeCommandDispatcher.as");
     const auto sliderWrites = Read("interface/src/acp/ui/SliderWriteCoordinator.as");
@@ -48,10 +51,12 @@ int main()
     const auto theme = Read("interface/src/acp/ui/PanelTheme.as");
     const auto vectorText = Read("interface/src/acp/ui/VectorTextRenderer.as");
     const auto actionScript = actionScriptRoot + widgets + selection + shell +
-        dirtyDecision + pointer + dispatcher + sliderWrites + layout + theme + vectorText;
+        dirtyDecision + bindingConflict + modalInput + pointer + dispatcher +
+        sliderWrites + layout + theme + vectorText;
     CHECK(!native.empty() && !evidence.empty() && !actionScriptRoot.empty());
     CHECK(!widgets.empty() && !selection.empty() && !shell.empty() && !pointer.empty() &&
-        !dirtyDecision.empty() && !dispatcher.empty() && !sliderWrites.empty());
+        !dirtyDecision.empty() && !bindingConflict.empty() && !modalInput.empty() &&
+        !dispatcher.empty() && !sliderWrites.empty());
     CHECK(!layout.empty() && !theme.empty() && !vectorText.empty());
     CHECK(!Read("interface/src/acp/ui/FontAssets/Roboto-Regular.ttf").empty());
     CHECK(!Read("interface/src/acp/ui/FontAssets/Roboto-Bold.ttf").empty());
@@ -184,8 +189,11 @@ int main()
     CHECK(shell.find("drawSegmentedGrid") != std::string::npos);
     CHECK(shell.find("GREEN: FIRST") != std::string::npos);
     CHECK(shell.find("CYAN OUTLINE: LIVE") != std::string::npos);
-    CHECK(shell.find("EACH ROW IS AN INDEPENDENT SYSTEM CONTROL") !=
+    CHECK(shell.find("HOLLOW > 1 > 2 > 3 > HOLLOW") != std::string::npos);
+    CHECK(shell.find("operationKind\":3") != std::string::npos);
+    CHECK(shell.find("quickLabels:Array = [\"+G\", \"+Y\", \"+R\", \"-\"]") !=
         std::string::npos);
+    CHECK(shell.find("\"REQUESTS\"") == std::string::npos);
     CHECK(actionScriptRoot.find("sendCompound") != std::string::npos);
     CHECK(dispatcher.find("expectedGeneration") != std::string::npos);
     CHECK(actionScriptRoot.find("Event.ENTER_FRAME") != std::string::npos);
@@ -229,6 +237,12 @@ int main()
     CHECK(dirtyDecision.find("SAVE CHANGES BEFORE CLOSING?") !=
         std::string::npos);
     CHECK(dirtyDecision.find("dirtyApply") != std::string::npos);
+    CHECK(bindingConflict.find("BINDING ALREADY IN USE") != std::string::npos);
+    CHECK(bindingConflict.find("bindingReassign") != std::string::npos);
+    CHECK(modalInput.find("bindingCancel") != std::string::npos);
+    CHECK(shell.find("addInlineRow") != std::string::npos);
+    CHECK(shell.find("addGroupHeader") != std::string::npos);
+    CHECK(shell.find("showBindingTooltip") != std::string::npos);
     CHECK(shell.find("hiddenBelow") != std::string::npos);
     CHECK(shell.find("action ? \"activate\" : \"select\"") !=
         std::string::npos);

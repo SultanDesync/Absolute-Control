@@ -164,11 +164,16 @@ namespace AbsoluteControlPanelResearch::LiveComponents
 
         [[nodiscard]] bool ValidateDescriptor(const LiveChannelDescriptorV1& descriptor) noexcept
         {
-            if (descriptor.structSize < sizeof(LiveChannelDescriptorV1) ||
+            if (descriptor.structSize < kLiveChannelDescriptorV1BaseSize ||
                 descriptor.abiVersion != kAbiVersion || !IsComponentKind(descriptor.kind) ||
                 !IsIdentifier(descriptor.moduleId) || !IsIdentifier(descriptor.pageId) ||
                 !IsIdentifier(descriptor.channelId) || !IsLabel(descriptor.title) ||
                 !descriptor.readLiveFrame) return false;
+            const auto flags = descriptor.structSize >= sizeof(LiveChannelDescriptorV1) ?
+                descriptor.flags : kSegmentedGridNone;
+            if ((flags & ~kSegmentedGridCycleOnClick) != 0 ||
+                (descriptor.kind != ComponentKind::SegmentedAllocationGrid &&
+                    flags != kSegmentedGridNone)) return false;
             switch (descriptor.kind) {
             case ComponentKind::RangeMeter: return ValidateRange(descriptor.rangeMeter);
             case ComponentKind::TelemetryPlot: return ValidatePlot(descriptor.telemetryPlot);
@@ -185,6 +190,8 @@ namespace AbsoluteControlPanelResearch::LiveComponents
             std::memcpy(model.channelId, descriptor.channelId, sizeof(model.channelId));
             std::memcpy(model.title, descriptor.title, sizeof(model.title));
             model.kind = descriptor.kind;
+            model.flags = descriptor.structSize >= sizeof(LiveChannelDescriptorV1) ?
+                descriptor.flags : kSegmentedGridNone;
             switch (descriptor.kind) {
             case ComponentKind::RangeMeter: model.rangeMeter = descriptor.rangeMeter; break;
             case ComponentKind::TelemetryPlot: model.telemetryPlot = descriptor.telemetryPlot; break;
@@ -290,7 +297,12 @@ namespace AbsoluteControlPanelResearch::LiveComponents
             }
             case CompoundOperationKind::SetTier:
                 return columnId.empty() && operation.count == 0 &&
+                        ContainsId(descriptor.tiers, descriptor.tierCount, tierId);
+            case CompoundOperationKind::SetSegmentTier: {
+                const auto* column = FindColumn(descriptor, columnId);
+                return column && operation.count < column->maximumSegments &&
                        ContainsId(descriptor.tiers, descriptor.tierCount, tierId);
+            }
             }
             return false;
         }
@@ -322,10 +334,15 @@ namespace AbsoluteControlPanelResearch::LiveComponents
         if (duplicate != slots_.end()) return Result::Duplicate;
         const auto empty = std::ranges::find_if(slots_, [](const Slot& slot) { return !slot.occupied; });
         if (empty == slots_.end()) return Result::CapacityExceeded;
+        LiveChannelDescriptorV1 normalized{};
+        std::memcpy(&normalized, &descriptor,
+            (std::min)(static_cast<std::size_t>(descriptor.structSize),
+                sizeof(normalized)));
+        normalized.structSize = sizeof(normalized);
         *empty = Slot{};
         empty->occupied = true;
-        empty->descriptor = descriptor;
-        empty->model = CopyModel(descriptor);
+        empty->descriptor = normalized;
+        empty->model = CopyModel(normalized);
         return Result::Ok;
     }
 

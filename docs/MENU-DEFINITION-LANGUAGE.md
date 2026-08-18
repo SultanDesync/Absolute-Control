@@ -114,10 +114,11 @@ an arbitrary INI file.
 
 The checked-in ABI v1 profile and compiler live in [`sdk/`](../sdk/README.md). Developers may
 handwrite descriptors or generate them; generated output is ordinary compile-time descriptor data
-and callback wiring. The compiler has not yet caught up with the appended ABI-v1 labeled-choice
-callback or `TextInput`, so definitions using those features are rejected instead of silently
-degraded. Sections currently group and order source controls but cannot render headings until the
-public ABI gains a section descriptor.
+and callback wiring. The compiler wires the optional choice, device-capture, and
+binding-reassignment callback tails, but labeled Choice and `TextInput` option kinds remain
+deliberately outside this schema profile. Sections emit presentation-only group headers when the
+host reports `kCapabilityStructuredLayout`; `MakePages` emits a header-free fallback for older
+hosts. Consecutive Action options may request compact rows with `flags: ["layoutInline"]`.
 
 Generated definitions require control IDs unique across the module because generated pages share
 one callback/context set and one module-wide `ParseControlId`. Direct ABI consumers may use
@@ -137,9 +138,8 @@ replace a validated token set; individual subscribers do not resize or restyle s
 
 Before freezing the public SDK:
 
-- labeled-choice and bounded-string semantics are frozen and generated deterministically; rendered
-  sections, formatting, and presentation hints are either added through a compatible extension or
-  explicitly deferred from the first SDK;
+- labeled-choice and bounded-string option kinds are generated deterministically or explicitly
+  deferred; structured sections and inline actions retain their capability-gated fallback;
 - JSON schema validation and C++ generation are deterministic;
 - every component has keyboard, controller, pointer, and wheel tests;
 - rendered elements own their hit regions and semantic events;

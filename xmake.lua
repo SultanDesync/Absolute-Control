@@ -144,6 +144,20 @@ target("AbsoluteControlPanel", function()
         "include/LiveComponentsExperimentalAPI.h", {
         prefixdir = "SDK"
     })
+    add_installfiles("sdk/README.md", "sdk/CHANGELOG.md",
+        "sdk/menu-definition.schema.json", {
+        prefixdir = "SDK"
+    })
+    add_installfiles("sdk/tools/menu_codegen.py", {
+        prefixdir = "SDK/tools"
+    })
+    add_installfiles("sdk/examples/absolute-head-tracking.menu.json", {
+        prefixdir = "SDK/examples"
+    })
+    add_installfiles(
+        "sdk/examples/generated/AbsoluteHeadTrackingMenu.generated.h", {
+        prefixdir = "SDK/examples/generated"
+    })
     add_installfiles("interface/dist/AbsoluteControlPanelMenu.swf", {
         prefixdir = "Interface"
     })

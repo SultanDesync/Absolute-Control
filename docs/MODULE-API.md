@@ -47,13 +47,16 @@ Version 1 describes these typed controls:
 - choice;
 - action button;
 - button binding; and
-- bounded text input.
+- bounded text input; and
+- presentation-only group header.
 
-The prototype renderer currently proves these semantic types but does not yet expose enough
-descriptor data for the release widget set. Before the public SDK is frozen, the contract must
-add provider-owned choice labels and section/layout metadata. The host
-chooses the standard widget and geometry from semantic type plus bounded presentation hints;
-providers do not submit coordinates, sprites, ActionScript, or arbitrary drawing callbacks.
+`GroupHeader` creates a non-focusable section divider from its label and description; the host
+never calls value or mutation callbacks for it. Consecutive Action controls carrying
+`kControlLayoutInline` may share one physical row in groups of two or three. The flag is rejected
+on other control kinds. Providers feature-detect `kCapabilityStructuredLayout`; generated SDK
+pages accept the queried capability mask and fall back to header-free, non-inline arrays for older
+hosts. The host chooses standard widget geometry from semantic type plus these bounded presentation
+hints; providers do not submit coordinates, sprites, ActionScript, or arbitrary drawing callbacks.
 
 Every value read or written carries a `ValueKind`.  Providers must reject a mismatched kind,
 an unknown control ID, and out-of-range data.  A successful write changes provider-owned draft
@@ -103,6 +106,14 @@ Callbacks run on the native UI thread and must return promptly. A captured non-e
 submitted through the row's normal `writeDraft` callback, so Apply/Cancel and persistence remain
 provider-owned. All three callbacks must be present together; older page descriptors and
 keyboard-only providers remain valid.
+
+For a duplicate captured binding, a provider may return `BindingCaptureState::Error` with the
+captured binding and conflict detail, or return `Result::Duplicate` from the ordinary binding
+write. The host presents Reassign/Cancel and, after Reassign, calls the optional appended
+`reassignBinding` callback. Providers feature-detect
+`kCapabilityBindingConflictResolution`, atomically remove the binding from its previous owner and
+assign it to the selected record's draft, then rely on the normal page Apply/Cancel lifecycle.
+Older descriptors without this tail remain valid.
 
 ## Discovery pattern
 

@@ -33,6 +33,7 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
         AbsoluteControlPanelApi::BeginBindingCaptureCallback beginBindingCapture{};
         AbsoluteControlPanelApi::PollBindingCaptureCallback pollBindingCapture{};
         AbsoluteControlPanelApi::CancelBindingCaptureCallback cancelBindingCapture{};
+        AbsoluteControlPanelApi::ReassignBindingCallback reassignBinding{};
     };
 
     namespace
@@ -111,7 +112,7 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
             AbsoluteControlPanelApi::ControlKind a_kind) noexcept
         {
             return a_kind >= AbsoluteControlPanelApi::ControlKind::Toggle &&
-                   a_kind <= AbsoluteControlPanelApi::ControlKind::TextInput;
+                   a_kind <= AbsoluteControlPanelApi::ControlKind::GroupHeader;
         }
 
         [[nodiscard]] bool ValidControlDescriptor(
@@ -124,7 +125,8 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
                 AbsoluteControlPanelApi::kControlAdvanced |
                 AbsoluteControlPanelApi::kControlMutatesDraft |
                 AbsoluteControlPanelApi::kControlAppliesDraftBeforeInvoke |
-                AbsoluteControlPanelApi::kControlTransientChoice;
+                AbsoluteControlPanelApi::kControlTransientChoice |
+                AbsoluteControlPanelApi::kControlLayoutInline;
             constexpr auto kBindingFlags =
                 AbsoluteControlPanelApi::kBindingKeyboard |
                 AbsoluteControlPanelApi::kBindingMouse |
@@ -149,12 +151,15 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
                 ((a_control.flags & AbsoluteControlPanelApi::kControlMutatesDraft) != 0 &&
                     (a_control.flags &
                         AbsoluteControlPanelApi::kControlAppliesDraftBeforeInvoke) != 0) ||
+                ((a_control.flags & AbsoluteControlPanelApi::kControlLayoutInline) != 0 &&
+                    a_control.kind != Kind::Action) ||
                 (a_control.kind != Kind::InputBinding &&
                     (a_control.flags & kBindingFlags) != 0)) {
                 return false;
             }
             if (a_control.kind == Kind::Toggle || a_control.kind == Kind::Action ||
-                a_control.kind == Kind::InputBinding) {
+                a_control.kind == Kind::InputBinding ||
+                a_control.kind == Kind::GroupHeader) {
                 return true;
             }
             if (a_control.kind == Kind::TextInput) {
@@ -293,8 +298,10 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
                         })) {
                         return Api::InvalidArgument;
                     }
-                    needsRead = needsRead || source.kind != Kind::Action;
+                    needsRead = needsRead || (source.kind != Kind::Action &&
+                        source.kind != Kind::GroupHeader);
                     const bool editableControl = source.kind != Kind::Action &&
+                        source.kind != Kind::GroupHeader &&
                         (source.flags & AbsoluteControlPanelApi::kControlReadOnly) == 0;
                     writable = writable || editableControl;
                     transactionalEditable = transactionalEditable ||
@@ -349,6 +356,14 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
                         a_descriptor->pollBindingCapture;
                     page.provider->cancelBindingCapture =
                         a_descriptor->cancelBindingCapture;
+                }
+                constexpr auto reassignBindingEnd =
+                    offsetof(AbsoluteControlPanelApi::PageDescriptorV1,
+                        reassignBinding) +
+                    sizeof(AbsoluteControlPanelApi::ReassignBindingCallback);
+                if (a_descriptor->structSize >= reassignBindingEnd) {
+                    page.provider->reassignBinding =
+                        a_descriptor->reassignBinding;
                 }
                 page.canInvokeAction = a_descriptor->invokeAction != nullptr;
                 page.canApply = a_descriptor->apply != nullptr;
@@ -780,6 +795,36 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
         }
     }
 
+    Api ReassignBinding(const Page& a_page, std::string_view a_controlId,
+        std::string_view a_binding, Transaction& a_transaction) noexcept
+    {
+        try {
+            if (a_binding.empty() ||
+                a_binding.size() >= AbsoluteControlPanelApi::kStringValueCapacity ||
+                (a_transaction.provider_ &&
+                    a_transaction.provider_ != a_page.provider)) {
+                return Api::InvalidArgument;
+            }
+            CallbackLease lease{ a_page.provider };
+            if (!lease || !a_page.provider->reassignBinding) {
+                return Api::NotFound;
+            }
+            const std::string controlId{ a_controlId };
+            const std::string binding{ a_binding };
+            const auto result = a_page.provider->reassignBinding(
+                a_page.provider->context, controlId.c_str(), binding.c_str());
+            if (result == Api::Ok && !a_transaction.provider_) {
+                std::scoped_lock lock{ a_page.provider->mutex };
+                if (a_page.provider->retired) return Api::Rejected;
+                ++a_page.provider->transactions;
+                a_transaction.provider_ = a_page.provider;
+            }
+            return result;
+        } catch (...) {
+            return Api::Rejected;
+        }
+    }
+
     Api WriteDraft(const Page& a_page, std::string_view a_controlId,
         const AbsoluteControlPanelApi::ValueV1& a_value,
         Transaction& a_transaction) noexcept
@@ -901,7 +946,9 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
         &ProductIsOpen,
         &ProductIsInputCaptureActive,
         AbsoluteControlPanelApi::kCapabilityLabeledChoices |
-            AbsoluteControlPanelApi::kCapabilityProviderBindingCapture
+            AbsoluteControlPanelApi::kCapabilityProviderBindingCapture |
+            AbsoluteControlPanelApi::kCapabilityBindingConflictResolution |
+            AbsoluteControlPanelApi::kCapabilityStructuredLayout
     };
 
     const SlopApi::ApiV1 g_legacyApi{

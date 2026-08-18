@@ -83,12 +83,36 @@ namespace AbsoluteControlPanelGenerated::module_absolute_head_tracking
         return ControlId::Unknown;
     }
 
-    inline constexpr std::array<ControlDescriptorV1, 2> kGeneralControls{{
+    inline constexpr std::array<ControlDescriptorV1, 3> kGeneralControls{{
+        Control(ControlKind::GroupHeader, kControlNone, "__section_0", "Tracking", "Global sampling and enablement."),
         Control(ControlKind::Toggle, kControlNone, "tracking.enabled", "Enable tracking", "Apply FreeTrack head pose to the camera.", 0.0, 0.0, 0.0),
         Control(ControlKind::IntegerSlider, kControlAdvanced, "tracking.poll_rate", "Poll rate", "Target samples per second.", 30.0, 240.0, 10.0),
     }};
 
-    inline constexpr std::array<ControlDescriptorV1, 12> kAxesControls{{
+    inline constexpr std::array<ControlDescriptorV1, 2> kGeneralLegacyControls{{
+        Control(ControlKind::Toggle, kControlNone, "tracking.enabled", "Enable tracking", "Apply FreeTrack head pose to the camera.", 0.0, 0.0, 0.0),
+        Control(ControlKind::IntegerSlider, kControlAdvanced, "tracking.poll_rate", "Poll rate", "Target samples per second.", 30.0, 240.0, 10.0),
+    }};
+
+    inline constexpr std::array<ControlDescriptorV1, 15> kAxesControls{{
+        Control(ControlKind::GroupHeader, kControlNone, "__section_0", "Yaw", ""),
+        Control(ControlKind::Toggle, kControlNone, "yaw.enabled", "Enable yaw", "", 0.0, 0.0, 0.0),
+        Control(ControlKind::Toggle, kControlNone, "yaw.inverted", "Invert yaw", "", 0.0, 0.0, 0.0),
+        Control(ControlKind::FloatSlider, kControlNone, "yaw.sensitivity", "Yaw sensitivity", "", 0.050000000000000003, 10, 0.050000000000000003),
+        Control(ControlKind::FloatSlider, kControlNone, "yaw.maximum", "Maximum yaw", "", 1, 180, 1),
+        Control(ControlKind::GroupHeader, kControlNone, "__section_1", "Pitch", ""),
+        Control(ControlKind::Toggle, kControlNone, "pitch.enabled", "Enable pitch", "", 0.0, 0.0, 0.0),
+        Control(ControlKind::Toggle, kControlNone, "pitch.inverted", "Invert pitch", "Convert FreeTrack pitch to Starfield camera coordinates.", 0.0, 0.0, 0.0),
+        Control(ControlKind::FloatSlider, kControlNone, "pitch.sensitivity", "Pitch sensitivity", "", 0.050000000000000003, 10, 0.050000000000000003),
+        Control(ControlKind::FloatSlider, kControlNone, "pitch.maximum", "Maximum pitch", "", 1, 180, 1),
+        Control(ControlKind::GroupHeader, kControlNone, "__section_2", "Roll", ""),
+        Control(ControlKind::Toggle, kControlNone, "roll.enabled", "Enable roll", "", 0.0, 0.0, 0.0),
+        Control(ControlKind::Toggle, kControlNone, "roll.inverted", "Invert roll", "", 0.0, 0.0, 0.0),
+        Control(ControlKind::FloatSlider, kControlNone, "roll.sensitivity", "Roll sensitivity", "", 0.050000000000000003, 10, 0.050000000000000003),
+        Control(ControlKind::FloatSlider, kControlNone, "roll.maximum", "Maximum roll", "", 1, 180, 1),
+    }};
+
+    inline constexpr std::array<ControlDescriptorV1, 12> kAxesLegacyControls{{
         Control(ControlKind::Toggle, kControlNone, "yaw.enabled", "Enable yaw", "", 0.0, 0.0, 0.0),
         Control(ControlKind::Toggle, kControlNone, "yaw.inverted", "Invert yaw", "", 0.0, 0.0, 0.0),
         Control(ControlKind::FloatSlider, kControlNone, "yaw.sensitivity", "Yaw sensitivity", "", 0.050000000000000003, 10, 0.050000000000000003),
@@ -103,7 +127,13 @@ namespace AbsoluteControlPanelGenerated::module_absolute_head_tracking
         Control(ControlKind::FloatSlider, kControlNone, "roll.maximum", "Maximum roll", "", 1, 180, 1),
     }};
 
-    inline constexpr std::array<ControlDescriptorV1, 2> kBindingsControls{{
+    inline constexpr std::array<ControlDescriptorV1, 3> kBindingsControls{{
+        Control(ControlKind::GroupHeader, kControlNone, "__section_0", "Recenter", "Capture or invoke the provider-owned recenter action."),
+        Control(ControlKind::InputBinding, kBindingKeyboard | kBindingModifiers | kBindingClearable, "bindings.recenter", "Recenter view", "Record a keyboard key or modifier chord.", 0.0, 0.0, 0.0),
+        Control(ControlKind::Action, kControlNone, "bindings.recenter_now", "Recenter now", "Invoke the provider-owned recenter action.", 0.0, 0.0, 0.0),
+    }};
+
+    inline constexpr std::array<ControlDescriptorV1, 2> kBindingsLegacyControls{{
         Control(ControlKind::InputBinding, kBindingKeyboard | kBindingModifiers | kBindingClearable, "bindings.recenter", "Recenter view", "Record a keyboard key or modifier chord.", 0.0, 0.0, 0.0),
         Control(ControlKind::Action, kControlNone, "bindings.recenter_now", "Recenter now", "Invoke the provider-owned recenter action.", 0.0, 0.0, 0.0),
     }};
@@ -116,47 +146,77 @@ namespace AbsoluteControlPanelGenerated::module_absolute_head_tracking
         InvokeActionCallback invokeAction{};
         ApplyCallback apply{};
         CancelCallback cancel{};
+        ReadChoiceOptionsCallback readChoiceOptions{};
+        BeginBindingCaptureCallback beginBindingCapture{};
+        PollBindingCaptureCallback pollBindingCapture{};
+        CancelBindingCaptureCallback cancelBindingCapture{};
+        ReassignBindingCallback reassignBinding{};
     };
 
-    inline std::array<PageDescriptorV1, 3> MakePages(const ProviderCallbacks& provider) noexcept
+    inline std::array<PageDescriptorV1, 3> MakePages(
+        const ProviderCallbacks& provider,
+        std::uint64_t hostCapabilities) noexcept
     {
         std::array<PageDescriptorV1, 3> pages{};
+        const bool structuredLayout =
+            (hostCapabilities & kCapabilityStructuredLayout) != 0;
         CopyLiteral(pages[0].moduleId, "absolute.head_tracking");
         CopyLiteral(pages[0].pageId, "general");
         CopyLiteral(pages[0].displayName, "General");
         CopyLiteral(pages[0].description, "Global tracking behavior.");
-        pages[0].controlCount = static_cast<std::uint32_t>(kGeneralControls.size());
-        pages[0].controls = kGeneralControls.data();
+        pages[0].controlCount = static_cast<std::uint32_t>(structuredLayout ?
+            kGeneralControls.size() : kGeneralLegacyControls.size());
+        pages[0].controls = structuredLayout ?
+            kGeneralControls.data() : kGeneralLegacyControls.data();
         pages[0].context = provider.context;
         pages[0].readValue = provider.readValue;
         pages[0].writeDraft = provider.writeDraft;
         pages[0].invokeAction = provider.invokeAction;
         pages[0].apply = provider.apply;
         pages[0].cancel = provider.cancel;
+        pages[0].readChoiceOptions = provider.readChoiceOptions;
+        pages[0].beginBindingCapture = provider.beginBindingCapture;
+        pages[0].pollBindingCapture = provider.pollBindingCapture;
+        pages[0].cancelBindingCapture = provider.cancelBindingCapture;
+        pages[0].reassignBinding = provider.reassignBinding;
         CopyLiteral(pages[1].moduleId, "absolute.head_tracking");
         CopyLiteral(pages[1].pageId, "axes");
         CopyLiteral(pages[1].displayName, "Axes");
         CopyLiteral(pages[1].description, "Yaw, pitch, and roll response settings in one scrollable workspace.");
-        pages[1].controlCount = static_cast<std::uint32_t>(kAxesControls.size());
-        pages[1].controls = kAxesControls.data();
+        pages[1].controlCount = static_cast<std::uint32_t>(structuredLayout ?
+            kAxesControls.size() : kAxesLegacyControls.size());
+        pages[1].controls = structuredLayout ?
+            kAxesControls.data() : kAxesLegacyControls.data();
         pages[1].context = provider.context;
         pages[1].readValue = provider.readValue;
         pages[1].writeDraft = provider.writeDraft;
         pages[1].invokeAction = provider.invokeAction;
         pages[1].apply = provider.apply;
         pages[1].cancel = provider.cancel;
+        pages[1].readChoiceOptions = provider.readChoiceOptions;
+        pages[1].beginBindingCapture = provider.beginBindingCapture;
+        pages[1].pollBindingCapture = provider.pollBindingCapture;
+        pages[1].cancelBindingCapture = provider.cancelBindingCapture;
+        pages[1].reassignBinding = provider.reassignBinding;
         CopyLiteral(pages[2].moduleId, "absolute.head_tracking");
         CopyLiteral(pages[2].pageId, "bindings");
         CopyLiteral(pages[2].displayName, "Bindings");
         CopyLiteral(pages[2].description, "Capture controls without exposing input polling to the provider.");
-        pages[2].controlCount = static_cast<std::uint32_t>(kBindingsControls.size());
-        pages[2].controls = kBindingsControls.data();
+        pages[2].controlCount = static_cast<std::uint32_t>(structuredLayout ?
+            kBindingsControls.size() : kBindingsLegacyControls.size());
+        pages[2].controls = structuredLayout ?
+            kBindingsControls.data() : kBindingsLegacyControls.data();
         pages[2].context = provider.context;
         pages[2].readValue = provider.readValue;
         pages[2].writeDraft = provider.writeDraft;
         pages[2].invokeAction = provider.invokeAction;
         pages[2].apply = provider.apply;
         pages[2].cancel = provider.cancel;
+        pages[2].readChoiceOptions = provider.readChoiceOptions;
+        pages[2].beginBindingCapture = provider.beginBindingCapture;
+        pages[2].pollBindingCapture = provider.pollBindingCapture;
+        pages[2].cancelBindingCapture = provider.cancelBindingCapture;
+        pages[2].reassignBinding = provider.reassignBinding;
         return pages;
     }
 }

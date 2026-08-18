@@ -63,8 +63,103 @@ namespace AbsoluteControlPanelResearch::MenuInputRouter
             const auto found = std::ranges::find_if(a_page.controls, [&](const auto& control) {
                 return control.descriptor.controlId == a_model.selectedControlId;
             });
-            return found == a_page.controls.end() ? 0 :
-                static_cast<std::size_t>(std::distance(a_page.controls.begin(), found));
+            if (found != a_page.controls.end()) {
+                return static_cast<std::size_t>(
+                    std::distance(a_page.controls.begin(), found));
+            }
+            const auto first = std::ranges::find_if(
+                a_page.controls, [](const auto& control) {
+                    return control.descriptor.kind !=
+                        SlopApi::ControlKind::GroupHeader;
+                });
+            return first == a_page.controls.end() ? 0 :
+                static_cast<std::size_t>(
+                    std::distance(a_page.controls.begin(), first));
+        }
+
+        [[nodiscard]] const MenuSession::Page::LiveComponent* GridComponent(
+            const MenuSession::Page& a_page) noexcept
+        {
+            const auto found = std::ranges::find_if(
+                a_page.liveComponents, [](const auto& component) {
+                    return component.available && component.descriptor.kind ==
+                        AbsoluteControlPanelExperimental::ComponentKind::
+                            SegmentedAllocationGrid;
+                });
+            return found == a_page.liveComponents.end() ? nullptr : &*found;
+        }
+
+        [[nodiscard]] std::size_t SelectedGridColumnIndex(
+            const MenuSession::Model& a_model,
+            const MenuSession::Page::LiveComponent& a_component) noexcept
+        {
+            const auto& grid = a_component.descriptor.segmentedGrid;
+            for (std::size_t index{}; index < grid.columnCount; ++index) {
+                if (std::string_view{grid.columns[index].columnId} ==
+                    a_model.selectedGridColumnId) return index;
+            }
+            return 0;
+        }
+
+        [[nodiscard]] MenuSession::Command GridSelectionCommand(
+            const MenuSession::Page& a_page,
+            const MenuSession::Page::LiveComponent& a_component,
+            std::size_t a_column)
+        {
+            MenuSession::Command command;
+            command.kind = MenuSession::CommandKind::SelectGridColumn;
+            command.moduleId = a_page.moduleId;
+            command.pageId = a_page.pageId;
+            command.channelId = a_component.descriptor.channelId;
+            command.columnId = a_component.descriptor.segmentedGrid
+                .columns[a_column].columnId;
+            return command;
+        }
+
+        [[nodiscard]] std::optional<MenuSession::Command> AdjustGrid(
+            const MenuSession::Model& a_model, const MenuSession::Page& a_page,
+            const MenuSession::Page::LiveComponent& a_component,
+            std::int32_t a_direction) noexcept
+        {
+            using namespace AbsoluteControlPanelExperimental;
+            const auto& descriptor = a_component.descriptor.segmentedGrid;
+            const auto& frame = a_component.frame.segmentedGrid;
+            if (descriptor.columnCount == 0 || descriptor.tierCount < 2 ||
+                frame.columnCount != descriptor.columnCount) return std::nullopt;
+            const auto columnIndex = (std::min)(
+                SelectedGridColumnIndex(a_model, a_component),
+                static_cast<std::size_t>(descriptor.columnCount - 1));
+            const auto& source = frame.columns[columnIndex];
+            std::uint32_t filled{};
+            std::uint32_t firstTierCount{};
+            bool interactive{};
+            for (std::uint32_t index{}; index < source.segmentCount; ++index) {
+                const auto& segment = source.segments[index];
+                interactive = interactive || segment.interactive != 0;
+                if (segment.tierIndex != 0) ++filled;
+                if (segment.tierIndex == 1) ++firstTierCount;
+            }
+            if (!interactive) return std::nullopt;
+            MenuSession::Command command;
+            command.kind = MenuSession::CommandKind::Compound;
+            command.moduleId = a_page.moduleId;
+            command.pageId = a_page.pageId;
+            command.channelId = a_component.descriptor.channelId;
+            command.controlId = descriptor.controlId;
+            command.columnId = descriptor.columns[columnIndex].columnId;
+            if (a_direction < 0) {
+                if (filled == 0) return std::nullopt;
+                command.compoundKind = CompoundOperationKind::TrimColumn;
+                command.count = filled - 1;
+            } else {
+                if (filled >= descriptor.columns[columnIndex].maximumSegments) {
+                    return std::nullopt;
+                }
+                command.compoundKind = CompoundOperationKind::SetSegmentCount;
+                command.tierId = descriptor.tiers[1].tierId;
+                command.count = firstTierCount + 1;
+            }
+            return command;
         }
 
         [[nodiscard]] MenuSession::Command PageCommand(
@@ -220,6 +315,28 @@ namespace AbsoluteControlPanelResearch::MenuInputRouter
             }
             return result;
         }
+        if (a_model.bindingConflictActive) {
+            result.focus.region = FocusRegion::Actions;
+            result.focus.actionIndex = (std::min)(result.focus.actionIndex, 1U);
+            const auto ConflictCommand = [](MenuSession::CommandKind a_kind) {
+                MenuSession::Command command;
+                command.kind = a_kind;
+                return command;
+            };
+            if (a_keyCode == kEscape || a_keyCode == kTab ||
+                a_keyCode == kCancel) {
+                result.command = ConflictCommand(
+                    MenuSession::CommandKind::ResolveBindingCancel);
+            } else if (IsUp(a_keyCode) || IsLeft(a_keyCode) ||
+                IsDown(a_keyCode) || IsRight(a_keyCode)) {
+                result.focus.actionIndex = 1U - result.focus.actionIndex;
+            } else if (IsAccept(a_keyCode)) {
+                result.command = ConflictCommand(result.focus.actionIndex == 0 ?
+                    MenuSession::CommandKind::ResolveBindingReassign :
+                    MenuSession::CommandKind::ResolveBindingCancel);
+            }
+            return result;
+        }
         if (a_keyCode == kEscape || a_keyCode == kTab) {
             MenuSession::Command command;
             command.kind = MenuSession::CommandKind::Close;
@@ -232,6 +349,7 @@ namespace AbsoluteControlPanelResearch::MenuInputRouter
 
         const auto pageIndex = (std::min)(ActivePageIndex(a_model), a_model.pages.size() - 1);
         const auto& page = a_model.pages[pageIndex];
+        const auto* grid = GridComponent(page);
         if (a_keyCode == kApply || a_keyCode == kCancel) {
             result.command = PageCommand(a_keyCode == kApply ?
                 MenuSession::CommandKind::Apply : MenuSession::CommandKind::Cancel, page);
@@ -249,14 +367,39 @@ namespace AbsoluteControlPanelResearch::MenuInputRouter
         }
 
         if (IsLeft(a_keyCode) || IsRight(a_keyCode)) {
-            if (IsRight(a_keyCode) && result.focus.region == FocusRegion::Modules) {
-                result.focus.region = FocusRegion::Controls;
+            if (result.focus.region == FocusRegion::Grid && grid) {
+                result.command = AdjustGrid(a_model, page, *grid,
+                    IsLeft(a_keyCode) ? -1 : 1);
+            } else if (IsRight(a_keyCode) && result.focus.region == FocusRegion::Modules) {
+                result.focus.region = grid ? FocusRegion::Grid :
+                    FocusRegion::Controls;
             } else if (IsLeft(a_keyCode) && result.focus.region == FocusRegion::Controls) {
-                result.focus.region = FocusRegion::Modules;
+                result.focus.region = grid ? FocusRegion::Grid :
+                    FocusRegion::Modules;
             } else if (IsRight(a_keyCode) && result.focus.region == FocusRegion::Controls) {
                 result.focus.region = FocusRegion::Actions;
                 result.focus.actionIndex = 0;
             } else if (IsLeft(a_keyCode) && result.focus.region == FocusRegion::Actions) {
+                result.focus.region = FocusRegion::Controls;
+            }
+            return result;
+        }
+
+        if (result.focus.region == FocusRegion::Grid) {
+            if (!grid) {
+                result.focus.region = FocusRegion::Controls;
+                return result;
+            }
+            if (IsUp(a_keyCode) || IsDown(a_keyCode)) {
+                const auto count = static_cast<std::size_t>(
+                    grid->descriptor.segmentedGrid.columnCount);
+                if (count != 0) {
+                    const auto selected = SelectedGridColumnIndex(a_model, *grid);
+                    const auto target = IsUp(a_keyCode) ?
+                        (selected + count - 1) % count : (selected + 1) % count;
+                    result.command = GridSelectionCommand(page, *grid, target);
+                }
+            } else if (IsAccept(a_keyCode)) {
                 result.focus.region = FocusRegion::Controls;
             }
             return result;
@@ -293,8 +436,14 @@ namespace AbsoluteControlPanelResearch::MenuInputRouter
             page.controls.size() - 1);
         if (IsUp(a_keyCode) || IsDown(a_keyCode)) {
             const auto count = page.controls.size();
-            const auto target = IsUp(a_keyCode) ?
-                (selected + count - 1) % count : (selected + 1) % count;
+            auto target = selected;
+            do {
+                target = IsUp(a_keyCode) ?
+                    (target + count - 1) % count : (target + 1) % count;
+            } while (target != selected && page.controls[target].descriptor.kind ==
+                SlopApi::ControlKind::GroupHeader);
+            if (page.controls[target].descriptor.kind ==
+                SlopApi::ControlKind::GroupHeader) return result;
             result.command = ControlCommand(
                 MenuSession::CommandKind::SelectControl, page, page.controls[target]);
             return result;

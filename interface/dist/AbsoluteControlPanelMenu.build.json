@@ -3,16 +3,20 @@
     "targetPlayer":  "11.5",
     "swfVersion":  18,
     "playerGlobalCommit":  "fef560243029214656d83fc673be0267a1ea0816",
-    "sourceSha256":  "9AA7A9E23A51560507AD7CD6936C30E8ABB4D2598405E6CB789413B49853366C",
-    "sourceTreeSha256":  "0F9EF3765BD8B82F80B4C75CD43CEB4A7591619E1E43B6FC922A8F0A9D5EE3A8",
+    "sourceSha256":  "B1C4963E9A41414361D9FDD0402308CBE5E9B1C837CF86D2AFBCAF9BA23BE307",
+    "sourceTreeSha256":  "8D345FD3325465100D7CFF4AE7359524E33EEEC2CF20A75BA04578ED9B37BA2E",
     "sources":  [
                     {
                         "path":  "AbsoluteControlPanelMenu.as",
-                        "sha256":  "9AA7A9E23A51560507AD7CD6936C30E8ABB4D2598405E6CB789413B49853366C"
+                        "sha256":  "B1C4963E9A41414361D9FDD0402308CBE5E9B1C837CF86D2AFBCAF9BA23BE307"
+                    },
+                    {
+                        "path":  "acp/ui/BindingConflictDialog.as",
+                        "sha256":  "C88774C0DD483F648FCD5147D6CABA369F2860D5539AF18671B0D3B5253FAE9C"
                     },
                     {
                         "path":  "acp/ui/BridgeCommandDispatcher.as",
-                        "sha256":  "7DF522ECC3CD332F0D61CA46C33B19D604DF44C70DCA4F0B1F5AC0D720DA53D3"
+                        "sha256":  "DBB159AB5A52F0803295BCE94F13ED05A8BDF56C89ADCDDC4EAF272C6E9BD760"
                     },
                     {
                         "path":  "acp/ui/ChoiceInputRouter.as",
@@ -36,15 +40,19 @@
                     },
                     {
                         "path":  "acp/ui/MenuSelectionState.as",
-                        "sha256":  "9358EB3681C0EC8A554E819041D2D35F0F12CCAC1B809E4A5E99ECBB38AFA9E9"
+                        "sha256":  "559AFF3E5D1314B84876A82B0231DF88CE2B42289949FF71C37DE0125039B272"
                     },
                     {
                         "path":  "acp/ui/MenuShellRenderer.as",
-                        "sha256":  "84E4743FAF2747AA37A06281E9CFBA715C6DAB190024DFA718FA45F4ACB94684"
+                        "sha256":  "125519A47625D3BD2C1917B9A206FB0019E66A095827786319CEF50943A84E1A"
+                    },
+                    {
+                        "path":  "acp/ui/ModalInputRouter.as",
+                        "sha256":  "27CC152DC37ECB41CE89FB445326D12E3978E0CB70A1DF5F038920C446F734E5"
                     },
                     {
                         "path":  "acp/ui/PanelLayout.as",
-                        "sha256":  "72EEE4ED0A11ADAFB6867F64613B9EC0B7192B7C7671E00369DF381965A1E1B2"
+                        "sha256":  "BA097810BBB58123F7445E962B5901485404A9F405C1E4F1773CDEEADC11C2AF"
                     },
                     {
                         "path":  "acp/ui/PanelTheme.as",
@@ -67,5 +75,5 @@
                         "sha256":  "9F7365D85F6249B7E75F18E4B55C90D806CC0B905BA12FFC86351A38A902290E"
                     }
                 ],
-    "outputSha256":  "05BB6314C863B42E3D81EA1B1E58A5217E61B5678B7F52B924A15138B55BD1C5"
+    "outputSha256":  "A9A899A4FC54B36CFE1E9EA3491619E73AE2DBC1FBFD6BBC01A4073AF280C2BD"
 }

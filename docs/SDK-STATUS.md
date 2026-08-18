@@ -17,6 +17,7 @@ historical research instructions and records what must be true before an SDK tag
 - `sdk/menu-definition.schema.json` — strict authoring schema.
 - `sdk/tools/menu_codegen.py` — deterministic descriptor generator.
 - `sdk/examples/absolute-head-tracking.menu.json` — reference definition.
+- `sdk/CHANGELOG.md` — additive capability and migration notes.
 - `catalog/catalog.json` — machine-readable component capability and confidence catalogue.
 - `docs/AI-INTEGRATION-HARNESS.md` — provider inventory, implementation, and validation workflow.
 - `docs/TEST-MATRIX.md` — runtime evidence and remaining compatibility coverage.
@@ -56,11 +57,12 @@ experimental period; the host is not a loader dependency.
 
 - Freeze ABI v1 structure sizes, flags, capacities, calling conventions, and compatibility rules.
 - Freeze the appended ABI-v1 labeled-choice callback and bounded `TextInput` semantics, then add
-  deterministic schema/code-generator coverage. Decide whether rendered sections and presentation
-  hints use a compatible extension or require ABI v2.
+  deterministic option-kind schema/code-generator coverage. Structured section headers and inline
+  actions are now generated through the capability-gated ABI-v1 extension.
 - Freeze the appended provider-owned binding-capture callback set after the accepted Head Tracking
-  and Absolute Power Input Bus journeys. Before freeze, standardize clear/unbound semantics and a
-  provider-reported structured collision handshake; keep device libraries outside the host.
+  and Absolute Power Input Bus journeys. Before freeze, standardize clear/unbound semantics; the
+  provider-reported Reassign/Cancel collision handshake now has deterministic host and SDK
+  coverage. Keep device libraries outside the host.
 - Rename/freeze or revise the active live/compound-component protocol after Absolute Power and
   AbsoluteHOTAS performance/accessibility qualification.
 - Package the public header, schema, generator, examples, licence/notice files, and version notes
@@ -82,7 +84,7 @@ fallback UI, build/test commands, runtime validation, and known limitations in t
 README. Every accepted host capability updates the component catalogue and test matrix in the same
 change so SDK documentation follows executable behavior rather than anticipated behavior.
 
-The current product validator passes the canonical build, 9/9 native tests, 7 generator tests,
-generated fixture check/compile, 26 catalogue entries, ten-source SWF provenance, artifact
+The current product validator passes the canonical build, 9/9 native tests, 8 generator tests,
+generated fixture check/compile, 26 catalogue entries, 15-source SWF provenance, artifact
 fixtures, canonical manifest, and compatibility ZIP. Runtime/UX is `not_run`; this is not an SDK
 release or support declaration.

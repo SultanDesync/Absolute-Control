@@ -106,6 +106,9 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
             Transaction&) noexcept;
         friend AbsoluteControlPanelApi::Result AttachTransaction(
             const Page&, Transaction&) noexcept;
+        friend AbsoluteControlPanelApi::Result ReassignBinding(
+            const Page&, std::string_view, std::string_view,
+            Transaction&) noexcept;
         std::shared_ptr<ProviderState> provider_;
     };
 
@@ -142,6 +145,9 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
         AbsoluteControlPanelApi::BindingCaptureV1& a_capture) noexcept;
     [[nodiscard]] AbsoluteControlPanelApi::Result CancelBindingCapture(
         const Page& a_page, std::string_view a_controlId) noexcept;
+    [[nodiscard]] AbsoluteControlPanelApi::Result ReassignBinding(
+        const Page& a_page, std::string_view a_controlId,
+        std::string_view a_binding, Transaction& a_transaction) noexcept;
     [[nodiscard]] AbsoluteControlPanelApi::Result WriteDraft(const Page& a_page,
         std::string_view a_controlId, const AbsoluteControlPanelApi::ValueV1& a_value,
         Transaction& a_transaction) noexcept;

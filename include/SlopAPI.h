@@ -40,6 +40,8 @@ namespace SlopApi
         AbsoluteControlPanelApi::kControlAppliesDraftBeforeInvoke;
     inline constexpr auto kControlTransientChoice =
         AbsoluteControlPanelApi::kControlTransientChoice;
+    inline constexpr auto kControlLayoutInline =
+        AbsoluteControlPanelApi::kControlLayoutInline;
     inline constexpr auto kBindingKeyboard = AbsoluteControlPanelApi::kBindingKeyboard;
     inline constexpr auto kBindingMouse = AbsoluteControlPanelApi::kBindingMouse;
     inline constexpr auto kBindingController = AbsoluteControlPanelApi::kBindingController;

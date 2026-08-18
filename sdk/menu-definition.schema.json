@@ -59,6 +59,7 @@
       "properties": {
         "id": { "$ref": "#/$defs/identifier" },
         "title": { "$ref": "#/$defs/label" },
+        "description": { "$ref": "#/$defs/description" },
         "options": {
           "type": "array",
           "minItems": 1,
@@ -70,7 +71,7 @@
     "flags": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "enum": ["readOnly", "requiresRestart", "advanced"] }
+      "items": { "enum": ["readOnly", "requiresRestart", "advanced", "layoutInline"] }
     },
     "commonOptionProperties": {
       "id": { "$ref": "#/$defs/identifier" },

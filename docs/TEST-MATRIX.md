@@ -19,8 +19,8 @@ logs and screenshots remain ignored.
 
 The current architecture-hardening tree has a new mechanical runtime result for the Absolute
 Power subscriber but no new human visual/UX acceptance. Its automated product process passed the
-release build, 9/9 native tests, 7 SDK tests, generated fixture check/compile, 26-entry catalogue,
-complete ten-source SWF provenance, artifact fixtures, canonical manifest, and compatibility ZIP.
+release build, 9/9 native tests, 8 SDK tests, generated fixture check/compile, 26-entry catalogue,
+complete 15-source SWF provenance, artifact fixtures, canonical manifest, and compatibility ZIP.
 Other runtime rows below are retained evidence from earlier artifacts unless stated.
 
 | Area | Status | Environment/evidence | Result |
@@ -83,10 +83,10 @@ Other runtime rows below are retained evidence from earlier artifacts unless sta
 |---|---|---|
 | Mouse wheel up and down | Pending clean regression | Scroll overflowing Axes controls in both directions, plus hovered sidebar and overflowing tabs; confirm no setting mutation. |
 | Keyboard-only full route | Pending formal regression | Open from PauseMenu, traverse modules/pages/controls/footer, edit, Apply, Cancel, and Close without mouse. Test the opt-in standalone recovery hotkey separately. |
-| Xbox-compatible controller only | A/B/D-pad implemented; runtime pending | Prove physical traversal, activation, dirty Apply/Discard/Stay, capture cancellation, held/repeat suppression, no leaked command, and no ghost/stuck axis; add remaining reverse-adjust/page shortcuts before claiming parity. |
+| Xbox-compatible controller only | A/B/D-pad plus segmented-grid focus implemented; runtime pending | Prove physical traversal, grid Up/Down row selection and Left/Right adjustment, activation, dirty Apply/Discard/Stay, conflict/capture cancellation, held/repeat suppression, no leaked command, and no ghost/stuck axis. |
 | Input-device transition | Build policy present; runtime pending | Mouse/keyboard switching needs a current regression. The Head Tracking Input Bus subscriber rebases on first observation, binding/device-generation change, and capture suppression; physical transition evidence is pending. |
 | Mouse binding capture | Not implemented | Capture, clear, cancel, conflict behavior, and round-trip. |
-| Controller/HOTAS binding capture | Core journey verified; expanded matrix pending | Head Tracking and Absolute Power now prove physical recording, persistence/action use, and shared pilot context. Still exercise POV, cancel, clear, timeout, restart/read-back, collision resolution, and generation reseed as one formal matrix. Axis capture is intentionally excluded from these action rows. |
+| Controller/HOTAS binding capture | Core journey verified; conflict UX automated; expanded runtime matrix pending | Head Tracking and Absolute Power prove physical recording, persistence/action use, and shared pilot context. Host tests cover provider Error and Duplicate collision paths plus Reassign/Cancel transaction ownership. Still exercise POV, cancel, clear, timeout, restart/read-back, physical collision resolution, and generation reseed as one formal matrix. Axis capture is intentionally excluded from these action rows. |
 | Close during capture/save/live update | Pending | Reliable cancel/rollback and no replayed input. |
 
 ## Pending context and lifecycle validation

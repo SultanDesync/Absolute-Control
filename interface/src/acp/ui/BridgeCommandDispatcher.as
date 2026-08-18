@@ -54,5 +54,15 @@ package acp.ui
                 String(component.channelId), String(component.controlId), columnId,
                 tierId, operationKind, count, Number(model.generation));
         }
+
+        public function selectGridColumn(model:Object, current:Object,
+            component:Object, columnId:String):void
+        {
+            if (model == null || current == null || component == null ||
+                bridge == null || bridge.dispatch == null) return;
+            bridge.dispatch(1, "selectGridColumn", String(current.moduleId),
+                String(current.pageId), columnId, 3, false, 0, 0,
+                String(component.channelId), Number(model.generation));
+        }
     }
 }

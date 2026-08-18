@@ -18,6 +18,7 @@ namespace AbsoluteControlPanelResearch::MenuSession
     {
         SelectPage,
         SelectControl,
+        SelectGridColumn,
         Write,
         Invoke,
         BeginBindingCapture,
@@ -28,7 +29,9 @@ namespace AbsoluteControlPanelResearch::MenuSession
         Close,
         ResolveDirtyApply,
         ResolveDirtyDiscard,
-        ResolveDirtyStay
+        ResolveDirtyStay,
+        ResolveBindingReassign,
+        ResolveBindingCancel
     };
 
     struct Control
@@ -76,15 +79,18 @@ namespace AbsoluteControlPanelResearch::MenuSession
         std::string activeModuleId;
         std::string activePageId;
         std::string selectedControlId;
+        std::string selectedGridColumnId;
         bool dirty{};
         bool dirtyDecisionActive{};
         bool dirtyDecisionClosesMenu{};
         bool closeRequested{};
         bool bindingCaptureActive{};
         bool textCaptureActive{};
+        bool bindingConflictActive{};
         std::string captureModuleId;
         std::string capturePageId;
         std::string captureControlId;
+        std::string bindingConflictDetail;
         std::string error;
         std::vector<Module> modules;
         std::vector<Page> pages;
@@ -149,6 +155,7 @@ namespace AbsoluteControlPanelResearch::MenuSession
         std::string activeModuleId_;
         std::string activePageId_;
         std::string selectedControlId_;
+        std::string selectedGridColumnId_;
         std::string dirtyModuleId_;
         std::string dirtyPageId_;
         enum class DirtyDecisionKind : std::uint8_t { None, Navigate, Close };
@@ -165,6 +172,11 @@ namespace AbsoluteControlPanelResearch::MenuSession
         CaptureKind captureKind_{CaptureKind::None};
         std::string captureBuffer_;
         std::size_t captureMaximum_{};
+        std::string conflictModuleId_;
+        std::string conflictPageId_;
+        std::string conflictControlId_;
+        std::string conflictBinding_;
+        std::string conflictDetail_;
         std::uint64_t generation_{};
         std::uint64_t publishedGeneration_{};
         std::string error_;
@@ -179,6 +191,10 @@ namespace AbsoluteControlPanelResearch::MenuSession
         void ClearDirtyDecision() noexcept;
         void CompletePendingRoute();
         void ClearCapture() noexcept;
+        void BeginBindingConflict(std::string_view a_moduleId,
+            std::string_view a_pageId, std::string_view a_controlId,
+            std::string_view a_binding, std::string_view a_detail);
+        void ClearBindingConflict() noexcept;
         void AbandonState() noexcept;
         void SetError(std::string_view a_error);
     };

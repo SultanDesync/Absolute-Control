@@ -107,8 +107,8 @@ support must repeat that test according to [the update runbook](RUNTIME-UPDATE-R
 ## Current process versus archived v1
 
 `tools/process/validate-current.cmd` is the maintained process. On the audited tree it passed the
-release build, 9/9 native tests, 7 SDK tests, generated fixture check/compile, 26-entry catalogue,
-ten-source SWF provenance, artifact fixtures, canonical manifest, and compatibility ZIP. It always
+release build, 9/9 native tests, 8 SDK tests, generated fixture check/compile, 26-entry catalogue,
+15-source SWF provenance, artifact fixtures, canonical manifest, and compatibility ZIP. It always
 reports runtime/UX `not_run`.
 
 The disposable builder-v1 contract lives under `tools/process/legacy/v1` and requires explicit

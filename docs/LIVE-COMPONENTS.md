@@ -48,23 +48,23 @@ where change over time is useful, rather than replacing the cheaper range meter.
 
 A segmented grid contains bounded labeled columns and bounded segments per column. Each segment
 has a semantic state, preview state, live state, and optional interaction. This covers Absolute
-Power's six ship systems and up to 32 pips per system:
+Power's six ship systems and its current 12-pip allocation bars while retaining a bounded maximum
+of 32 segments per provider column:
 
 - hollow, green, yellow, and red allocation tiers;
 - explicit Green-first, Yellow-after-Green, Red-last semantics;
 - cyan-outline live powered/current indication;
 - gold-tick target-preview indication;
 - per-column current, maximum, and target labels;
-- per-system G/Y/R requested-count labels and add-tier selection; and
-- click/keyboard/controller operations to add, trim, or change tier.
+- direct Hollow→Green→Yellow→Red→Hollow pip cycling with 1/2/3 glyphs;
+- compact +G/+Y/+R/− quick-step operations; and
+- pointer, keyboard, and controller operations to add, trim, or change tier.
 
-The current renderer rebuilds the visible six-by-32 display from a bounded copied model at a
-low-rate Power cadence. Selecting a hollow pip fills through that position with the chosen tier;
-selecting a filled pip trims that position and everything above it. Power's companion 18 integer
-sliders expose the same exact tier counts to keyboard navigation. A current Starfield run registered
-the channel as ready and published the Power route; pointer behavior, persistence, controller
-routing, and frame-time measurement remain qualification work. Pool reuse remains a performance
-optimization required before the public SDK freezes.
+The renderer sizes each bar from `maximumSegments` instead of reserving 32 visual slots. A channel
+opts into direct cycling through the size-gated `flags` tail and
+`kSegmentedGridCycleOnClick`; older descriptors normalize to zero flags. Power registered the
+earlier channel as ready and published its route in Starfield; the next-build interaction,
+persistence, controller, and frame-time acceptance pass remains qualification work.
 
 ## Live-data lane
 
@@ -98,6 +98,7 @@ segmented grid should emit operations such as:
 set-segment-count(controlId, columnId, tierId, count)
 trim-column(controlId, columnId, count)
 set-tier(controlId, tierId)
+set-segment-tier(controlId, columnId, segmentIndex, tierId)
 ```
 
 The provider validates the operation, mutates its draft, computes any allocation preview, and
