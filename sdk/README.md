@@ -9,6 +9,18 @@ Subscriber developers can either handwrite ABI v1 descriptors or generate the sa
 from strict JSON. Both routes use `AbsoluteControlPanelAPI.h`; neither transfers configuration
 ownership to the host.
 
+The SDK branch also carries first-party integration records that are intentionally kept outside the
+stable host contract:
+
+- [`examples/ABSOLUTE-HEAD-TRACKING.md`](examples/ABSOLUTE-HEAD-TRACKING.md) explains the reference
+  menu definition, generated descriptors, optional host discovery, and Input Bus binding boundary.
+- [`DOGFOOD-ABSOLUTE-POWER.md`](DOGFOOD-ABSOLUTE-POWER.md) records an independent-provider-style
+  integration and the API changes it motivated.
+
+Named examples published here must be first-party, contributed by their author, or covered by an
+explicit license or permission for SDK use. Unapproved third-party compatibility experiments remain
+private research artifacts.
+
 ## Generate descriptors
 
 Start from `examples/absolute-head-tracking.menu.json`, then validate and generate:
