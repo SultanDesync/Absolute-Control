@@ -268,6 +268,12 @@ Provide two title/accent recommendations:
 2. an early-release treatment that is easier to locate, using a restrained accent color, rule,
    marker, or build tag rather than an unrelated novelty typeface.
 
+The current PauseMenu product label is **MOD OPTIONS**. It should inherit the neighboring native
+row's typography, scale, selection behavior, and white text. A dark desaturated purple background
+such as `#4A365D` is the preferred discoverability experiment, but it must be applied as a row accent
+rather than a custom font or purple text, and it is not accepted until normal, hover, selected,
+disabled, controller-focus, and high-brightness contrast states are verified in game.
+
 The current prototype palette is dark blue-black with cyan text/accent, gold warning/dirty accents,
 soft red errors, and green/yellow/red allocation tiers. It is provisional, not a mandate. A revised
 palette must include token names, values, intended semantic use, contrast rationale, and

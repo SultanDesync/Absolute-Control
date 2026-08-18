@@ -133,9 +133,10 @@ int main()
     CHECK(native.find("CancelBindingCapture(\"Menu closed during input capture\")") ==
         std::string::npos);
     CHECK(native.find("control_panel_return_queued") != std::string::npos);
+    CHECK(native.find("control_panel_return_revealed") != std::string::npos);
     CHECK(native.find(
         "\"PauseMenu\", RE::UI_MESSAGE_TYPE::kShow,\n"
-        "                            \"control-panel-return\"") !=
+        "                                \"control-panel-return-recovery\"") !=
         std::string::npos);
     CHECK(native.find("float Unk1A() override { return 0.0F; }") ==
         std::string::npos);
@@ -163,6 +164,8 @@ int main()
     CHECK(evidence.find("\\\"thread_id\\\"") != std::string::npos);
     CHECK(evidence.find("\\\"monotonic_us\\\"") != std::string::npos);
     CHECK(native.find("stopImmediatePropagation") != std::string::npos);
+    CHECK(native.find("pause_entry_underlay_retained") != std::string::npos);
+    CHECK(native.find("slop-pause-entry") == std::string::npos);
     CHECK(native.find("0x534C4F50") != std::string::npos);
     CHECK(native.find("DeviceType::kGamepad") != std::string::npos);
     CHECK(native.find("SFSE::InputMap::kGamepadButtonOffset_B") !=

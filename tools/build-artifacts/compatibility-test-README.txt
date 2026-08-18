@@ -22,15 +22,18 @@ QUICK TEST
 3. Confirm the panel opens and its controls can be changed.
 4. Close it, reopen the pause menu, and confirm the vanilla menu and panel row
    are still present.
-5. F2 is the fallback panel hotkey.
+5. Confirm no standalone panel hotkey is registered by default. For a focused
+   recovery-path test only, set OpenHotkey=0x71 and test F2.
 
 COMPATIBILITY REPORT
 Record whether another mod changes the pause menu, whether the panel row appears,
-whether every vanilla row still works, and whether F2 still opens the panel.
+whether every vanilla row still works, and whether the default configuration
+leaves F2 available to other mods.
 
 FAIL-SAFE / ROLLBACK
-To disable pause-menu integration while retaining F2 access, set
-EnablePauseMenuEntry=false in SFSE\Plugins\AbsoluteControlPanel.ini.
+If pause-menu integration is inaccessible, set OpenHotkey to an explicit Win32
+virtual-key code in SFSE\Plugins\AbsoluteControlPanel.ini. OpenHotkey=0x00 keeps
+the recovery hotkey disabled, which is the shipped default.
 To remove the test, disable or uninstall this MO2 mod. The integration creates
 no save-game data.
 

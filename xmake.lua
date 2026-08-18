@@ -81,6 +81,7 @@ local release_sources = {
     "src/runtime/RuntimeCompatibility.cpp",
     "src/scaleform/ScaleformMenuBridge.cpp",
     "src/ui/ControlPanelMenu.cpp",
+    "src/ui/MenuAudioIntegration.cpp",
     "src/ui/MenuMessaging.cpp",
     "src/ui/PauseMenuIntegration.cpp"
 }

@@ -66,14 +66,21 @@ panels rather than discard their successful workflows. It does not copy renderer
 force a one-to-one window layout. Provider inventories and parity matrices preserve features while
 the native component library determines presentation.
 
-## D-008 — Additive PauseMenu entry plus F2 fallback
+## D-008 — Additive PauseMenu entry plus opt-in recovery hotkey
 
 **Status:** Accepted for the experimental product path.
 
-The product entry is appended to the populated PauseMenu model at runtime. Selecting it closes
-PauseMenu and opens the dedicated panel. F2 remains a recovery/development path. Replacing or
-covering PauseMenu was rejected because it increases conflict risk and breaks menu ownership.
-MainMenu construction is not a current target.
+The product entry is appended to the populated PauseMenu model at runtime. Selecting it opens the
+dedicated panel above the still-resident PauseMenu. PauseMenu remains the native gameplay-pause
+owner; the panel's higher render/input priority covers it and prevents input from reaching it.
+Starfield's audio listener recognizes a hard-coded menu-name set, so the custom panel also acquires
+and releases the same ref-counted native audio mode (`2`) used by PauseMenu. Back hides only the
+panel and reveals that same PauseMenu instance. If another plugin removes the underlay, the close
+path queues a recovery Show instead. Replacing `pausemenu.swf` remains rejected. The standalone
+hotkey is unbound by default because global function-key capture can collide with other mods and its
+direct close path has produced incorrect ultrawide viewport restoration. A user can explicitly set
+`OpenHotkey` to a Win32 virtual-key code (for example `0x71` for F2) as a recovery path when the
+PauseMenu entry is inaccessible. MainMenu construction is not a current target.
 
 ## D-009 — No ESM/ESP for the current launch path
 

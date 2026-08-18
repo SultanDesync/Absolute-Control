@@ -75,8 +75,9 @@
 The current automated process passed; it did **not** run Starfield or judge UX. Before a release
 claim, record at least:
 
-- PauseMenu and F2 first-open, close/reopen, 25-cycle lifecycle, bridge-root failure, and crash/dump
-  monitoring on the canonical DLL/SWF pair;
+- PauseMenu first-open, close/reopen, 25-cycle lifecycle, bridge-root failure, and crash/dump
+  monitoring on the canonical DLL/SWF pair; test the opt-in standalone recovery hotkey separately,
+  including ultrawide viewport restoration;
 - repeated pointer and keyboard module/page selections on the deferred-publication build, proving
   next-frame `bridge_model_flush`, no publication between pointer down entry/return, and no new dump;
 - two-direction wheel behavior in workspace/sidebar/overflowing tabs, keyboard-only navigation,

@@ -22,16 +22,19 @@ QUICK TEST
 3. Confirm SLOP opens and its controls can be changed.
 4. Close SLOP, reopen the pause menu, and confirm both the vanilla menu and the
    SLOP row are still present.
-5. F2 is the fallback SLOP hotkey.
+5. Confirm no standalone panel hotkey is registered by default. For a focused
+   recovery-path test only, set OpenHotkey=0x71 and test F2.
 
 COMPATIBILITY REPORT
 Please record whether another mod changes the pause menu, whether the SLOP row
-appears, whether every vanilla row still works, and whether F2 still opens SLOP.
+appears, whether every vanilla row still works, and whether the default
+configuration leaves F2 available to other mods.
 
 MANUAL FAILURE CAPTURE
 For the most useful cold-start trace, load a save and open the pause menu as soon
 as gameplay becomes responsive. If the SLOP row is missing, leave the pause menu
-open for three seconds, then close and reopen it. Repeat three cycles and test F2.
+open for three seconds, then close and reopen it. Repeat three cycles. Enable an
+explicit recovery hotkey only when that separate path is under test.
 Under Mod Organizer 2, the focused diagnostic trace is written to:
   <MO2 instance>\overwrite\SFSE\Plugins\
   AbsoluteControlPanelResearch.evidence.jsonl

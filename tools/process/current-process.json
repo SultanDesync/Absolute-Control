@@ -81,7 +81,7 @@
       "id": "runtime-invocation-lifecycle",
       "status": "not_run",
       "requiresHumanObservation": true,
-      "description": "Open from PauseMenu and F2, close and reopen repeatedly, and monitor first-open behavior and crashes."
+      "description": "Open from PauseMenu, close and reopen repeatedly, and monitor first-open behavior and crashes. Exercise the opt-in standalone recovery hotkey separately."
     },
     {
       "id": "input-navigation-capture",

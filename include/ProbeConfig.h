@@ -9,7 +9,9 @@ namespace AbsoluteControlPanelResearch
     {
         bool enableRegistration{ true };
         bool enablePauseMenuEntry{ false };
-        std::uint32_t openHotkey{ 0x71 };  // F2; zero disables the listener.
+        // The PauseMenu row is the canonical entry point. A nonzero Win32
+        // virtual-key code opts into a standalone recovery hotkey.
+        std::uint32_t openHotkey{ 0 };
         std::uint32_t menuFlags{ 0x0800071B };
     };
 

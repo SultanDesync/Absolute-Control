@@ -46,7 +46,8 @@ hard link from the host to AbsoluteHOTAS, Absolute Power, Absolute Head Tracking
 
 The promoted baseline includes:
 
-- an additive PauseMenu entry with F2 fallback and a dedicated Scaleform movie;
+- an additive PauseMenu entry and dedicated Scaleform movie; the standalone recovery hotkey is
+  unbound by default and may be opted into through the INI;
 - dynamic vertical module navigation and provider-owned page tabs;
 - typed controls, actions, live components, selected-control help, and bounded text input;
 - draft/apply/cancel transactions, guarded close routing, and stale-setting handling;

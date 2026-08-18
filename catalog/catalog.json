@@ -220,7 +220,7 @@
       "rootPath": "_root.Menu_mc.MainPanel_mc.MainList_mc",
       "readiness": "After Starfield completes active-menu insertion, install an enterFrame callback on that PauseMenu movie. The callback waits for entryCount to be greater than zero and no more than 32, then clones the vanilla entries and appends one Control Panel action on Scaleform's advance path.",
       "observedPopulationMilliseconds": [75, 102],
-      "failurePolicy": "Bounded 180-frame event-driven wait, fail closed, F2 fallback; no background Scaleform polling.",
+      "failurePolicy": "Bounded 180-frame event-driven wait, fail closed, opt-in unbound recovery hotkey; no background Scaleform polling.",
       "notes": "Validated without replacing pausemenu.swf in both a heavily modified profile and the isolated baseline. The lifecycle-owned revision completed 25 consecutive opens on one retained save, including a Control Panel show/hide followed by five more cycles: 25/25 boundaries, listeners, injections, and completions; one Scaleform thread; zero timeouts, rejections, errors, crashes, or new dumps.",
       "tags": ["pause-menu", "runtime-injection", "compatibility"]
     },

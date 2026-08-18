@@ -46,10 +46,10 @@ records runtime and UX as `not_run`; this result does not establish release read
 | Capability | Status | Current behavior |
 |---|---|---|
 | Native custom menu registration | Runtime verified on current hardened DLL | Registers an independent `GameMenuBase` and dedicated source-built SWF; two Pause-origin opens in one process completed. |
-| Additive PauseMenu entry | Runtime verified on current hardened DLL | Appends one Control Panel action without replacing `pausemenu.swf`; selecting it closes PauseMenu and opens the panel. A user Back/Close returns to PauseMenu. |
-| F2 fallback | Runtime verified on pre-hardening artifact; current regression pending | Opens from gameplay when MainMenu and PauseMenu are not active. |
+| Additive PauseMenu entry | Revised label/native styling, resident-underlay transition, and native audio lease runtime verified | Appends a short `MOD OPTIONS` action without replacing `pausemenu.swf`; the row copies the native entry data shape so PauseMenu retains its typography and scale. Selecting it opens Absolute Control above the resident PauseMenu so gameplay is never exposed between menus. The panel takes a balanced native PauseMenu audio-mode lease because Starfield's audio handler ignores custom menu names. Runtime validation confirmed the gameplay ambience is suppressed in the panel and restored after Hide. Back reveals the same PauseMenu instance; a missing underlay uses a recovery Show. |
+| Standalone recovery hotkey | Opt-in; unbound by default | `OpenHotkey=0x00` installs no global listener. A user may assign a Win32 virtual-key code if the canonical PauseMenu entry is inaccessible; the direct close path is not the supported ultrawide lifecycle. |
 | ESM/ESP | Not required | DLL factory, runtime PauseMenu composition, and SWF path require no data plugin. |
-| Runtime support | Exact-gated | Only Starfield 1.16.244 is accepted. Eighteen Address Library mappings plus the lifecycle callsite/target are checked before readiness. |
+| Runtime support | Exact-gated | Only Starfield 1.16.244 is accepted. Twenty Address Library mappings plus the lifecycle callsite/target are checked before readiness. |
 | Host readiness | Runtime verified on current hardened DLL | The query table is discoverable while initializing. Registration and refresh return `NotReady` until runtime validation, hook installation, and factory retention succeed; Head Tracking and AbsoluteZero discover the current ResearchDev artifact at data-load and have a bounded post-post-data-load retry. Terminal failure returns `Rejected`. |
 | Canonical build | Automated verified | Default target `AbsoluteControlPanel` emits `AbsoluteControlPanel.dll` and a packageable release-role manifest. “Packageable” identifies safe inputs; it is not a release claim. |
 | Research build | Automated boundary verified | Opt-in `AbsoluteControlPanelResearchDev` emits a non-packageable manifest and alone contains the synthetic provider, mailbox/SendInput, and DirectInput research tools. The bounded live/compound registry is now shared product code. |
@@ -189,10 +189,11 @@ were verified.
 The current architecture assumes the host and subscriber DLLs remain loaded until process exit,
 Scaleform/provider calls stay on the UI/game path, and provider callbacks are short. Normal Close
 rolls back the current v1 dirty draft; external Hide/destruction uses the same idempotent teardown
-without publishing into the dying movie. PauseMenu origin is claimed by the displayed session and
-is returned only after its native Hide completes. A missing bridge root records a runtime fault and
-queues an explicit hide. Missing/corrupt/wrong-version movie behavior and abnormal external
-teardown still require in-game failure injection.
+without publishing into the dying movie. PauseMenu origin is claimed by the displayed session;
+normal Back reveals the still-resident underlay after the panel's native Hide, while a missing
+underlay queues a recovery Show. A missing bridge root records a runtime fault and queues an
+explicit hide. Missing/corrupt/wrong-version movie behavior and abnormal external teardown still
+require in-game failure injection.
 
 On 2026-08-15 the full three-page AP workbench artifact set completed a fresh isolated cycle:
 ResearchDev SHA256 `CFF8D3D2DF6159E75B5B67BA7C090DB303EF41112CF0FC720B9457BE5EFAE993`,

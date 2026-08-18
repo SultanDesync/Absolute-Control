@@ -293,6 +293,13 @@ def main() -> int:
         default=[],
         help="report direct call sites to this image-relative address",
     )
+    parser.add_argument(
+        "--inspect-vtable-id",
+        action="append",
+        type=int,
+        default=[],
+        help="decode function entries at this Address Library vtable ID",
+    )
     arguments = parser.parse_args()
 
     mappings = load_address_library(arguments.address_library)
@@ -498,6 +505,26 @@ def main() -> int:
             )
         derived_vtable_entries[menu_name] = entries
 
+    inspected_vtables: dict[str, list[dict[str, object]]] = {}
+    for identifier in arguments.inspect_vtable_id:
+        vtable_rva = mappings.get(identifier)
+        if vtable_rva is None:
+            inspected_vtables[str(identifier)] = []
+            continue
+        entries = []
+        file_offset = pe.get_offset_from_rva(vtable_rva)
+        raw = pe.__data__[file_offset : file_offset + (8 * 16)]
+        for index, (address,) in enumerate(struct.iter_unpack("<Q", raw)):
+            function_rva = address - image_base if address >= image_base else address
+            entries.append(
+                {
+                    "index": index,
+                    "rva": function_rva,
+                    "address_library_ids": offset_to_ids.get(function_rva, []),
+                }
+            )
+        inspected_vtables[str(identifier)] = entries
+
     inspected_functions = []
     for identifier in arguments.inspect_id:
         target = mappings.get(identifier)
@@ -596,6 +623,7 @@ def main() -> int:
         "derived_primary_vtables": derived_vtables,
         "vtable_entries": vtable_entries,
         "derived_vtable_entries": derived_vtable_entries,
+        "inspected_vtables": inspected_vtables,
         "triple_base_vtable_functions": triple_base_functions,
         "ranked_common_calls": candidate_details,
         "derived_vtable_functions": derived_function_records,

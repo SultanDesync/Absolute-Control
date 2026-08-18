@@ -11,6 +11,7 @@
 #include "runtime/RuntimeCompatibility.h"
 #include "scaleform/ScaleformMenuBridge.h"
 #include "ui/ControlPanelMenu.h"
+#include "ui/MenuAudioIntegration.h"
 #include "ui/MenuMessaging.h"
 
 namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
@@ -79,9 +80,10 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
                 unk130 = 0;
                 menuName = kMenuName.data();
                 SetFlags(g_menuFlags);
-                // Current UI insertion sorts by the byte at +0x110.  GameMenuBase starts at
-                // priority 6.  The probe is now opened only after PauseMenu is closed, but it
-                // still stays below CursorMenu (20) for mouse input.
+                // Current UI insertion sorts by the byte at +0x110. GameMenuBase starts at
+                // priority 6. PauseMenu remains resident at observed priority 11 when this
+                // panel is opened from its injected row; priority 19 covers and owns input
+                // above it while remaining below CursorMenu (20).
                 *(
                     reinterpret_cast<std::uint8_t*>(this) + 0x110) = 19;
                 EvidenceLog::Event(
@@ -94,6 +96,7 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
 
             ~AbsoluteControlPanelMenu() override
             {
+                audioLease.Release("menu-destructor");
                 (void)bridge.OnHidden();
                 MenuApiHost::SetMenuOpen(false);
                 EvidenceLog::Event(
@@ -257,6 +260,10 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
                         static_cast<std::uint32_t>(a_message.type),
                         static_cast<std::int64_t>(result)));
                 if (typeBefore == RE::UI_MESSAGE_TYPE::kShow) {
+                    // Custom menu names are not recognized by Starfield's
+                    // hard-coded MenuAudioHandler. Acquire the same balanced,
+                    // ref-counted mode lease used by PauseMenu.
+                    audioLease.Acquire("menu-show");
                     bridge.OnShown();
                     MenuApiHost::SetMenuOpen(true);
                     Runtime::Transition(ProbeEvent::MenuOpened);
@@ -264,6 +271,7 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
                         "menu_message_show",
                         std::format("result={}", static_cast<std::int64_t>(result)));
                 } else if (typeBefore == RE::UI_MESSAGE_TYPE::kHide) {
+                    audioLease.Release("menu-hide");
                     MenuApiHost::SetMenuOpen(false);
                     Runtime::Transition(ProbeEvent::MenuClosed);
                     EvidenceLog::Event(
@@ -276,12 +284,21 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
                         "research_pause_state_after_probe_close",
                         std::format("open={}", pauseOpen));
                     if (returnToPause) {
-                        Ui::QueueNamedMenuMessage(
-                            "PauseMenu", RE::UI_MESSAGE_TYPE::kShow,
-                            "control-panel-return");
-                        EvidenceLog::Event(
-                            "control_panel_return_queued",
-                            "target=PauseMenu source=session-hide");
+                        if (pauseOpen) {
+                            EvidenceLog::Event(
+                                "control_panel_return_revealed",
+                                "target=PauseMenu source=resident-underlay");
+                        } else {
+                            // A UI overhaul or another plugin may still remove the
+                            // underlay. Recover the promised Pause-origin back target
+                            // without issuing a duplicate Show in the normal path.
+                            Ui::QueueNamedMenuMessage(
+                                "PauseMenu", RE::UI_MESSAGE_TYPE::kShow,
+                                "control-panel-return-recovery");
+                            EvidenceLog::Event(
+                                "control_panel_return_queued",
+                                "target=PauseMenu source=missing-underlay-recovery");
+                        }
                     }
                 }
                 return result;
@@ -395,6 +412,7 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
             }
 
         private:
+            Ui::PauseMenuAudioLease audioLease;
             Scaleform::MenuBridge bridge;
         };
 
