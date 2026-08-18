@@ -1,5 +1,8 @@
 .xmake/
 build/
+!interface/build/
+interface/build/*
+!interface/build/SourceProvenance.psm1
 .tools/
 artifacts/
 vsxmake*/
