@@ -1,121 +1,123 @@
-# Absolute Control
+# Absolute Control — Native Mod Options for Starfield
 
-Absolute Control is the native shared configuration menu for the modular Absolute Starfield
-control suite. Independently installed SFSE plugins publish settings, actions, bindings, and live
-status through a versioned C ABI while retaining ownership of their configuration and gameplay
-behavior.
+Absolute Control is a shared native configuration menu for modular Starfield SFSE plugins.
+Independent modules register settings, actions, bindings, profiles, live telemetry, and diagnostics
+inside one consistent **MOD OPTIONS** interface while retaining ownership of their own configuration
+and gameplay behavior.
 
-> **Status:** Pre-release product and SDK development. The native host and its first provider
-> integrations are runtime-proven on Starfield 1.16.244, but the public SDK is not frozen.
+The current release line is Absolute Suite `0.2.0-beta.1`, a guided all-in-one installer containing
+Absolute Control plus optional HOTAS, Power, Head Tracking, and mouse-steering modules.
 
-## Branches
+## Why “Absolute”?
 
-- `main` is the validated, buildable host baseline. Only the canonical `AbsoluteControlPanel`
-  target is eligible for product packaging.
-- `sdk` carries the evolving public headers, author examples, code generation, integration records,
-  and preview contracts. ABI-breaking experiments stay there until they have a migration story and
-  runtime evidence.
-- The former
-  [Absolute Control Panel Research](https://github.com/SultanDesync/Absolute-Control-Panel-Research)
-  repository remains the historical laboratory and evidence trail.
+The project began by solving absolute throttle control: a physical throttle position should map
+directly to a ship's requested thrust instead of behaving like a relative increase/decrease key.
+That input scheme gave AbsoluteHOTAS—and eventually the wider modular ecosystem—its name.
 
-The opt-in `AbsoluteControlPanelResearchDev` target is temporarily retained for regression tooling.
-It is non-packageable and is not part of the product runtime.
+## Included ecosystem
 
-## Product responsibilities
+- **Absolute Control** — required native menu host, shared input capture, telemetry presentation,
+  module registry, and suite diagnostics.
+- **AbsoluteHOTAS 5.0.1** — DirectInput HOTAS/HOSAS flight control, ship buttons, throttle tuning,
+  profiles, layers, macros, and calibration.
+- **Absolute Power 0.2.0-alpha** — priority-based ship-power presets and allocation controls.
+- **Absolute Head Tracking 0.2.0-alpha** — OpenTrack-compatible rotational cockpit tracking.
+- **AbsoluteZero 0.2.0** — mouse alignment and optional locked-reticule steering.
 
-Absolute Control owns:
+Every gameplay module remains independently installable and continues to function when Absolute
+Control is absent or incompatible.
 
-- the additive PauseMenu launch entry and dedicated native Scaleform menu;
-- keyboard, mouse, and gamepad navigation;
-- common control rendering, help text, dirty-state dialogs, Apply, Cancel, and close workflows;
-- dynamic discovery and enumeration of independently installed provider modules; and
-- versioned, capability-gated SDK contracts and optional suite coordination services.
-- an experimental semantic-composition lane for host-owned cards, rows, status,
-  provider-evaluated conditions, bounded anchor navigation, and associated live
-  plots/range meters.
+## Requirements
 
-Provider mods continue to own:
+- Starfield `1.16.244`
+- [SFSE](https://sfse.silverlock.org/) `0.2.20` or later
+- Address Library for SFSE Plugins for the Absolute Control host
+- OpenTrack only when using Absolute Head Tracking
+- No ESM or ESP
 
-- their settings model, validation, persistence, profiles, and reload behavior;
-- binding meaning and collision policy;
-- gameplay hooks, control-channel ownership, compatibility policy, and failure behavior; and
-- their ability to run when Absolute Control is absent or incompatible.
+The gameplay modules do not all require Address Library; the all-in-one suite lists it because the
+Absolute Control host currently does.
 
-There is no Dear ImGui or renderer interception in the product host, no ESM/ESP requirement, and no
-hard link from the host to AbsoluteHOTAS, Absolute Power, Absolute Head Tracking, or AbsoluteZero.
+## Installation and use
 
-## Current baseline
+1. Install the Absolute Suite archive with MO2 or Vortex.
+2. Use the guided FOMOD to select the gameplay modules you want.
+3. Launch Starfield through SFSE.
+4. Open the Pause Menu and select **MOD OPTIONS**.
+5. Choose a module from the left sidebar and configure its pages.
 
-The promoted baseline includes:
+Absolute Control provides common navigation, Apply/Cancel, dirty-close dialogs, binding capture,
+help text, and live presentation. The selected module still validates and persists every change.
 
-- an additive PauseMenu entry and dedicated Scaleform movie; the standalone recovery hotkey is
-  unbound by default and may be opted into through the INI;
-- dynamic vertical module navigation and provider-owned page tabs;
-- typed controls, actions, live components, selected-control help, and bounded text input;
-- draft/apply/cancel transactions, guarded close routing, and stale-setting handling;
-- provider-owned keyboard and physical-controller binding capture with native conflict reassignment;
-- accessible segmented-grid editing, section headers, and compact inline action rows;
-- copied descriptors, callback leases, capacity admission, teardown, and fail-optional discovery;
-- runtime integrations for AbsoluteHOTAS, Absolute Head Tracking, AbsoluteZero, and Absolute Power;
-  and
-- a pinned maintained CommonLibSF dependency plus exact-version compatibility gating.
+## Current menu capabilities
 
-See [current state](docs/CURRENT-STATE.md), [architecture](docs/ARCHITECTURE.md),
-[design decisions](docs/DECISIONS.md), [module API](docs/MODULE-API.md),
-[SDK status](docs/SDK-STATUS.md), [subscriber UI standard](docs/SUBSCRIBER-UI-STANDARD.md),
-[SDK release plan](docs/SDK-RELEASE-PLAN.md), and the
-[technical debt register](docs/DEBT-REGISTER.md) for the authoritative implementation and release
-gates.
+- Dynamic module registration and page tabs.
+- Pointer, keyboard, and gamepad navigation.
+- Toggles, sliders, choices, text, actions, bindings, profiles, and record collections.
+- Keyboard and provider-owned HOTAS/controller capture with conflict resolution.
+- Live graphs, range markers, allocation grids, telemetry, and direct tuning controls.
+- Pinned editing context for profile and shift-layer selection.
+- Provider-owned Apply, Cancel, validation, persistence, and fallback behavior.
+- Registered-module, API-bus, subscriber, and runtime diagnostics.
+- Configuration/registration sorting and recovery-key preferences in the built-in Control page.
 
-The Nexus-facing ecosystem bundle preserves those module boundaries. See the
-[Absolute Suite all-in-one packaging contract](docs/SUITE-RELEASE-PACKAGING.md) for its guided
-FOMOD layout, exact-content manifest, deterministic archive, and standalone-module policy.
+The product menu is a dedicated native Scaleform interface. It does not use Dear ImGui, replace
+`pausemenu.swf`, intercept a graphics renderer, or require gameplay modules to link against the
+host.
 
-## Build and test
+## Modular ownership
+
+Absolute Control never takes ownership of gameplay hooks or module configuration files. This keeps
+the suite composable and prevents one menu from becoming a hard runtime dependency.
+
+Important paired behavior:
+
+- When AbsoluteZero and AbsoluteHOTAS are installed together, AbsoluteZero owns pitch/yaw mouse
+  steering and HOTAS yields those stick axes. HOTAS retains roll, strafe, throttle, buttons, and
+  profiles.
+- When standalone Absolute Head Tracking is installed with HOTAS, Head Tracking owns cockpit camera
+  composition and HOTAS parks its embedded legacy tracker.
+- Absolute Power owns preset allocation and persistence; HOTAS only provides its optional Input Bus.
+
+## Standalone module pages
+
+- [Absolute Head Tracking](https://www.nexusmods.com/starfield/mods/17872)
+- [AbsoluteZero](https://www.nexusmods.com/starfield/mods/17460)
+- [AbsoluteHOTAS](https://www.nexusmods.com/starfield/mods/16668)
+- [Absolute Power](https://github.com/SultanDesync/Absolute-Power) — standalone Nexus page coming
+  soon
+
+The standalone pages remain authoritative for detailed setup instructions, compatibility notes,
+and module-specific changelogs.
+
+## SDK beta access
+
+Absolute Control is also an integration SDK for other SFSE mods. Providers can register native
+pages, settings, input capture, live telemetry, and optional shared services without transferring
+gameplay ownership to the host.
+
+The SDK is currently a coordinated private beta. Mod authors interested in an integrated menu can
+message the author through Nexus Mods to apply for beta access and integration support. The public
+SDK release is coming soon.
+
+See the [SDK overview](sdk/README.md), [SDK status](docs/SDK-STATUS.md),
+[module API](docs/MODULE-API.md), and [subscriber UI standard](docs/SUBSCRIBER-UI-STANDARD.md).
+
+## Building
 
 Clone recursively, then build with Windows, MSVC C++23, and xmake 3.0 or newer:
 
 ```powershell
 git clone --recurse-submodules https://github.com/SultanDesync/Absolute-Control.git
 cd Absolute-Control
-xmake
-xmake test
-.\tools\process\validate-current.cmd
+xmake f -m release
+xmake build AbsoluteControlPanel
+.\tools\process\build-interface.ps1
 ```
 
-The runtime also requires SFSE and Address Library for SFSE Plugins. Artifact manifests—not
-directory scans—are authoritative for deployment and package contents.
-
-The automated baseline covers native lifecycle and ABI behavior, SDK generation and compile tests,
-source-built SWF provenance, artifact boundaries, and compatibility packaging. In-game validation
-remains mandatory for changes to launch, input, provider transactions, or runtime integration.
-
-## SDK development
-
-SDK consumers dynamically query the host, validate ABI version, `structSize`, capabilities, and
-required function pointers, and remain functional when the optional host is missing. Public headers
-do not transfer state or configuration ownership to Absolute Control.
-
-Work on `sdk` currently focuses on:
-
-1. a header-only bridge between provider binding callbacks and the Absolute Input Bus;
-2. canonical unbinding semantics;
-3. labeled Choice and bounded `TextInput` definition-language support;
-4. declarative live-channel code generation after those descriptors stabilize; and
-5. packaging and cross-subscriber ABI qualification.
-
-## Development standard
-
-This project uses AI-assisted research, reverse engineering, implementation, and testing. Generated
-work is held to the same standard as any contribution: narrow interfaces, reproducible builds,
-observable runtime evidence, privacy checks, and human intervention at consequential decisions.
-
-## Related projects
-
-- [AbsoluteHOTAS](https://github.com/SultanDesync/AbsoluteHOTAS)
-- [AbsoluteZero Ship Control](https://github.com/SultanDesync/AbsoluteZero-Ship-Control)
-- [Maintained CommonLibSF](https://github.com/libxse/commonlibsf)
+Artifact manifests—not directory scans—are authoritative for deployment and package contents.
+In-game validation remains mandatory for changes to launch, input, provider transactions, or native
+runtime integration.
 
 ## License
 
