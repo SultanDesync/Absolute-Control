@@ -56,6 +56,19 @@
       "tags": ["configuration", "dynamic", "abi-v1", "roadmap"]
     },
     {
+      "id": "control.record-collection",
+      "kind": "control",
+      "name": "Selected-record list/detail collection",
+      "status": "implemented-runtime-pending",
+      "confidence": "automated-verified",
+      "valueKind": "String",
+      "capacity": 64,
+      "visibleRows": 8,
+      "interaction": ["open", "cycle", "select", "dismiss"],
+      "notes": "The provider publishes stable-ID records with bounded label, summary, detail, disabled, and warning state. Selection is transient provider-owned view state and old page-descriptor sizes remain valid.",
+      "tags": ["configuration", "dynamic", "profiles", "devices", "abi-v1"]
+    },
+    {
       "id": "control.text-input",
       "kind": "control",
       "name": "Bounded text input",
@@ -74,6 +87,18 @@
       "confidence": "automated-verified",
       "notes": "The capability-gated SDK and renderer emit non-focusable section headers and group two or three consecutive inline actions into one physical row, with header-free and non-inline generated fallbacks for older hosts.",
       "tags": ["layout", "widgets", "responsive", "sdk-roadmap"]
+    },
+    {
+      "id": "protocol.semantic-composition-c2",
+      "kind": "protocol",
+      "name": "Semantic composition C2",
+      "status": "implemented-runtime-pending",
+      "confidence": "automated-verified",
+      "path": "docs/SEMANTIC-UI-COMPOSITION-ARCHITECTURE.md",
+      "capabilities": ["semantic-composition", "semantic-status", "conditional-state", "anchors", "live-associations"],
+      "bounds": { "nodesPerPage": 128, "associationsPerPage": 192, "anchorsPerPage": 16, "columns": 8 },
+      "notes": "An independently negotiated experimental API composes existing stable controls into cards, rows, columns, statuses, provider-evaluated conditions, bounded anchors, and same-page live slots. The host validates series/marker associations against copied live descriptors, serializes immutable selected-page snapshots, renders embedded live cards for pointer/keyboard/controller, and retains a deterministic flat fallback. Later record, context, workflow, progress, and direct-manipulation capabilities remain unadvertised.",
+      "tags": ["layout", "composition", "live", "experimental-abi-v1", "c2"]
     },
     {
       "id": "asset.standard-widget-library",
@@ -112,7 +137,7 @@
       "status": "implemented-runtime-pending",
       "confidence": "automated-verified",
       "bounds": { "columns": 8, "segmentsPerColumn": 32 },
-      "notes": "Power publishes six dynamic 12-pip rows with direct four-state cycling, high-contrast tier numbers, +G/+Y/+R/- quick steps, long labels, live current state, target preview, and keyboard/controller row adjustment.",
+      "notes": "Power publishes six dynamic 12-pip rows with direct four-state cycling, high-contrast tier numbers, +G/+Y/+R/- quick steps, long labels, live current state, target preview, keyboard/controller row adjustment, and capability-gated inline priority Choices.",
       "tags": ["power", "grid", "compound", "interactive"]
     },
     {
@@ -122,7 +147,8 @@
       "status": "specified",
       "confidence": "design-approved",
       "path": "docs/LIVE-COMPONENTS.md",
-      "notes": "Product registry and MenuSession now separate immutable configuration snapshots from visible-route live frames, cap payloads, mark stale data, suspend hidden channels, and attach compound edits to the page transaction.",
+      "capabilities": ["grid-control-associations"],
+      "notes": "Product registry and MenuSession separate immutable configuration snapshots from visible-route live frames, cap payloads, mark stale data, suspend hidden channels, attach compound edits to the page transaction, and explicitly associate same-page Choice controls without changing the committed grid-column stride.",
       "tags": ["telemetry", "abi-roadmap", "scaleform", "performance"]
     },
     {
@@ -135,6 +161,16 @@
       "interaction": ["activate", "pointer-click"],
       "notes": "Invokes a provider-owned callback without creating a dirty configuration draft.",
       "tags": ["command", "dynamic", "abi-v1"]
+    },
+    {
+      "id": "modal.action-confirmation",
+      "kind": "interaction",
+      "name": "Action confirmation",
+      "status": "implemented-runtime-pending",
+      "confidence": "automated-verified",
+      "interaction": ["confirm", "cancel", "escape-cancel"],
+      "notes": "Capability-gated Actions may request a host-owned label/description confirmation. Cancel never enters provider code; Confirm resumes the Action's existing transaction semantics.",
+      "tags": ["command", "modal", "safety", "abi-v1"]
     },
     {
       "id": "control.input-binding",
@@ -236,6 +272,17 @@
       "tags": ["native-menu", "scaleform", "sfse"]
     },
     {
+      "id": "surface.control-host-module",
+      "kind": "surface",
+      "name": "Absolute Control host management",
+      "status": "implemented-runtime-pending",
+      "confidence": "automated-verified",
+      "moduleId": "absolute.control",
+      "pages": ["menu", "registry"],
+      "notes": "Release and ResearchDev register the same last-position host module through the public provider ABI. Menu owns registration/alphabetical ordering and safe Pause Menu/F1-F12 activation. Registry reports configuration, live-component, and semantic-composition subscribers without claiming visibility into daughter-module internal buses.",
+      "tags": ["host", "settings", "registry", "diagnostics"]
+    },
+    {
       "id": "subscriber.absolute-head-tracking",
       "kind": "subscriber-example",
       "name": "Absolute Head Tracking",
@@ -267,8 +314,8 @@
       "confidence": "runtime-mechanical",
       "moduleId": "absolute.power",
       "pages": ["power-presets", "power-automation", "power-diagnostics"],
-      "controlKinds": ["Toggle", "Action", "InputBinding"],
-      "notes": "Fail-optional product-query subscriber. A current ResearchDev run confirmed three-page registration, native movie load, bridge readiness, and publication in a combined five-page model. Provider-owned persistence and Control-absent execution have automated coverage; visual and in-game persistence acceptance remain pending.",
+      "controlKinds": ["Toggle", "Action", "Choice", "TextInput", "InputBinding", "GroupHeader"],
+      "notes": "Fail-optional product-query subscriber. The compact Presets surface uses structured sections, inline lifecycle actions, keyboard/Input Bus bindings, and six explicitly row-associated priority Choices around a six-row 12-pip grid. Earlier ResearchDev runs confirmed three-page registration, native movie load, bridge readiness, and publication; current-layout visual and in-game persistence acceptance remain pending.",
       "tags": ["subscriber", "integration", "power", "bindings", "headless"]
     },
     {

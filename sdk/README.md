@@ -28,16 +28,25 @@ The generated header provides:
 
 - immutable `ModuleDescriptorV1` and per-page `ControlDescriptorV1` tables;
 - a `ControlId` enum and `ParseControlId` helper for provider callback dispatch;
-- `ProviderCallbacks`, including the optional choice, device-capture, and binding-reassignment
-  callback tails; and
+- `ProviderCallbacks`, including the optional choice, selected-record, device-capture, and
+  binding-reassignment callback tails; and
 - `MakePages`, which wires those callbacks into `PageDescriptorV1` values for registration and
-  accepts the queried host capability mask.
+  accepts the queried host capability mask; and
+- `SupportsPageOpen` / `RequestOpen`, which size- and capability-gate the optional asynchronous
+  host command for opening one of the generated module's registered pages.
 
 Each JSON section emits a non-focusable `GroupHeader` when the host reports
 `kCapabilityStructuredLayout`. After size-checking the optional `ApiV1::capabilities` tail, pass
 that mask—or `kCapabilityNone` when absent—to `MakePages`. Its compatibility path omits section
 headers and strips `layoutInline` when connected to an older host. Two or three consecutive actions
 may use the `layoutInline` flag to share one row.
+
+The schema also emits `recordCollection` as a string-valued transient selected-record control.
+Providers fill the appended `readRecordItems` callback with at most 64 stable-ID records; the host
+owns its bounded list/detail modal. Action options may use `requiresConfirmation`; the host shows
+the Action label and description before invoking provider code. Use these options only after
+feature-detecting `kCapabilityRecordCollections` and `kCapabilityActionConfirmation`, or construct
+an older-host fallback definition.
 
 The provider still implements reads, draft writes, validation, Apply, Cancel, actions, and config
 persistence. Generate descriptors once during the build; JSON is not parsed in Starfield.
@@ -47,6 +56,24 @@ persistence. Generate descriptors once during the build; JSON is not parsed in S
 Existing integrations may continue constructing `ModuleDescriptorV1`, `ControlDescriptorV1`, and
 `PageDescriptorV1` directly. The generator is optional and does not create a second runtime API.
 Handwritten and generated integrations must obey the same capacity, stable-ID, and callback rules.
+
+## Experimental semantic composition (C2)
+
+After registering the stable module and page descriptors, an advanced provider may
+dynamically resolve `AbsoluteControlPanel_QueryCompositionApi` and request ABI 1 from
+`AbsoluteControlCompositionExperimentalAPI.h`. Check `ApiV1::structSize` and every capability
+bit before registering composition. The current host advertises only `kC2Capabilities`:
+semantic cards/rows/columns, semantic status, provider-evaluated visible/enabled state, and
+bounded anchors, plus same-page live slots and validated live-series/marker associations.
+
+Composition references existing control IDs and changes presentation only; it does not own
+values or persistence. Array order is reading/focus order, every parent precedes its children,
+and every non-header stable control must be placed exactly once. Keep the ordinary page order
+task-complete because missing, older, rejected, or invalid composition deterministically falls
+back to that page. Register referenced live channels before composition. Record views, pinned
+context, workflows, progress, and direct manipulation are vocabulary reserved for later milestones
+and are not currently negotiable. C2 association IDs are validated against copied live channel
+markers or series and do not permit provider drawing or direct graph mutation.
 
 ## Deliberate ABI v1 limits
 
@@ -60,8 +87,17 @@ host-owned. Direct ABI-v1 providers can publish labeled choices and bounded `Tex
 option kinds remain outside this schema profile, although their optional page callbacks are now
 wired by `ProviderCallbacks`. Advanced live components remain handwritten against
 `LiveComponentsExperimentalAPI.h`; segmented grids may opt into direct pip cycling with
-`kSegmentedGridCycleOnClick` and handle `SetSegmentTier`. Control IDs must be unique across the
+`kSegmentedGridCycleOnClick` and handle `SetSegmentTier`. A provider that size-checks
+`ExperimentalApiV1::capabilities` and finds `kLiveCapabilityGridControlAssociations` may append
+bounded `GridControlAssociationV1` records linking grid rows to same-page `Choice` controls. The
+host renders those Choices on their rows, preserves keyboard/controller activation, and leaves the
+ordinary controls untouched when the capability is absent. Control IDs must be unique across the
 whole module because ABI v1 callbacks receive `controlId`, not a page-qualified key.
+
+Hosts may also advertise `kLiveCapabilityPresentationFlags` and
+`kLiveCapabilityDynamicRangeFrames`. The former allows pinned tuning meters and host-owned
+collapsed secondary diagnostics. The latter allows a full-size `LiveFrameV1` to replace static
+range bands and markers from the provider's current draft.
 
 See [CHANGELOG.md](CHANGELOG.md) for additive capability and migration notes.
 

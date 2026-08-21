@@ -45,7 +45,7 @@ The run is incomplete until all of these are true:
 3. SLOP enumerates copied page/control descriptors and serializes them using
    [Bridge Protocol v1](BRIDGE-PROTOCOL-V1.md).
 4. ActionScript constructs visible controls from that model. No runtime branch may name
-   AbsoluteZero, ResearchModule, `toggleFeature`, `responseLevel`, or the three synthetic control
+   AbsoluteZero, a retired research module, `toggleFeature`, `responseLevel`, or fixture control
    IDs.
 5. Generic UI messages route by `(moduleId, pageId, controlId)` to `readValue`, `writeDraft`,
    `invokeAction`, `apply`, and `cancel`.
@@ -124,8 +124,8 @@ Build the exact model in [Bridge Protocol v1](BRIDGE-PROTOCOL-V1.md). Read each 
 its page callback. A failed read marks that control unavailable and records a bounded error; it
 must not remove other pages or trap input.
 
-Keep the synthetic provider only as a headless fixture. The runtime renderer and command router
-must contain no synthetic IDs or semantics.
+Keep synthetic providers only inside headless tests. The runtime renderer and command router must
+contain no fixture IDs or semantics.
 
 ## Phase 3: dynamic SWF
 

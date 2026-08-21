@@ -40,7 +40,8 @@ page = {
   pageId: String,
   title: String,
   description: String,
-  controls: [ control ... ]
+  controls: [ control ... ],
+  liveComponents: [ liveComponent ... ]
 }
 
 control = {
@@ -77,6 +78,13 @@ generation only after `applyModel` succeeds, and commands are compared with that
 rather than a newer deferred snapshot. `revision` describes registry/refresh changes. ActionScript calls
 `modelApplied(generation)` after rebuilding and every frame as a UI-thread publication/refresh
 heartbeat. Native stays idle when no command model or refresh is pending.
+
+After the initial model, native calls
+`applyLiveComponents(moduleId,pageId,components)` only when an active-page provider sequence
+advances. Range patches replace the current value and optional draft-derived bands/markers.
+Telemetry patches contain one newest sample; ActionScript appends it to the component's bounded
+history. The movie redraws only remembered live placements, so this path does not replace the
+menu model, advance its generation, rebuild controls, or disturb focus/pointer targets.
 
 ## ActionScript-to-native commands
 
@@ -157,4 +165,5 @@ releases the lease and clears dirty/capture state without building another movie
 - `handlePointerDown/Move/Up`, `handlePointerWheel`, and retained `handlePointerClick` are
   native-to-movie methods. Rendered ActionScript sprites own semantic hit testing.
 
-The synthetic provider exists only in ResearchDev and receives no special bridge behavior.
+Absolute Control's own settings/registry module uses the same bridge behavior as external
+providers and receives no renderer special cases.

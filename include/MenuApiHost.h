@@ -50,6 +50,15 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
         std::string label;
     };
 
+    struct RecordItem
+    {
+        std::uint32_t flags{};
+        std::string recordId;
+        std::string label;
+        std::string summary;
+        std::string detail;
+    };
+
     struct Page
     {
         std::string moduleId;
@@ -83,6 +92,39 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
         std::vector<ModuleSummary> modules;
         std::vector<Page> pages;
     };
+
+    enum class ModuleSortMode : std::uint32_t
+    {
+        Registration,
+        Alphabetical
+    };
+
+    struct ModuleDiagnostics
+    {
+        std::string moduleId;
+        std::string displayName;
+        std::size_t pageCount{};
+        std::size_t controlCount{};
+    };
+
+    struct RegistryDiagnostics
+    {
+        HostLifecycle lifecycle{ HostLifecycle::Initializing };
+        std::uint64_t revision{};
+        std::uint64_t refreshRevision{};
+        bool menuOpen{};
+        bool inputCaptureActive{};
+        std::vector<ModuleDiagnostics> modules;
+    };
+
+    struct OpenRequest
+    {
+        std::string moduleId;
+        std::string pageId;
+        std::uint64_t serial{};
+    };
+
+    using OpenRequestWakeCallback = bool(*)() noexcept;
 
     // A successful draft write attaches the UI session to its provider. The
     // token prevents unregisterModule from succeeding until Apply, Cancel, or
@@ -119,15 +161,26 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
     // longer exists, the nearest module page or first registered page is used.
     [[nodiscard]] CatalogSnapshot SnapshotCatalog(
         std::string_view a_moduleId, std::string_view a_pageId) noexcept;
+    [[nodiscard]] RegistryDiagnostics Diagnostics() noexcept;
+    void SetModuleSortMode(ModuleSortMode a_mode) noexcept;
+    [[nodiscard]] ModuleSortMode GetModuleSortMode() noexcept;
     [[nodiscard]] std::uint64_t Revision() noexcept;
 
     // requestRefresh has its own cursor so the active menu can consume a wakeup
     // exactly once and republish a model. Poll this on the UI/game thread.
     [[nodiscard]] std::uint64_t RefreshRevision() noexcept;
+    [[nodiscard]] AbsoluteControlPanelApi::Result RequestRefresh(
+        const char* a_moduleId, const char* a_pageId) noexcept;
     [[nodiscard]] bool ConsumeRefresh(std::uint64_t& a_cursor) noexcept;
     [[nodiscard]] bool ConsumeRefresh(std::uint64_t& a_cursor,
         std::string_view a_activeModuleId,
         std::string_view a_activePageId) noexcept;
+    // Product API callbacks enqueue a validated route from any provider thread.
+    // The injected wake callback may only schedule work; the bridge consumes and
+    // dispatches the request on Starfield's UI/game thread.
+    void SetOpenRequestWakeCallback(OpenRequestWakeCallback a_callback) noexcept;
+    [[nodiscard]] bool ConsumeOpenRequest(OpenRequest& a_request) noexcept;
+    void DiscardOpenRequest() noexcept;
 
     // Provider callbacks must only be invoked through these lease-acquiring
     // functions. They never run under the registry or provider-state mutex.
@@ -138,6 +191,9 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
     [[nodiscard]] AbsoluteControlPanelApi::Result ReadChoiceOptions(
         const Page& a_page, std::string_view a_controlId,
         std::vector<ChoiceOption>& a_options) noexcept;
+    [[nodiscard]] AbsoluteControlPanelApi::Result ReadRecordItems(
+        const Page& a_page, std::string_view a_controlId,
+        std::vector<RecordItem>& a_items) noexcept;
     [[nodiscard]] AbsoluteControlPanelApi::Result BeginBindingCapture(
         const Page& a_page, std::string_view a_controlId) noexcept;
     [[nodiscard]] AbsoluteControlPanelApi::Result PollBindingCapture(

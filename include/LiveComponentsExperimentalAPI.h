@@ -22,6 +22,8 @@ namespace AbsoluteControlPanelExperimental
     inline constexpr std::size_t kMaximumGridColumns = 8;
     inline constexpr std::size_t kMaximumGridSegments = 32;
     inline constexpr std::size_t kMaximumGridTiers = 4;
+    inline constexpr std::size_t kMaximumGridControlAssociations =
+        kMaximumGridColumns;
 
     enum class Result : std::uint32_t
     {
@@ -178,6 +180,41 @@ namespace AbsoluteControlPanelExperimental
         kSegmentedGridCycleOnClick = 1U << 0
     };
 
+    // Host-owned presentation hints. They are deliberately carried on the
+    // channel descriptor rather than provider configuration: a renderer may
+    // keep a tuning surface fixed while controls scroll, or disclose an
+    // expensive diagnostic only when the user asks for it. These bits are
+    // valid for every component kind and compose with the low grid-only bits.
+    enum LivePresentationFlags : std::uint32_t
+    {
+        kLivePresentationNone = 0,
+        kLivePresentationPinned = 1U << 8,
+        kLivePresentationSecondary = 1U << 9,
+        kLivePresentationCollapsedByDefault = 1U << 10
+    };
+
+    // Explicitly associates one segmented-grid row with one Choice control on
+    // the same page. This record lives in the additive live-channel tail rather
+    // than GridColumnDescriptorV1 so the v1 column-array stride never changes.
+    struct GridControlAssociationV1
+    {
+        std::uint32_t structSize{ sizeof(GridControlAssociationV1) };
+        char columnId[kIdentifierCapacity]{};
+        char controlId[kIdentifierCapacity]{};
+    };
+
+    enum LiveApiCapabilities : std::uint64_t
+    {
+        kLiveCapabilityNone = 0,
+        kLiveCapabilityGridControlAssociations = 1ULL << 0,
+        kLiveCapabilityPresentationFlags = 1ULL << 1,
+        kLiveCapabilityDynamicRangeFrames = 1ULL << 2
+    };
+    inline constexpr std::uint64_t kLiveCapabilities =
+        kLiveCapabilityGridControlAssociations |
+        kLiveCapabilityPresentationFlags |
+        kLiveCapabilityDynamicRangeFrames;
+
     struct RangeMeterFrameV1
     {
         std::uint32_t structSize{ sizeof(RangeMeterFrameV1) };
@@ -229,7 +266,23 @@ namespace AbsoluteControlPanelExperimental
         RangeMeterFrameV1 rangeMeter{};
         TelemetrySampleV1 telemetryPlot{};
         SegmentedGridFrameV1 segmentedGrid{};
+        // Additive frame tail. A range provider can publish bands and markers
+        // from its current draft without unregistering the channel. Older
+        // providers stop before this offset; hosts must then use descriptor
+        // bands/markers. The tail never shifts any v1 payload above it.
+        struct DynamicRangeV1
+        {
+            std::uint32_t structSize{ sizeof(DynamicRangeV1) };
+            std::uint32_t present{};
+            std::uint32_t bandCount{};
+            std::uint32_t markerCount{};
+            RangeBandV1 bands[kMaximumRangeBands]{};
+            RangeMarkerV1 markers[kMaximumRangeMarkers]{};
+        } dynamicRange{};
     };
+
+    inline constexpr std::uint32_t kLiveFrameV1BaseSize =
+        static_cast<std::uint32_t>(offsetof(LiveFrameV1, dynamicRange));
 
     enum class CompoundOperationKind : std::uint32_t
     {
@@ -284,13 +337,22 @@ namespace AbsoluteControlPanelExperimental
         void* context{};
         ReadLiveFrameCallback readLiveFrame{};
         ApplyCompoundOperationCallback applyCompoundOperation{};
-        // Additive descriptor tail. For segmented grids this accepts
-        // SegmentedGridFlags; other component kinds require zero.
+        // Additive descriptor tail. Low bits accept SegmentedGridFlags only on
+        // segmented grids; LivePresentationFlags are valid for every kind.
         std::uint32_t flags{kSegmentedGridNone};
+        // Optional full-size tail. Associations are one-to-one, reference a
+        // column in segmentedGrid and a Choice control on the same page, and
+        // are ignored unless the queried live API advertises support.
+        std::uint32_t associationCount{};
+        GridControlAssociationV1
+            associations[kMaximumGridControlAssociations]{};
     };
 
     inline constexpr std::uint32_t kLiveChannelDescriptorV1BaseSize =
         static_cast<std::uint32_t>(offsetof(LiveChannelDescriptorV1, flags));
+    inline constexpr std::uint32_t kLiveChannelDescriptorV1FlagsSize =
+        static_cast<std::uint32_t>(offsetof(LiveChannelDescriptorV1, flags) +
+            sizeof(std::uint32_t));
 
     // Pointer-free copy intended for renderer/model publication. Provider
     // context and callbacks never enter this type or the ActionScript graph.
@@ -307,6 +369,9 @@ namespace AbsoluteControlPanelExperimental
         TelemetryPlotDescriptorV1 telemetryPlot{};
         SegmentedGridDescriptorV1 segmentedGrid{};
         std::uint32_t flags{kSegmentedGridNone};
+        std::uint32_t associationCount{};
+        GridControlAssociationV1
+            associations[kMaximumGridControlAssociations]{};
     };
 
     struct ExperimentalApiV1
@@ -317,9 +382,16 @@ namespace AbsoluteControlPanelExperimental
         Result(__cdecl* unregisterModule)(const char* moduleId) noexcept{};
         Result(__cdecl* requestImmediateRefresh)(
             const char* moduleId, const char* pageId, const char* channelId) noexcept{};
+        // Additive API-table tail. Consumers must size-check before reading.
+        std::uint64_t capabilities{kLiveCapabilities};
     };
 
+    inline constexpr std::uint32_t kExperimentalApiV1BaseSize =
+        static_cast<std::uint32_t>(offsetof(ExperimentalApiV1, capabilities));
+
     static_assert(std::is_standard_layout_v<LiveFrameV1> && std::is_trivially_copyable_v<LiveFrameV1>);
+    static_assert(std::is_standard_layout_v<GridControlAssociationV1> &&
+        std::is_trivially_copyable_v<GridControlAssociationV1>);
     static_assert(std::is_standard_layout_v<LiveChannelDescriptorV1> && std::is_trivially_copyable_v<LiveChannelDescriptorV1>);
     static_assert(std::is_standard_layout_v<LiveChannelModelV1> && std::is_trivially_copyable_v<LiveChannelModelV1>);
     static_assert(std::is_standard_layout_v<CompoundOperationV1> && std::is_trivially_copyable_v<CompoundOperationV1>);

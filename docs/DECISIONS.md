@@ -183,8 +183,9 @@ available without masquerading as current instructions.
 
 `AbsoluteControlPanel` is the default canonical target and only release-role/packageable artifact.
 `AbsoluteControlPanelResearchDev` is opt-in and non-packageable. It composes the product host with
-the synthetic provider, mailbox/SendInput automation, DirectInput experiments, and experimental
-live components. Release/research sources are explicit, manifests are role-bound and hash-bound,
+mailbox/SendInput automation and DirectInput experiments. It registers no research-only menu
+module; both artifacts use the release-safe Absolute Control host-management module.
+Release/research sources are explicit, manifests are role-bound and hash-bound,
 and no deploy/package tool may infer an artifact by scanning a build directory.
 
 ## D-021 — Product ABI authority and bounded legacy adapter

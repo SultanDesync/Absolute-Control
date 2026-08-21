@@ -9,6 +9,10 @@ package acp.ui
         {
             if (model == null) return {"active":false, "handled":false,
                 "cursor":cursor};
+            if (Boolean(model.actionConfirmationActive)) {
+                return handleActionConfirmation(keyCode, cursor,
+                    dispatchPage, redraw);
+            }
             if (Boolean(model.bindingConflictActive)) {
                 return handleBindingConflict(keyCode, cursor,
                     dispatchPage, redraw);
@@ -18,6 +22,24 @@ package acp.ui
                     dispatchPage, redraw);
             }
             return {"active":false, "handled":false, "cursor":cursor};
+        }
+
+        private function handleActionConfirmation(keyCode:uint, cursor:int,
+            dispatchPage:Function, redraw:Function):Object
+        {
+            var handled:Boolean = true;
+            if (keyCode == Keyboard.ESCAPE || keyCode == Keyboard.TAB ||
+                keyCode == Keyboard.X) {
+                dispatchPage("actionCancel");
+            } else if (isDirection(keyCode)) {
+                cursor = 1 - Math.min(1, cursor);
+                redraw();
+            } else if (isAccept(keyCode)) {
+                dispatchPage(cursor == 0 ? "actionConfirm" : "actionCancel");
+            } else {
+                handled = false;
+            }
+            return {"active":true, "handled":handled, "cursor":cursor};
         }
 
         private function handleBindingConflict(keyCode:uint, cursor:int,

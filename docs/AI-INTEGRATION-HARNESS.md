@@ -136,4 +136,5 @@ automation, and multi-provider composition are separately proven.
 A provider integration is complete when it registers without linking gameplay to the host,
 round-trips every supported setting type, uses the module's existing validation and persistence,
 survives host absence, passes the supervised isolated in-game proof, and introduces no local-machine data
-into Git.  The current synthetic provider is the reference fixture, not a product dependency.
+into Git. Headless contract fixtures remain the reference proof; no synthetic provider is exposed
+in either runtime menu.

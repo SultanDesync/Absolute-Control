@@ -31,6 +31,9 @@ Absolute Control owns:
 - common control rendering, help text, dirty-state dialogs, Apply, Cancel, and close workflows;
 - dynamic discovery and enumeration of independently installed provider modules; and
 - versioned, capability-gated SDK contracts and optional suite coordination services.
+- an experimental semantic-composition lane for host-owned cards, rows, status,
+  provider-evaluated conditions, bounded anchor navigation, and associated live
+  plots/range meters.
 
 Provider mods continue to own:
 
@@ -60,8 +63,10 @@ The promoted baseline includes:
 
 See [current state](docs/CURRENT-STATE.md), [architecture](docs/ARCHITECTURE.md),
 [design decisions](docs/DECISIONS.md), [module API](docs/MODULE-API.md),
-[SDK status](docs/SDK-STATUS.md), and the [technical debt register](docs/DEBT-REGISTER.md) for the
-authoritative implementation and release gates.
+[SDK status](docs/SDK-STATUS.md), [subscriber UI standard](docs/SUBSCRIBER-UI-STANDARD.md),
+[SDK release plan](docs/SDK-RELEASE-PLAN.md), and the
+[technical debt register](docs/DEBT-REGISTER.md) for the authoritative implementation and release
+gates.
 
 ## Build and test
 

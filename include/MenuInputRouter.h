@@ -32,7 +32,8 @@ namespace AbsoluteControlPanelResearch::MenuInputRouter
         Modules,
         Controls,
         Actions,
-        Grid
+        Grid,
+        Anchors
     };
 
     struct FocusState

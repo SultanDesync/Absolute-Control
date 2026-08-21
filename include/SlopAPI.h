@@ -23,6 +23,8 @@ namespace SlopApi
         AbsoluteControlPanelApi::kStringValueCapacity;
     inline constexpr auto kMaximumChoiceOptions =
         AbsoluteControlPanelApi::kMaximumChoiceOptions;
+    inline constexpr auto kMaximumRecordItems =
+        AbsoluteControlPanelApi::kMaximumRecordItems;
 
     using Result = AbsoluteControlPanelApi::Result;
     using ControlKind = AbsoluteControlPanelApi::ControlKind;
@@ -42,6 +44,12 @@ namespace SlopApi
         AbsoluteControlPanelApi::kControlTransientChoice;
     inline constexpr auto kControlLayoutInline =
         AbsoluteControlPanelApi::kControlLayoutInline;
+    inline constexpr auto kControlRequiresConfirmation =
+        AbsoluteControlPanelApi::kControlRequiresConfirmation;
+    inline constexpr auto kControlTransientSelection =
+        AbsoluteControlPanelApi::kControlTransientSelection;
+    inline constexpr auto kControlPinnedContext =
+        AbsoluteControlPanelApi::kControlPinnedContext;
     inline constexpr auto kBindingKeyboard = AbsoluteControlPanelApi::kBindingKeyboard;
     inline constexpr auto kBindingMouse = AbsoluteControlPanelApi::kBindingMouse;
     inline constexpr auto kBindingController = AbsoluteControlPanelApi::kBindingController;
@@ -58,6 +66,16 @@ namespace SlopApi
     using ChoiceOptionV1 = AbsoluteControlPanelApi::ChoiceOptionV1;
     using ReadChoiceOptionsCallback =
         AbsoluteControlPanelApi::ReadChoiceOptionsCallback;
+    using RecordItemFlags = AbsoluteControlPanelApi::RecordItemFlags;
+    inline constexpr auto kRecordItemNone =
+        AbsoluteControlPanelApi::kRecordItemNone;
+    inline constexpr auto kRecordItemDisabled =
+        AbsoluteControlPanelApi::kRecordItemDisabled;
+    inline constexpr auto kRecordItemWarning =
+        AbsoluteControlPanelApi::kRecordItemWarning;
+    using RecordItemV1 = AbsoluteControlPanelApi::RecordItemV1;
+    using ReadRecordItemsCallback =
+        AbsoluteControlPanelApi::ReadRecordItemsCallback;
     using ModuleDescriptorV1 = AbsoluteControlPanelApi::ModuleDescriptorV1;
     using PageDescriptorV1 = AbsoluteControlPanelApi::PageDescriptorV1;
 

@@ -66,6 +66,9 @@ includes("external/commonlibsf")
 -- Source ownership is deliberately explicit.  The release plugin must never gain a
 -- research subsystem merely because a new .cpp file was added under src/.
 local release_sources = {
+    "src/CompositionApiHost.cpp",
+    "src/CompositionRegistry.cpp",
+    "src/ControlPanelModule.cpp",
     "src/EvidenceLog.cpp",
     "src/diagnostics/AsyncLineSink.cpp",
     "src/Main.cpp",
@@ -88,7 +91,6 @@ local release_sources = {
 
 local research_only_sources = {
     "src/ResearchInputCapture.cpp",
-    "src/ResearchModule.cpp",
     "src/research/ResearchSupport.cpp"
 }
 
@@ -136,12 +138,16 @@ target("AbsoluteControlPanel", function()
         "docs/NATIVE-MENU-CONTRACT.md",
         "docs/AI-INTEGRATION-HARNESS.md",
         "docs/SDK-STATUS.md",
+        "docs/SDK-RELEASE-PLAN.md",
+        "docs/SUBSCRIBER-UI-STANDARD.md",
+        "docs/SEMANTIC-UI-COMPOSITION-ARCHITECTURE.md",
         "docs/RUNTIME-UPDATE-RUNBOOK.md",
         "docs/TEST-MATRIX.md", {
         prefixdir = "Documentation"
     })
     add_installfiles("include/AbsoluteControlPanelAPI.h", "include/SlopAPI.h",
-        "include/LiveComponentsExperimentalAPI.h", {
+        "include/LiveComponentsExperimentalAPI.h",
+        "include/AbsoluteControlCompositionExperimentalAPI.h", {
         prefixdir = "SDK"
     })
     add_installfiles("sdk/README.md", "sdk/CHANGELOG.md",
@@ -177,7 +183,7 @@ target("AbsoluteControlPanel", function()
 end)
 
 -- Explicit opt-in development artifact.  It composes the release host with the
--- synthetic provider, mailbox/SendInput automation, DirectInput experiments, and
+-- mailbox/SendInput automation, DirectInput experiments, and
 -- experimental LiveComponents ABI.  It is non-default, deliberately named, and
 -- has none of the release target's SDK/interface/documentation install entries.
 target("AbsoluteControlPanelResearchDev", function()
@@ -228,8 +234,24 @@ target("slop_api_test", function()
     add_tests("contract")
     add_defines("SLOP_EXPORTS", "ABSOLUTE_CONTROL_PANEL_EXPORTS")
     add_includedirs("include")
-    add_files("src/LiveComponentsRegistry.cpp", "src/MenuApiHost.cpp",
+    add_files("src/CompositionRegistry.cpp", "src/LiveComponentsRegistry.cpp",
+        "src/MenuApiHost.cpp",
         "src/MenuInputRouter.cpp", "src/MenuSession.cpp", "tests/SlopApiTests.cpp")
+end)
+
+target("control_panel_module_test", function()
+    set_kind("binary")
+    set_default(false)
+    add_tests("settings_sorting_activation_and_registry")
+    add_defines("SLOP_EXPORTS", "ABSOLUTE_CONTROL_PANEL_EXPORTS")
+    add_includedirs("include")
+    add_files(
+        "src/CompositionRegistry.cpp",
+        "src/ControlPanelModule.cpp",
+        "src/LiveComponentsRegistry.cpp",
+        "src/MenuApiHost.cpp",
+        "src/ProbeConfig.cpp",
+        "tests/ControlPanelModuleTests.cpp")
 end)
 
 target("host_hardening_stress_test", function()
@@ -240,6 +262,7 @@ target("host_hardening_stress_test", function()
     add_includedirs("include")
     add_files(
         "src/MenuApiHost.cpp",
+        "src/CompositionRegistry.cpp",
         "src/LiveComponentsRegistry.cpp",
         "src/MenuSession.cpp",
         "tests/HostHardeningStressTests.cpp")
@@ -281,4 +304,32 @@ target("live_components_test", function()
     add_defines("ABSOLUTE_CONTROL_PANEL_EXPORTS")
     add_includedirs("include")
     add_files("src/LiveComponentsRegistry.cpp", "tests/LiveComponentsTests.cpp")
+end)
+
+target("composition_registry_test", function()
+    set_kind("binary")
+    set_default(false)
+    add_tests("c0_model_validation_fallback_and_leases")
+    add_defines("ABSOLUTE_CONTROL_PANEL_EXPORTS")
+    add_includedirs("include")
+    add_files(
+        "src/CompositionRegistry.cpp",
+        "src/LiveComponentsRegistry.cpp",
+        "tests/CompositionRegistryTests.cpp")
+end)
+
+target("semantic_composition_integration_test", function()
+    set_kind("binary")
+    set_default(false)
+    add_tests("c2_six_card_live_session_input_and_performance")
+    add_defines("SLOP_EXPORTS", "ABSOLUTE_CONTROL_PANEL_EXPORTS")
+    add_includedirs("include")
+    add_files(
+        "src/CompositionApiHost.cpp",
+        "src/CompositionRegistry.cpp",
+        "src/LiveComponentsRegistry.cpp",
+        "src/MenuApiHost.cpp",
+        "src/MenuInputRouter.cpp",
+        "src/MenuSession.cpp",
+        "tests/SemanticCompositionIntegrationTests.cpp")
 end)

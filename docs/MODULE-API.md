@@ -47,8 +47,9 @@ Version 1 describes these typed controls:
 - choice;
 - action button;
 - button binding; and
-- bounded text input; and
-- presentation-only group header.
+- bounded text input;
+- presentation-only group header; and
+- bounded selected-record/list-detail collection.
 
 `GroupHeader` creates a non-focusable section divider from its label and description; the host
 never calls value or mutation callbacks for it. Consecutive Action controls carrying
@@ -58,12 +59,43 @@ pages accept the queried capability mask and fall back to header-free, non-inlin
 hosts. The host chooses standard widget geometry from semantic type plus these bounded presentation
 hints; providers do not submit coordinates, sprites, ActionScript, or arbitrary drawing callbacks.
 
+### Experimental semantic composition C2
+
+Providers with task surfaces that cannot be expressed truthfully as a flat form may separately
+resolve `AbsoluteControlPanel_QueryCompositionApi` from
+`AbsoluteControlCompositionExperimentalAPI.h`. Register the stable data page first. Composition
+then references those copied control IDs to describe bounded sections, cards, rows, columns,
+status roles, provider-evaluated visibility/enabled state, and anchors. It never becomes a second
+value, transaction, validation, or persistence API.
+
+The current query advertises exactly `kC2Capabilities`: the C1 semantic/status/condition/anchor
+surface plus live slots and validated live-series/marker associations. Nodes requiring record
+presentations, pinned context, workflows, progress, or direct manipulation reject even though
+their reserved vocabulary is present in the experimental header. Providers must validate
+the API size and capability mask and retain a task-complete stable-page order. Missing or invalid
+composition produces that deterministic flat fallback. The host copies descriptors, invokes
+state callbacks only for the selected page under an unregister lease, and recovers focus by the
+stable control target when a condition hides or disables the current branch. See
+[Semantic UI Composition Architecture](SEMANTIC-UI-COMPOSITION-ARCHITECTURE.md) for bounds,
+degradation rules, and milestone evidence. A `LiveSlot` must reference a live channel already
+registered on the same module/page. Association semantic IDs must identify a copied marker or
+telemetry series; they cannot be arbitrary renderer hints.
+
 Every value read or written carries a `ValueKind`.  Providers must reject a mismatched kind,
 an unknown control ID, and out-of-range data.  A successful write changes provider-owned draft
 state.  The host then invokes the page's `apply` callback when the user applies a change, or
 `cancel` when the user discards it.  `requestRefresh` tells the host that values or availability
 changed outside a menu command. Multiple refreshes may coalesce; the open UI consumes a refresh
 revision on its UI-thread heartbeat and rereads a replacement model.
+
+Providers may optionally request that the host open at one of their registered pages through the
+appended `ApiV1::requestOpenPage` callback. Before reading or calling that tail, check both
+`structSize >= kApiV1RequestOpenPageSize` and `kCapabilityPageOpenRequests`. `Ok` means the route
+was validated and queued, not that a movie opened synchronously. The callback is safe from a
+provider worker: it coalesces a bounded route request and schedules a host task; the Scaleform
+bridge performs selection on its UI-thread heartbeat. Missing hosts, older tables, absent
+capability, rejected lifecycle state, or a missing route must fall back to the provider's existing
+configuration UI. This command never synthesizes keyboard, mouse, or controller input.
 
 Actions are immediate by default. An Action descriptor may set `kControlMutatesDraft` when the
 callback performs a reversible library edit such as create, delete, revert, or reorder. The page
@@ -78,6 +110,12 @@ pin. Failure suppresses the action and preserves the dirty draft. Success releas
 and calls `invokeAction` against the just-saved state. The apply-before and mutates-draft flags are
 mutually exclusive and are both rejected on non-Action controls.
 
+An Action may set `kControlRequiresConfirmation`. The host then presents the Action label and
+description in a generic Confirm/Cancel modal and does not enter provider code until Confirm is
+chosen. Escape/Back/Cancel dismisses the modal without invoking the callback. After confirmation,
+the existing immediate, draft-mutating, or apply-before-invoke semantics run unchanged. Providers
+feature-detect `kCapabilityActionConfirmation`; the flag is rejected on non-Action controls.
+
 `TextInput` reads and writes a string value. Its descriptor uses `minimumValue = 0`,
 `stepValue = 1`, and an integral `maximumValue` from 1 through 255 as the character bound. The
 current native editor accepts printable ASCII, Backspace, Enter, and Escape; the provider remains
@@ -91,9 +129,31 @@ must be unique, within the descriptor range, and include the current value.
 
 Set `kControlTransientChoice` when a Choice selects provider-owned workbench state rather than
 configuration. Its successful `writeDraft` callback rebuilds the model but does not attach a
-transaction or mark the page dirty. The flag is rejected on other control kinds. Providers must
+transaction or mark the page dirty. The bit is also used by `RecordCollection` through the clearer
+`kControlTransientSelection` alias and is rejected on all other control kinds. Providers must
 feature-detect `kCapabilityLabeledChoices` from the appended `ApiV1::capabilities` field before
 registering this flag or callback; older providers and base-size page descriptors remain valid.
+
+`RecordCollection` is the bounded dynamic primitive for profiles, layers, macros, devices, and
+other selected-record workflows. `readValue` returns the selected stable `recordId` as a string,
+and the appended `readRecordItems` callback publishes at most 64 `RecordItemV1` records containing
+ID, label, summary, detail, and bounded disabled/warning flags. Empty collections are valid. The
+host snapshots records only for the active page, rejects duplicate/malformed IDs, and renders an
+eight-row visible list with a selected-item detail pane. A selectable collection carries
+`kControlTransientSelection` (an alias of the established transient Choice bit); selecting a record
+calls `writeDraft` with its string ID without pinning a transaction or marking the page dirty.
+Providers feature-detect `kCapabilityRecordCollections`. `PageDescriptorV1::readRecordItems` is an
+appended, size-gated tail, so descriptors ending before it retain their prior behavior.
+
+A page may mark up to three editing-context controls with `kControlPinnedContext`. Supporting
+hosts keep those controls in one compact strip above live visuals and the scrolling page body, so
+the selected profile/layer and its activation remain visible on every applicable page. The flag is
+valid only on `Choice`, `RecordCollection`, and `InputBinding`; the controls retain their ordinary
+provider-owned values, capture, transient-selection, and Apply/Cancel semantics. A provider must
+feature-detect `kCapabilityPinnedContextControls` and register an unflagged fallback page set for
+older hosts. Pinned controls are not duplicated in the body and remain first in keyboard/controller
+focus order. Enhanced experimental compositions that predate the strip are completed by the host
+with a synthesized pinned-context container, bounded by the ordinary composition node ceiling.
 
 An `InputBinding` row may request provider-owned mouse/controller recording by setting
 `kBindingMouse` or `kBindingController` and appending the complete
@@ -157,10 +217,11 @@ ABI v1. New integrations use the Absolute Control Panel name exclusively.
 
 ## Current executable proof
 
-ResearchDev-only `src/ResearchModule.cpp` is a synthetic subscriber. It registers a toggle, integer slider, and
-input binding through the same public ABI available to another DLL. The
-native menu reads and writes those values only through copied descriptors and provider
-callbacks.  The provider persists them to an ignored research-only configuration file.
+The release-safe `ControlPanelModule` dogfoods the same public ABI as daughter plugins. It registers
+only host-owned module ordering and activation settings plus read-only records for registered
+modules, configuration pages, live channels, and semantic compositions. Both release and
+ResearchDev therefore show the same meaningful Absolute Control module; synthetic research
+settings are no longer part of either runtime.
 
 The contract test proves product and legacy queries, initialization/rejection, descriptor copying,
 capacity admission, duplicate rejection, refresh consumption, generation/stale-command behavior,
@@ -182,17 +243,22 @@ previous configuration frontends. Exact confidence and checkpoint commits are re
 
 Absolute Power is the first subscriber being developed in parallel with the host. It registers
 Presets, Automation / Cheats (Coming Soon), and Diagnostics through the product query. Power's
-Presets route is a fixed 35-control labeled-choice selected-record workbench plus the bounded
-six-by-32 segmented grid; it does not grow controls with preset count. Power owns source-aware
-lifecycle actions, bindings, exact tier values, ordering, preview, activation lifecycle, sparse
-atomic persistence, and every gameplay effect. A ResearchDev run of the earlier full editor
+current Presets route declares 19 descriptors on a fully capable host: four group headers, a
+transient selected-record Choice, rename/startup controls, keyboard and Input Bus bindings, four
+inline lifecycle actions, and six priority Choices associated with a six-row 12-pip segmented
+grid. It does not grow controls with preset count. Missing capabilities remove presentation-only
+headers/inline layout, substitute bounded selection navigation, omit unavailable provider capture,
+or leave the priority Choices in the ordinary list. Power owns source-aware lifecycle actions,
+bindings, ordering, sparse atomic persistence, and every gameplay effect. A ResearchDev run of the
+earlier full editor
 confirmed registration, ready grid, movie/bridge publication of Power's three-page route, a fresh
 ship snapshot, 22 one-pip settlement steps through convergence, normal Hide/exit, and no new dump.
 Cross-weapon testing then invalidated promotion of the Automation editor. The current early-release
 route publishes only three controls: Coming Soon status, the policy limitation, and a persisted
-Disable All safety action. Its 18-control Diagnostics route groups provider-owned compatibility,
-runtime, live-ship, configuration, frontend, support, and path state. Runtime evidence for the
-reduced Automation surface and human interaction/persistence qualification remain open.
+Disable All safety action. Its 19-control Diagnostics route reports provider-owned compatibility,
+runtime, live-ship, configuration, frontend/Input Bus, support, and path state. Runtime evidence for
+the compact Presets surface, reduced Automation surface, and human interaction/persistence
+qualification remains open.
 
 The ActionScript movie constructs mods, page tabs, and controls from the registry. Dynamic choice
 labels and a virtualized dropdown are implemented. Broader input-device capture, accessibility,

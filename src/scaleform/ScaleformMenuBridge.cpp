@@ -13,7 +13,6 @@
 #include "ui/PauseMenuIntegration.h"
 
 #include <array>
-#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <format>
@@ -102,7 +101,9 @@ namespace AbsoluteControlPanelResearch::Scaleform
                     // before the movie became ready. Start the wakeup cursor there so the
                     // first acknowledgement does not immediately publish a duplicate model.
                     refreshCursor = MenuApiHost::RefreshRevision();
-                    DeferModel(session.Snapshot(), "bridge-ready");
+                    if (!PollOpenRequest()) {
+                        DeferModel(session.Snapshot(), "bridge-ready");
+                    }
                     break;
                 case NativeFunction::Close:
                     CloseSession();
@@ -120,8 +121,14 @@ namespace AbsoluteControlPanelResearch::Scaleform
                     const auto action = a_params.argCount >= 2 ?
                         ReadUnsigned(a_params.args[1]) :
                         std::numeric_limits<std::uint32_t>::max();
+                    const auto maximumAction = region == static_cast<std::uint32_t>(
+                        MenuInputRouter::FocusRegion::Anchors) ?
+                        static_cast<std::uint32_t>(
+                            AbsoluteControlCompositionExperimental::
+                                kMaximumAnchorsPerPage - 1) : 2U;
                     if (a_params.argCount != 2 || region > static_cast<std::uint32_t>(
-                            MenuInputRouter::FocusRegion::Grid) || action > 2) {
+                            MenuInputRouter::FocusRegion::Anchors) ||
+                        action > maximumAction) {
                         EvidenceLog::Event("bridge_focus_rejected", "invalid focus payload");
                         break;
                     }
@@ -160,16 +167,16 @@ namespace AbsoluteControlPanelResearch::Scaleform
                             DeferModel(std::move(*capture),
                                 "provider-binding-capture");
                         }
+                        PollOpenRequest();
                         PollRefresh();
-                        const auto now = std::chrono::steady_clock::now();
-                        if (lastLivePoll.time_since_epoch().count() == 0 ||
-                            now - lastLivePoll >= std::chrono::milliseconds(100)) {
-                            lastLivePoll = now;
-                            if (auto live = session.RefreshLive()) {
-                                DeferModel(std::move(*live), "live-component");
-                            }
-                        }
                         FlushDeferredModel();
+                        // Live data is a frame-coalesced active-page patch. It
+                        // never rebuilds provider controls or the menu shell,
+                        // so a smooth meter does not turn into a 60 Hz full
+                        // configuration transaction.
+                        if (auto live = session.RefreshLivePatch()) {
+                            PublishLivePatch(*live);
+                        }
                         AdvancePointerInputBarrier();
                     }
                     break;
@@ -204,6 +211,7 @@ namespace AbsoluteControlPanelResearch::Scaleform
                 command.moduleId = a_params.args[2].GetString();
                 command.pageId = a_params.args[3].GetString();
                 command.controlId = a_params.args[4].GetString();
+                command.value.structSize = sizeof(AbsoluteControlPanelApi::ValueV1);
                 command.value.kind = static_cast<SlopApi::ValueKind>(ReadUnsigned(a_params.args[5]));
                 strcpy_s(command.value.stringValue, a_params.args[9].GetString());
                 const std::string_view name = a_params.args[1].GetString();
@@ -222,6 +230,8 @@ namespace AbsoluteControlPanelResearch::Scaleform
                 else if (name == "dirtyStay") command.kind = MenuSession::CommandKind::ResolveDirtyStay;
                 else if (name == "bindingReassign") command.kind = MenuSession::CommandKind::ResolveBindingReassign;
                 else if (name == "bindingCancel") command.kind = MenuSession::CommandKind::ResolveBindingCancel;
+                else if (name == "actionConfirm") command.kind = MenuSession::CommandKind::ResolveActionConfirm;
+                else if (name == "actionCancel") command.kind = MenuSession::CommandKind::ResolveActionCancel;
                 else command.schemaVersion = 0;
                 if (name == "selectGridColumn") {
                     command.columnId = command.controlId;
@@ -279,6 +289,26 @@ namespace AbsoluteControlPanelResearch::Scaleform
                     "bridge_refresh_consumed",
                     std::format("refresh_revision={}", refreshCursor));
                 DeferModel(session.Snapshot(), "provider-refresh");
+            }
+
+            bool PollOpenRequest()
+            {
+                MenuApiHost::OpenRequest request;
+                if (closing || !MenuApiHost::ConsumeOpenRequest(request)) {
+                    return false;
+                }
+                MenuSession::Command command;
+                command.schemaVersion = MenuSession::kSchemaVersion;
+                command.kind = MenuSession::CommandKind::SelectPage;
+                command.moduleId = request.moduleId;
+                command.pageId = request.pageId;
+                EvidenceLog::Event(
+                    "provider_open_consumed",
+                    std::format(
+                        "serial={} module={} page={}", request.serial,
+                        request.moduleId, request.pageId));
+                DeferModel(session.Dispatch(command), "provider-open-route");
+                return true;
             }
 
             void DeferModel(MenuSession::Model a_model, std::string_view a_source)
@@ -532,9 +562,10 @@ namespace AbsoluteControlPanelResearch::Scaleform
             {
                 const auto& descriptor = a_control.descriptor;
                 auto* root = movie->asMovieRoot.get();
-                RE::Scaleform::GFx::Value choiceOptions;
+                RE::Scaleform::GFx::Value choiceOptions, recordItems;
                 root->CreateArray(&choiceOptions);
-                bool ok = choiceOptions.IsArray();
+                root->CreateArray(&recordItems);
+                bool ok = choiceOptions.IsArray() && recordItems.IsArray();
                 for (const auto& source : a_control.choiceOptions) {
                     RE::Scaleform::GFx::Value option;
                     root->CreateObject(&option);
@@ -545,6 +576,19 @@ namespace AbsoluteControlPanelResearch::Scaleform
                         choiceOptions.PushBack(option);
                     if (!ok) return false;
                 }
+                for (const auto& source : a_control.recordItems) {
+                    RE::Scaleform::GFx::Value item;
+                    root->CreateObject(&item);
+                    ok = ok && item.IsObject() &&
+                        item.SetMember("flags", RE::Scaleform::GFx::Value(
+                            source.flags)) &&
+                        SetString(item, "recordId", source.recordId) &&
+                        SetString(item, "label", source.label) &&
+                        SetString(item, "summary", source.summary) &&
+                        SetString(item, "detail", source.detail) &&
+                        recordItems.PushBack(item);
+                    if (!ok) return false;
+                }
                 return ok && SetString(a_target, "controlId", descriptor.controlId) &&
                     a_target.SetMember("kind", RE::Scaleform::GFx::Value(static_cast<std::uint32_t>(descriptor.kind))) &&
                     a_target.SetMember("flags", RE::Scaleform::GFx::Value(descriptor.flags)) &&
@@ -553,18 +597,70 @@ namespace AbsoluteControlPanelResearch::Scaleform
                     a_target.SetMember("maximum", RE::Scaleform::GFx::Value(descriptor.maximumValue)) &&
                     a_target.SetMember("step", RE::Scaleform::GFx::Value(descriptor.stepValue)) &&
                     a_target.SetMember("available", RE::Scaleform::GFx::Value(a_control.available)) &&
+                    a_target.SetMember("semanticVisible", RE::Scaleform::GFx::Value(
+                        a_control.semanticVisible)) &&
+                    a_target.SetMember("semanticEnabled", RE::Scaleform::GFx::Value(
+                        a_control.semanticEnabled)) &&
                     a_target.SetMember("valueKind", RE::Scaleform::GFx::Value(static_cast<std::uint32_t>(a_control.value.kind))) &&
                     a_target.SetMember("booleanValue", RE::Scaleform::GFx::Value(a_control.value.booleanValue != 0)) &&
                     a_target.SetMember("integerValue", RE::Scaleform::GFx::Value(static_cast<double>(a_control.value.integerValue))) &&
                     a_target.SetMember("floatValue", RE::Scaleform::GFx::Value(a_control.value.floatValue)) &&
                     SetString(a_target, "stringValue", a_control.value.stringValue) &&
                     SetString(a_target, "error", a_control.error) &&
-                    a_target.SetMember("choiceOptions", choiceOptions);
+                    a_target.SetMember("choiceOptions", choiceOptions) &&
+                    a_target.SetMember("recordItems", recordItems);
+            }
+
+            [[nodiscard]] bool SerializeCompositionNode(
+                RE::Scaleform::GFx::Value& target,
+                const Composition::Node& node) const
+            {
+                return target.IsObject() &&
+                    target.SetMember("kind", RE::Scaleform::GFx::Value(
+                        static_cast<std::uint32_t>(node.kind))) &&
+                    target.SetMember("flags", RE::Scaleform::GFx::Value(
+                        node.flags)) &&
+                    target.SetMember("role", RE::Scaleform::GFx::Value(
+                        static_cast<std::uint32_t>(node.role))) &&
+                    SetString(target, "nodeId", node.nodeId) &&
+                    SetString(target, "parentNodeId", node.parentNodeId) &&
+                    SetString(target, "referenceId", node.referenceId) &&
+                    SetString(target, "label", node.label) &&
+                    SetString(target, "description", node.description) &&
+                    target.SetMember("auxiliaryValue", RE::Scaleform::GFx::Value(
+                        node.auxiliaryValue)) &&
+                    target.SetMember("stateFlags", RE::Scaleform::GFx::Value(
+                        node.state.flags)) &&
+                    target.SetMember("severity", RE::Scaleform::GFx::Value(
+                        static_cast<std::uint32_t>(node.state.severity))) &&
+                    SetString(target, "value", node.state.value) &&
+                    SetString(target, "detail", node.state.detail) &&
+                    SetString(target, "sourceLabel", node.state.sourceLabel) &&
+                    target.SetMember("sequence", RE::Scaleform::GFx::Value(
+                        static_cast<double>(node.state.sequence)));
+            }
+
+            [[nodiscard]] bool SerializeCompositionAssociation(
+                RE::Scaleform::GFx::Value& target,
+                const Composition::Association& association) const
+            {
+                return target.IsObject() &&
+                    target.SetMember("kind", RE::Scaleform::GFx::Value(
+                        static_cast<std::uint32_t>(association.kind))) &&
+                    target.SetMember("flags", RE::Scaleform::GFx::Value(
+                        association.flags)) &&
+                    SetString(target, "associationId",
+                        association.associationId) &&
+                    SetString(target, "sourceId", association.sourceId) &&
+                    SetString(target, "targetNodeId",
+                        association.targetNodeId) &&
+                    SetString(target, "semanticId", association.semanticId);
             }
 
             [[nodiscard]] bool SerializeLiveComponent(
                 RE::Scaleform::GFx::Value& target,
-                const MenuSession::Page::LiveComponent& component) const
+                const MenuSession::Page::LiveComponent& component,
+                bool latestSampleOnly = false) const
             {
                 auto* root = movie->asMovieRoot.get();
                 const auto& descriptor = component.descriptor;
@@ -576,12 +672,164 @@ namespace AbsoluteControlPanelResearch::Scaleform
                         descriptor.flags)) &&
                     target.SetMember("available", RE::Scaleform::GFx::Value(
                         component.available)) &&
-                    SetString(target, "error", component.error);
-                if (!ok || descriptor.kind !=
-                        AbsoluteControlPanelExperimental::ComponentKind::SegmentedAllocationGrid) {
-                    return ok;
+                    SetString(target, "error", component.error) &&
+                    target.SetMember("sequence", RE::Scaleform::GFx::Value(
+                        static_cast<double>(component.frame.sequence))) &&
+                    target.SetMember("timestampUs", RE::Scaleform::GFx::Value(
+                        static_cast<double>(component.frame.monotonicTimestampUs))) &&
+                    target.SetMember("frameFlags", RE::Scaleform::GFx::Value(
+                        component.frame.flags));
+                if (!ok) return false;
+
+                const auto serializeBand = [&](RE::Scaleform::GFx::Value& value,
+                                               const auto& source) {
+                    return value.IsObject() &&
+                        value.SetMember("semantic", RE::Scaleform::GFx::Value(
+                            static_cast<std::uint32_t>(source.semantic))) &&
+                        value.SetMember("minimum", RE::Scaleform::GFx::Value(
+                            source.minimumValue)) &&
+                        value.SetMember("maximum", RE::Scaleform::GFx::Value(
+                            source.maximumValue)) &&
+                        value.SetMember("visualRole", RE::Scaleform::GFx::Value(
+                            static_cast<std::uint32_t>(source.visualRole))) &&
+                        SetString(value, "label", source.label);
+                };
+                const auto serializeMarker = [&](RE::Scaleform::GFx::Value& value,
+                                                 const auto& source) {
+                    return value.IsObject() &&
+                        value.SetMember("semantic", RE::Scaleform::GFx::Value(
+                            static_cast<std::uint32_t>(source.semantic))) &&
+                        value.SetMember("value", RE::Scaleform::GFx::Value(
+                            source.value)) &&
+                        value.SetMember("visualRole", RE::Scaleform::GFx::Value(
+                            static_cast<std::uint32_t>(source.visualRole))) &&
+                        SetString(value, "markerId", source.markerId) &&
+                        SetString(value, "label", source.label) &&
+                        SetString(value, "controlId", source.controlId);
+                };
+
+                if (descriptor.kind ==
+                    AbsoluteControlPanelExperimental::ComponentKind::RangeMeter) {
+                    const auto& range = descriptor.rangeMeter;
+                    const bool hasDynamic =
+                        component.frame.structSize >=
+                            sizeof(AbsoluteControlPanelExperimental::LiveFrameV1) &&
+                        component.frame.dynamicRange.present != 0;
+                    const auto bandCount = hasDynamic ?
+                        component.frame.dynamicRange.bandCount : range.bandCount;
+                    const auto markerCount = hasDynamic ?
+                        component.frame.dynamicRange.markerCount : range.markerCount;
+                    RE::Scaleform::GFx::Value bands, markers;
+                    root->CreateArray(&bands);
+                    root->CreateArray(&markers);
+                    ok = bands.IsArray() && markers.IsArray() &&
+                        target.SetMember("minimum", RE::Scaleform::GFx::Value(
+                            range.minimumValue)) &&
+                        target.SetMember("maximum", RE::Scaleform::GFx::Value(
+                            range.maximumValue)) &&
+                        SetString(target, "valueFormat", range.valueFormat) &&
+                        target.SetMember("liveAvailable", RE::Scaleform::GFx::Value(
+                            component.available && component.frame.rangeMeter.available != 0)) &&
+                        target.SetMember("liveValue", RE::Scaleform::GFx::Value(
+                            component.frame.rangeMeter.liveValue));
+                    for (std::uint32_t index = 0; ok && index < bandCount; ++index) {
+                        RE::Scaleform::GFx::Value band;
+                        root->CreateObject(&band);
+                        ok = serializeBand(band, hasDynamic ?
+                            component.frame.dynamicRange.bands[index] :
+                            range.bands[index]) && bands.PushBack(band);
+                    }
+                    for (std::uint32_t index = 0; ok && index < markerCount; ++index) {
+                        RE::Scaleform::GFx::Value marker;
+                        root->CreateObject(&marker);
+                        ok = serializeMarker(marker, hasDynamic ?
+                            component.frame.dynamicRange.markers[index] :
+                            range.markers[index]) &&
+                            markers.PushBack(marker);
+                    }
+                    return ok && target.SetMember("bands", bands) &&
+                        target.SetMember("markers", markers);
                 }
 
+                if (descriptor.kind ==
+                    AbsoluteControlPanelExperimental::ComponentKind::TelemetryPlot) {
+                    const auto& plot = descriptor.telemetryPlot;
+                    RE::Scaleform::GFx::Value series, bands, markers, samples;
+                    root->CreateArray(&series);
+                    root->CreateArray(&bands);
+                    root->CreateArray(&markers);
+                    root->CreateArray(&samples);
+                    ok = series.IsArray() && bands.IsArray() && markers.IsArray() &&
+                        samples.IsArray() &&
+                        target.SetMember("historyCapacity", RE::Scaleform::GFx::Value(
+                            plot.historyCapacity)) &&
+                        target.SetMember("autoRange", RE::Scaleform::GFx::Value(
+                            plot.autoRange != 0)) &&
+                        target.SetMember("minimum", RE::Scaleform::GFx::Value(
+                            plot.minimumValue)) &&
+                        target.SetMember("maximum", RE::Scaleform::GFx::Value(
+                            plot.maximumValue)) &&
+                        target.SetMember("availableMask", RE::Scaleform::GFx::Value(
+                            component.frame.telemetryPlot.availableMask));
+                    for (std::uint32_t index = 0; ok && index < plot.seriesCount; ++index) {
+                        RE::Scaleform::GFx::Value item;
+                        root->CreateObject(&item);
+                        const auto& source = plot.series[index];
+                        ok = item.IsObject() &&
+                            SetString(item, "seriesId", source.seriesId) &&
+                            SetString(item, "label", source.label) &&
+                            item.SetMember("visualRole", RE::Scaleform::GFx::Value(
+                                static_cast<std::uint32_t>(source.visualRole))) &&
+                            series.PushBack(item);
+                    }
+                    for (std::uint32_t index = 0; ok && index < plot.bandCount; ++index) {
+                        RE::Scaleform::GFx::Value band;
+                        root->CreateObject(&band);
+                        ok = serializeBand(band, plot.bands[index]) && bands.PushBack(band);
+                    }
+                    for (std::uint32_t index = 0; ok && index < plot.markerCount; ++index) {
+                        RE::Scaleform::GFx::Value marker;
+                        root->CreateObject(&marker);
+                        ok = serializeMarker(marker, plot.markers[index]) &&
+                            markers.PushBack(marker);
+                    }
+
+                    const auto capacity = (std::min)(plot.historyCapacity,
+                        static_cast<std::uint32_t>(
+                            AbsoluteControlPanelExperimental::kMaximumPlotSamples));
+                    const auto count = latestSampleOnly ?
+                        (component.available ? 1U : 0U) :
+                        (std::min)(component.telemetryHistory.count, capacity);
+                    const auto start = count == capacity && capacity != 0 ?
+                        component.telemetryHistory.writeIndex % capacity : 0U;
+                    for (std::uint32_t sampleIndex = 0;
+                         ok && sampleIndex < count; ++sampleIndex) {
+                        const auto& source = latestSampleOnly ?
+                            component.frame.telemetryPlot :
+                            component.telemetryHistory.samples[
+                                (start + sampleIndex) % capacity];
+                        RE::Scaleform::GFx::Value sample, values;
+                        root->CreateObject(&sample);
+                        root->CreateArray(&values);
+                        ok = sample.IsObject() && values.IsArray() &&
+                            sample.SetMember("availableMask", RE::Scaleform::GFx::Value(
+                                source.availableMask));
+                        for (std::uint32_t seriesIndex = 0;
+                             ok && seriesIndex < plot.seriesCount; ++seriesIndex) {
+                            ok = values.PushBack(RE::Scaleform::GFx::Value(
+                                source.values[seriesIndex]));
+                        }
+                        ok = ok && sample.SetMember("values", values) &&
+                            samples.PushBack(sample);
+                    }
+                    return ok && target.SetMember("series", series) &&
+                        target.SetMember("bands", bands) &&
+                        target.SetMember("markers", markers) &&
+                        target.SetMember("samples", samples);
+                }
+
+                if (descriptor.kind != AbsoluteControlPanelExperimental::
+                        ComponentKind::SegmentedAllocationGrid) return false;
                 const auto& grid = descriptor.segmentedGrid;
                 const auto& frame = component.frame.segmentedGrid;
                 RE::Scaleform::GFx::Value columns, tiers;
@@ -589,8 +837,6 @@ namespace AbsoluteControlPanelResearch::Scaleform
                 root->CreateArray(&tiers);
                 ok = columns.IsArray() && tiers.IsArray() &&
                     SetString(target, "controlId", grid.controlId) &&
-                    target.SetMember("sequence", RE::Scaleform::GFx::Value(
-                        static_cast<double>(component.frame.sequence))) &&
                     target.SetMember("flags", RE::Scaleform::GFx::Value(
                         component.frame.flags));
                 for (std::uint32_t tierIndex = 0;
@@ -612,9 +858,23 @@ namespace AbsoluteControlPanelResearch::Scaleform
                     root->CreateArray(&segments);
                     const auto& source = grid.columns[columnIndex];
                     const auto& state = frame.columns[columnIndex];
+                    const char* associatedControlId = "";
+                    for (std::uint32_t associationIndex = 0;
+                         associationIndex < descriptor.associationCount;
+                         ++associationIndex) {
+                        const auto& association =
+                            descriptor.associations[associationIndex];
+                        if (std::strcmp(association.columnId,
+                                source.columnId) == 0) {
+                            associatedControlId = association.controlId;
+                            break;
+                        }
+                    }
                     ok = column.IsObject() && segments.IsArray() &&
                         SetString(column, "columnId", source.columnId) &&
                         SetString(column, "label", source.label) &&
+                        SetString(column, "associatedControlId",
+                            associatedControlId) &&
                         column.SetMember("maximumSegments", RE::Scaleform::GFx::Value(
                             source.maximumSegments)) &&
                         column.SetMember("segmentCount", RE::Scaleform::GFx::Value(
@@ -646,6 +906,40 @@ namespace AbsoluteControlPanelResearch::Scaleform
                 }
                 return ok && target.SetMember("tiers", tiers) &&
                     target.SetMember("columns", columns);
+            }
+
+            void PublishLivePatch(const MenuSession::LivePatch& patch)
+            {
+                if (!movie || !movie->asMovieRoot || !menuObj.IsObject()) {
+                    return;
+                }
+                auto* root = movie->asMovieRoot.get();
+                RE::Scaleform::GFx::Value components;
+                root->CreateArray(&components);
+                bool populated = components.IsArray();
+                for (const auto& source : patch.components) {
+                    RE::Scaleform::GFx::Value component;
+                    root->CreateObject(&component);
+                    populated = populated && component.IsObject() &&
+                        SerializeLiveComponent(component, source, true) &&
+                        components.PushBack(component);
+                    if (!populated) break;
+                }
+                RE::Scaleform::GFx::Value moduleId, pageId;
+                root->CreateString(&moduleId, patch.moduleId.c_str());
+                root->CreateString(&pageId, patch.pageId.c_str());
+                RE::Scaleform::GFx::Value arguments[3]{
+                    moduleId, pageId, components
+                };
+                const bool invoked = populated && menuObj.Invoke(
+                    "applyLiveComponents", nullptr, arguments,
+                    std::size(arguments));
+                if (!invoked) {
+                    EvidenceLog::Event("bridge_live_patch_failed",
+                        std::format("module={} page={} components={}",
+                            patch.moduleId, patch.pageId,
+                            patch.components.size()));
+                }
             }
 
             void PublishModel(const MenuSession::Model& a_model)
@@ -701,11 +995,17 @@ namespace AbsoluteControlPanelResearch::Scaleform
                         a_model.textCaptureActive)) &&
                     model.SetMember("bindingConflictActive", RE::Scaleform::GFx::Value(
                         a_model.bindingConflictActive)) &&
+                    model.SetMember("actionConfirmationActive", RE::Scaleform::GFx::Value(
+                        a_model.actionConfirmationActive)) &&
                     SetString(model, "captureModuleId", a_model.captureModuleId) &&
                     SetString(model, "capturePageId", a_model.capturePageId) &&
                     SetString(model, "captureControlId", a_model.captureControlId) &&
                     SetString(model, "bindingConflictDetail",
                         a_model.bindingConflictDetail) &&
+                    SetString(model, "actionConfirmationLabel",
+                        a_model.actionConfirmationLabel) &&
+                    SetString(model, "actionConfirmationDetail",
+                        a_model.actionConfirmationDetail) &&
                     SetString(model, "error", a_model.error);
                 for (std::uint32_t moduleIndex = 0;
                      populated && moduleIndex < a_model.modules.size(); ++moduleIndex) {
@@ -720,11 +1020,15 @@ namespace AbsoluteControlPanelResearch::Scaleform
                 }
                 for (std::uint32_t pageIndex = 0; populated && pageIndex < a_model.pages.size(); ++pageIndex) {
                     const auto& source = a_model.pages[pageIndex];
-                    RE::Scaleform::GFx::Value page, controls, liveComponents;
+                    RE::Scaleform::GFx::Value page, controls, liveComponents,
+                        compositionNodes, compositionAssociations;
                     root->CreateObject(&page); root->CreateArray(&controls);
                     root->CreateArray(&liveComponents);
+                    root->CreateArray(&compositionNodes);
+                    root->CreateArray(&compositionAssociations);
                     populated = page.IsObject() && controls.IsArray() &&
-                        liveComponents.IsArray() &&
+                        liveComponents.IsArray() && compositionNodes.IsArray() &&
+                        compositionAssociations.IsArray() &&
                         SetString(page, "moduleId", source.moduleId) &&
                         SetString(page, "moduleTitle", source.moduleTitle) &&
                         SetString(page, "pageId", source.pageId) &&
@@ -744,8 +1048,35 @@ namespace AbsoluteControlPanelResearch::Scaleform
                                 source.liveComponents[componentIndex]) &&
                             liveComponents.PushBack(component);
                     }
+                    for (std::uint32_t nodeIndex = 0; populated &&
+                         nodeIndex < source.composition.nodes.size(); ++nodeIndex) {
+                        RE::Scaleform::GFx::Value node;
+                        root->CreateObject(&node);
+                        populated = SerializeCompositionNode(
+                            node, source.composition.nodes[nodeIndex]) &&
+                            compositionNodes.PushBack(node);
+                    }
+                    for (std::uint32_t associationIndex = 0; populated &&
+                         associationIndex <
+                            source.composition.associations.size();
+                         ++associationIndex) {
+                        RE::Scaleform::GFx::Value association;
+                        root->CreateObject(&association);
+                        populated = SerializeCompositionAssociation(
+                            association,
+                            source.composition.associations[associationIndex]) &&
+                            compositionAssociations.PushBack(association);
+                    }
                     populated = populated && page.SetMember("controls", controls) &&
                         page.SetMember("liveComponents", liveComponents) &&
+                        page.SetMember("compositionEnhanced",
+                            RE::Scaleform::GFx::Value(
+                                source.composition.enhanced)) &&
+                        SetString(page, "compositionFallbackReason",
+                            source.composition.fallbackReason) &&
+                        page.SetMember("compositionNodes", compositionNodes) &&
+                        page.SetMember("compositionAssociations",
+                            compositionAssociations) &&
                         pages.PushBack(page);
                 }
                 populated = populated && model.SetMember("modules", modules) &&
@@ -944,7 +1275,6 @@ namespace AbsoluteControlPanelResearch::Scaleform
 
             std::uint64_t refreshCursor{};
             std::uint64_t lastAppliedGeneration{};
-            std::chrono::steady_clock::time_point lastLivePoll{};
             std::optional<MenuSession::Model> pendingModel;
             bool modelPublicationActive{};
             bool closing{};

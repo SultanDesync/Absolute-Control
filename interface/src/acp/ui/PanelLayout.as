@@ -56,5 +56,6 @@ package acp.ui
         public static const FOCUS_CONTROLS:int = 1;
         public static const FOCUS_ACTIONS:int = 2;
         public static const FOCUS_GRID:int = 3;
+        public static const FOCUS_ANCHORS:int = 4;
     }
 }

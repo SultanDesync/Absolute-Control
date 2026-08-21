@@ -62,7 +62,7 @@ namespace AbsoluteControlPanelResearch::Ui::PauseMenuIntegration
             Failed
         };
 
-        bool g_enablePauseEntry{};
+        std::atomic_bool g_enablePauseEntry{};
         std::atomic<RE::Scaleform::GFx::Movie*> g_expectedMovie{};
         std::atomic<std::uint32_t> g_cycle{};
         std::atomic<std::uint32_t> g_completedCycle{};
@@ -511,7 +511,8 @@ namespace AbsoluteControlPanelResearch::Ui::PauseMenuIntegration
                         "name={} menu=0x{:X} count={} index={}", name ? name : "<null>",
                         reinterpret_cast<std::uintptr_t>(menu), after.count, after.index));
 
-                if (isPauseMenu && g_enablePauseEntry) {
+                if (isPauseMenu &&
+                    g_enablePauseEntry.load(std::memory_order_acquire)) {
                     OnPauseMenuInserted(menu);
                 }
             }
@@ -520,7 +521,7 @@ namespace AbsoluteControlPanelResearch::Ui::PauseMenuIntegration
 
     bool InstallLifecycleHook(bool a_enablePauseEntry) noexcept
     {
-        g_enablePauseEntry = a_enablePauseEntry;
+        g_enablePauseEntry.store(a_enablePauseEntry, std::memory_order_release);
         constexpr std::uintptr_t kCallsiteRva = 0x0254181C;
         constexpr std::uintptr_t kExpectedTargetRva = 0x0253EF10;
         const auto imageBase = REX::FModule::GetExecutingModule().GetBaseAddress();
@@ -549,6 +550,18 @@ namespace AbsoluteControlPanelResearch::Ui::PauseMenuIntegration
                 "callsite_rva=0x{:08X} target_rva=0x{:08X}", kCallsiteRva,
                 kExpectedTargetRva));
         return true;
+    }
+
+    void SetEntryEnabled(bool a_enabled) noexcept
+    {
+        g_enablePauseEntry.store(a_enabled, std::memory_order_release);
+        EvidenceLog::Event("pause_entry_setting_changed",
+            std::format("enabled={}", a_enabled));
+    }
+
+    bool IsEntryEnabled() noexcept
+    {
+        return g_enablePauseEntry.load(std::memory_order_acquire);
     }
 
     void LogRegistration(bool a_enablePauseEntry) noexcept

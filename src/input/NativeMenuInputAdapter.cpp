@@ -349,6 +349,8 @@ namespace AbsoluteControlPanelResearch::Input
         case MenuSession::CommandKind::ResolveDirtyStay: return "dirtyStay";
         case MenuSession::CommandKind::ResolveBindingReassign: return "bindingReassign";
         case MenuSession::CommandKind::ResolveBindingCancel: return "bindingCancel";
+        case MenuSession::CommandKind::ResolveActionConfirm: return "actionConfirm";
+        case MenuSession::CommandKind::ResolveActionCancel: return "actionCancel";
         case MenuSession::CommandKind::Compound: return "compound";
         }
         return "unknown";

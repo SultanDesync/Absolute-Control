@@ -11,7 +11,8 @@ package acp.ui
 
         public function send(model:Object, current:Object, command:String,
             control:Object, booleanValue:Boolean, integerValue:Number,
-            floatValue:Number, controlIdentity:Boolean = true):void
+            floatValue:Number, controlIdentity:Boolean = true,
+            stringValue:String = ""):void
         {
             if (model == null || bridge == null || bridge.dispatch == null ||
                 (current == null && command != "close")) return;
@@ -31,17 +32,19 @@ package acp.ui
                 pageId = String(control.pageId);
             }
             dispatchFlat(command, moduleId, pageId, controlId, valueKind,
-                booleanValue, integerValue, floatValue, Number(model.generation));
+                booleanValue, integerValue, floatValue, Number(model.generation),
+                stringValue);
         }
 
         public function dispatchFlat(command:String, moduleId:String,
             pageId:String, controlId:String, valueKind:uint,
             booleanValue:Boolean, integerValue:Number, floatValue:Number,
-            expectedGeneration:Number):void
+            expectedGeneration:Number, stringValue:String = ""):void
         {
             if (bridge == null || bridge.dispatch == null) return;
             bridge.dispatch(1, command, moduleId, pageId, controlId, valueKind,
-                booleanValue, integerValue, floatValue, "", expectedGeneration);
+                booleanValue, integerValue, floatValue, stringValue,
+                expectedGeneration);
         }
 
         public function sendCompound(model:Object, current:Object,

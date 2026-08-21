@@ -1,11 +1,16 @@
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <string>
 #include <string_view>
 
-#define CHECK(expression)            \
-    do {                             \
-        if (!(expression)) return 1; \
+#define CHECK(expression)                                      \
+    do {                                                       \
+        if (!(expression)) {                                  \
+            std::cerr << "CHECK failed at line " << __LINE__  \
+                      << ": " #expression << '\n';           \
+            return 1;                                         \
+        }                                                      \
     } while (false)
 
 namespace
@@ -46,16 +51,34 @@ int main(int a_argc, char** a_argv)
     for (const auto forbidden : {
              "research_input_mailbox_registered",
              "foreign_menu_probe_queued",
-             "watchdog_fired",
-             "Control Panel Research",
-             "AbsoluteControlPanelResearch.dummy.ini" }) {
+             "watchdog_fired" }) {
         CHECK(!Contains(release, forbidden));
         CHECK(Contains(research, forbidden));
+    }
+    for (const auto retired : {
+             "Control Panel Research",
+             "AbsoluteControlPanelResearch.dummy.ini",
+             "Representative Boolean setting owned by the research subscriber." }) {
+        CHECK(!Contains(release, retired));
+        CHECK(!Contains(research, retired));
+    }
+    for (const auto productSurface : {
+             "Absolute Control",
+             "registered-modules",
+             "host-buses",
+             "Keep plugin registration order or sort module names alphabetically. Absolute Control remains last." }) {
+        CHECK(Contains(release, productSurface));
+        CHECK(Contains(research, productSurface));
     }
     CHECK(Contains(release,
         "AbsoluteControlPanel_QueryLiveComponentsExperimental"));
     CHECK(Contains(research,
         "AbsoluteControlPanel_QueryLiveComponentsExperimental"));
+
+    // C1 exports the independently negotiated semantic lane only after native
+    // snapshots, bridge serialization, rendering, input, and fallback exist.
+    CHECK(Contains(release, "AbsoluteControlPanel_QueryCompositionApi"));
+    CHECK(Contains(research, "AbsoluteControlPanel_QueryCompositionApi"));
 
     // The supported public ABI remains available in both compositions.
     CHECK(Contains(release, "AbsoluteControlPanel_QueryApi"));

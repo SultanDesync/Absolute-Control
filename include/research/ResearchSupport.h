@@ -21,6 +21,6 @@ namespace AbsoluteControlPanelResearch::ResearchSupport
     // ResearchDev-only title handshake. It starts before PostDataLoad so the
     // runner can advance the title prompt that gates PostDataLoad itself.
     void StartTitleAdvance(const Config& a_config) noexcept;
-    void Start(const Config& a_config, bool a_providerReady) noexcept;
+    void Start(const Config& a_config) noexcept;
     void Stop() noexcept;
 }

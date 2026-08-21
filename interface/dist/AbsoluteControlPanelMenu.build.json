@@ -1,79 +1,99 @@
 {
-    "compiler":  "Apache Flex mxmlc 4.16.1 build 20171115",
-    "targetPlayer":  "11.5",
-    "swfVersion":  18,
-    "playerGlobalCommit":  "fef560243029214656d83fc673be0267a1ea0816",
-    "sourceSha256":  "B1C4963E9A41414361D9FDD0402308CBE5E9B1C837CF86D2AFBCAF9BA23BE307",
-    "sourceTreeSha256":  "8D345FD3325465100D7CFF4AE7359524E33EEEC2CF20A75BA04578ED9B37BA2E",
-    "sources":  [
-                    {
-                        "path":  "AbsoluteControlPanelMenu.as",
-                        "sha256":  "B1C4963E9A41414361D9FDD0402308CBE5E9B1C837CF86D2AFBCAF9BA23BE307"
-                    },
-                    {
-                        "path":  "acp/ui/BindingConflictDialog.as",
-                        "sha256":  "C88774C0DD483F648FCD5147D6CABA369F2860D5539AF18671B0D3B5253FAE9C"
-                    },
-                    {
-                        "path":  "acp/ui/BridgeCommandDispatcher.as",
-                        "sha256":  "DBB159AB5A52F0803295BCE94F13ED05A8BDF56C89ADCDDC4EAF272C6E9BD760"
-                    },
-                    {
-                        "path":  "acp/ui/ChoiceInputRouter.as",
-                        "sha256":  "F6A2AA0B0987C714BFE1CF745BCB8191205248D0BF21D543BED4C5B615B92AAD"
-                    },
-                    {
-                        "path":  "acp/ui/ControlWidgets.as",
-                        "sha256":  "EC9EC17F8E3C466DDD7BB10B96F9465F8CF9D491E108C79319DAF18BCD68F992"
-                    },
-                    {
-                        "path":  "acp/ui/DirtyDecisionDialog.as",
-                        "sha256":  "92A7121DE467D921C15793F8AC9D59832B7491B2F1B153633AE39F8AF339BA16"
-                    },
-                    {
-                        "path":  "acp/ui/FontAssets/Roboto-Bold.ttf",
-                        "sha256":  "9287925CAE90AC480804094FF0876832065E2DB116470DA1F524D79ED9C18B70"
-                    },
-                    {
-                        "path":  "acp/ui/FontAssets/Roboto-Regular.ttf",
-                        "sha256":  "B2EFABCA5EA4BC56EEA829713706B5CD0788B82ACA153BD4ADDE9B1573933B4F"
-                    },
-                    {
-                        "path":  "acp/ui/MenuSelectionState.as",
-                        "sha256":  "559AFF3E5D1314B84876A82B0231DF88CE2B42289949FF71C37DE0125039B272"
-                    },
-                    {
-                        "path":  "acp/ui/MenuShellRenderer.as",
-                        "sha256":  "125519A47625D3BD2C1917B9A206FB0019E66A095827786319CEF50943A84E1A"
-                    },
-                    {
-                        "path":  "acp/ui/ModalInputRouter.as",
-                        "sha256":  "27CC152DC37ECB41CE89FB445326D12E3978E0CB70A1DF5F038920C446F734E5"
-                    },
-                    {
-                        "path":  "acp/ui/PanelLayout.as",
-                        "sha256":  "BA097810BBB58123F7445E962B5901485404A9F405C1E4F1773CDEEADC11C2AF"
-                    },
-                    {
-                        "path":  "acp/ui/PanelTheme.as",
-                        "sha256":  "588D80306BAF190FBAE11602554ADD66849B973C420F21A5B8B56DC10EF64078"
-                    },
-                    {
-                        "path":  "acp/ui/PixelTextRenderer.as",
-                        "sha256":  "30B061AB39E6B4C0E78C2FC9A4DFE03C36414A5390F147C243A2EB7AF4592693"
-                    },
-                    {
-                        "path":  "acp/ui/PointerInteraction.as",
-                        "sha256":  "EA5FE7C15041A7DDAE35AEB5805B3310D0F58B16DD16489D54D14E8B263E0B28"
-                    },
-                    {
-                        "path":  "acp/ui/SliderWriteCoordinator.as",
-                        "sha256":  "7B31A08FFC113012124483B9E50C3FB4378A76EE288A805DC7F97F6BEA35C6F9"
-                    },
-                    {
-                        "path":  "acp/ui/VectorTextRenderer.as",
-                        "sha256":  "9F7365D85F6249B7E75F18E4B55C90D806CC0B905BA12FFC86351A38A902290E"
-                    }
-                ],
-    "outputSha256":  "A9A899A4FC54B36CFE1E9EA3491619E73AE2DBC1FBFD6BBC01A4073AF280C2BD"
+  "compiler": "Apache Flex mxmlc 4.16.1 build 20171115",
+  "targetPlayer": "11.5",
+  "swfVersion": 18,
+  "playerGlobalCommit": "fef560243029214656d83fc673be0267a1ea0816",
+  "sourceSha256": "61456EB5F5FFB85CE4C1849AD8784AC92124291409AF170F9BC15CE7B6F58820",
+  "sourceTreeSha256": "718E40B32E1955461C45A01FB42142C4C36EC96CC8F8436664386EFD5FCD9D6F",
+  "sources": [
+    {
+      "path": "AbsoluteControlPanelMenu.as",
+      "sha256": "61456EB5F5FFB85CE4C1849AD8784AC92124291409AF170F9BC15CE7B6F58820"
+    },
+    {
+      "path": "acp/ui/ActionConfirmationDialog.as",
+      "sha256": "90D02EFCDD54AB68AF44817A649B5DAED1E5601E8BA135B22A04285ECE7EE071"
+    },
+    {
+      "path": "acp/ui/BindingConflictDialog.as",
+      "sha256": "C88774C0DD483F648FCD5147D6CABA369F2860D5539AF18671B0D3B5253FAE9C"
+    },
+    {
+      "path": "acp/ui/BridgeCommandDispatcher.as",
+      "sha256": "26BC3715324C3ED43C2F5B54595899270351BC4B911E6CCE37976786F2426A32"
+    },
+    {
+      "path": "acp/ui/ChoiceInputRouter.as",
+      "sha256": "93E454FEA404E9964E13B40A27C44F497122446425FAF75E511B2804AADE8780"
+    },
+    {
+      "path": "acp/ui/ControlWidgets.as",
+      "sha256": "D037C065563F3BE6D125BF150E7070665A6B091C60441C600564D8AEDFB5E944"
+    },
+    {
+      "path": "acp/ui/DirtyDecisionDialog.as",
+      "sha256": "92A7121DE467D921C15793F8AC9D59832B7491B2F1B153633AE39F8AF339BA16"
+    },
+    {
+      "path": "acp/ui/FontAssets/Roboto-Bold.ttf",
+      "sha256": "9287925CAE90AC480804094FF0876832065E2DB116470DA1F524D79ED9C18B70"
+    },
+    {
+      "path": "acp/ui/FontAssets/Roboto-Regular.ttf",
+      "sha256": "B2EFABCA5EA4BC56EEA829713706B5CD0788B82ACA153BD4ADDE9B1573933B4F"
+    },
+    {
+      "path": "acp/ui/LivePatchCoordinator.as",
+      "sha256": "D3C443CE17CFFDD86472B9AD37828A3C06BB53268FAC8AA63CD262B5AD52EACE"
+    },
+    {
+      "path": "acp/ui/LiveSurfaceInputRouter.as",
+      "sha256": "B161497774BBBA09F1EE79E96ACD4786294C550DFE935225DC438D9B1E5E2E99"
+    },
+    {
+      "path": "acp/ui/MenuSelectionState.as",
+      "sha256": "380E8300F65A0F687B6055C2F452DFC9F52EC101EAEB8C091327695B56E2769F"
+    },
+    {
+      "path": "acp/ui/MenuShellRenderer.as",
+      "sha256": "259194FEC403F6C615EE89B87B06A3D5159D7611952D7E71F8B3514FC7CE11F1"
+    },
+    {
+      "path": "acp/ui/ModalInputRouter.as",
+      "sha256": "9816B4AF2E3FAE170C48F437121C3BB1C11E3DA6C3C042C6B5B513C956247538"
+    },
+    {
+      "path": "acp/ui/PanelLayout.as",
+      "sha256": "3209CA3C6E3A50128B359FF1315B329FFA3FAA523614386D708C59A6EB8BA8F3"
+    },
+    {
+      "path": "acp/ui/PanelTheme.as",
+      "sha256": "8B0494EA13371EBD251A2D09853C7E0A5991FC3906DB452862538B6048772920"
+    },
+    {
+      "path": "acp/ui/PixelTextRenderer.as",
+      "sha256": "30B061AB39E6B4C0E78C2FC9A4DFE03C36414A5390F147C243A2EB7AF4592693"
+    },
+    {
+      "path": "acp/ui/PointerInteraction.as",
+      "sha256": "4BE73064A50D5834D7CDF5F7CB0D933A3D9550804DF650D83F90F5408B0012C6"
+    },
+    {
+      "path": "acp/ui/SemanticAnchorInputRouter.as",
+      "sha256": "B55EC32E91D8B5C60B387E2443EFADC35E23980111DB54AEBCD6C00F43EBC071"
+    },
+    {
+      "path": "acp/ui/SemanticCompositionRenderer.as",
+      "sha256": "05333F360E1494B94718CE03C18F0A03342DD73AF77732FA2876FB58A333F216"
+    },
+    {
+      "path": "acp/ui/SliderWriteCoordinator.as",
+      "sha256": "7B31A08FFC113012124483B9E50C3FB4378A76EE288A805DC7F97F6BEA35C6F9"
+    },
+    {
+      "path": "acp/ui/VectorTextRenderer.as",
+      "sha256": "9F7365D85F6249B7E75F18E4B55C90D806CC0B905BA12FFC86351A38A902290E"
+    }
+  ],
+  "outputSha256": "33C9F943AE94FE4AF4DF8994F04E7CC8C9781E56E3220840DF1B71DABACCBCA8"
 }

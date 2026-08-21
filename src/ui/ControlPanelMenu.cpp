@@ -14,6 +14,8 @@
 #include "ui/MenuAudioIntegration.h"
 #include "ui/MenuMessaging.h"
 
+#include <SFSE/SFSE.h>
+
 namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
 {
     namespace
@@ -484,6 +486,49 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
             "open_hotkey_requested",
             std::format("virtual_key=0x{:02X}", Runtime::Config().openHotkey));
         Ui::QueueControlPanelMessage(RE::UI_MESSAGE_TYPE::kShow, "hotkey");
+    }
+
+    bool RequestOpenFromProvider() noexcept
+    {
+        const auto tasks = SFSE::GetTaskInterface();
+        if (!tasks) {
+            EvidenceLog::Event(
+                "provider_open_rejected", "SFSE task interface unavailable");
+            return false;
+        }
+        try {
+            tasks->AddTask([] {
+                const auto ui = RE::UI::GetSingleton();
+                if (!ui) {
+                    MenuApiHost::DiscardOpenRequest();
+                    EvidenceLog::Event(
+                        "provider_open_rejected", "UI singleton unavailable");
+                    return;
+                }
+                const RE::BSFixedString menuName{ kMenuName.data() };
+                if (ui->IsMenuOpen(menuName)) {
+                    // The visible bridge consumes the route on its next
+                    // ENTER_FRAME heartbeat; issuing another Show is unnecessary.
+                    EvidenceLog::Event(
+                        "provider_open_routed", "menu already open");
+                    return;
+                }
+                if (ui->IsMenuOpen(RE::BSFixedString("PauseMenu")) ||
+                    ui->IsMenuOpen(RE::BSFixedString("MainMenu"))) {
+                    MenuApiHost::DiscardOpenRequest();
+                    EvidenceLog::Event(
+                        "provider_open_rejected", "pause or main menu is active");
+                    return;
+                }
+                Ui::QueueControlPanelMessage(
+                    RE::UI_MESSAGE_TYPE::kShow, "provider-request");
+            });
+            return true;
+        } catch (...) {
+            EvidenceLog::Event(
+                "provider_open_rejected", "could not queue UI task");
+            return false;
+        }
     }
 
     void DispatchPointerPhase(Input::PointerPhase a_phase) noexcept

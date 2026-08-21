@@ -36,8 +36,9 @@ Nexus or SDK release.
 ## Automated checkpoint
 
 `tools/process/validate-current.cmd` passed end to end on the current tree: the canonical release
-build, 9/9 native tests, 8 SDK generator tests, deterministic codegen plus generated-header compile
-fixture, 26-entry catalogue, complete 15-source ActionScript provenance, artifact-tooling fixtures,
+build, 11/11 native tests, 9 SDK generator tests, deterministic codegen plus generated-header compile
+fixture, 29-entry catalogue, complete 20-input SWF provenance (18 ActionScript sources and two font
+assets), artifact-tooling fixtures,
 canonical release manifest, and compatibility ZIP validation all passed. Its report deliberately
 records runtime and UX as `not_run`; this result does not establish release readiness.
 
@@ -52,7 +53,8 @@ records runtime and UX as `not_run`; this result does not establish release read
 | Runtime support | Exact-gated | Only Starfield 1.16.244 is accepted. Twenty Address Library mappings plus the lifecycle callsite/target are checked before readiness. |
 | Host readiness | Runtime verified on current hardened DLL | The query table is discoverable while initializing. Registration and refresh return `NotReady` until runtime validation, hook installation, and factory retention succeed; Head Tracking and AbsoluteZero discover the current ResearchDev artifact at data-load and have a bounded post-post-data-load retry. Terminal failure returns `Rejected`. |
 | Canonical build | Automated verified | Default target `AbsoluteControlPanel` emits `AbsoluteControlPanel.dll` and a packageable release-role manifest. “Packageable” identifies safe inputs; it is not a release claim. |
-| Research build | Automated boundary verified | Opt-in `AbsoluteControlPanelResearchDev` emits a non-packageable manifest and alone contains the synthetic provider, mailbox/SendInput, and DirectInput research tools. The bounded live/compound registry is now shared product code. |
+| Built-in Control module | Automated verified; runtime UX pending | Both artifacts register the same release-safe module last in the module list. Menu owns Registration/Alphabetical ordering, Pause Menu entry, and F1–F12 recovery activation; Registry lists configuration, live-component, and semantic-composition buses with per-module subscribers. Preferences persist to `AbsoluteControlPanel_Custom.ini`. |
+| Research build | Automated boundary verified | Opt-in `AbsoluteControlPanelResearchDev` emits a non-packageable manifest and adds mailbox/SendInput and DirectInput research tools without adding a research-only menu module. The bounded live/compound registry is shared product code. |
 | CommonLibSF | Internal dependency | Pinned structural scaffolding plus an exact 1.16.244 ID overlay; no CommonLibSF/SFSE type crosses the provider ABI. |
 
 Canonical and ResearchDev manifests include workspace-relative paths, hashes, sizes, build identity,
@@ -80,6 +82,10 @@ package validation accepts only the canonical manifest and exact package content
 - `requestRefresh` advances a page-scoped wakeup revision. The open movie acknowledges/polls on its
   UI thread; inactive value refreshes are consumed without rebuilding the active route, registry
   mutations wake it, and a newly opened menu starts from current provider values.
+- The appended, capability-gated `requestOpenPage` command validates an already registered
+  module/page, coalesces the newest request, schedules the host UI task, and lets the Scaleform
+  heartbeat select the route. It performs no UI work or input synthesis on the provider thread;
+  older hosts and rejected requests leave subscriber fallback UI unchanged.
 - Every published model has a per-session generation. Current ActionScript echoes it on commands;
   stale commands are rejected before provider mutation and receive a replacement error model. The
   ten-argument, generation-free bridge form remains only for internal v1 compatibility.
@@ -112,6 +118,9 @@ See [the API contract](MODULE-API.md), [bridge protocol](BRIDGE-PROTOCOL-V1.md),
 | Host-owned mouse capture | Not implemented | The mouse flag remains reserved; no generic mouse recorder is currently published. |
 | Toggle/action/integer/float controls | Runtime verified on current artifact | Head Tracking exercised the current toggle, action, integer-slider, and float-slider presentation with provider draft/apply/cancel ownership. Typed callbacks, bounds, and read-only behavior remain automated. |
 | Choice | Implemented; runtime interaction pending | Providers may publish up to 256 dynamic value/label pairs. The virtualized dropdown supports pointer, wheel, keyboard, paging, selection, dismissal, and readable fallback labels for bounded integral choices. Transient choices change provider-owned view state without dirtying or pinning a transaction. |
+| RecordCollection | Implemented; runtime interaction pending | Providers may publish up to 64 stable-ID records with bounded label, summary, detail, disabled, and warning state. The host renders an eight-row list/detail modal; string selection is provider-owned transient state and old page-descriptor sizes remain accepted. |
+| Action confirmation | Implemented; runtime interaction pending | Capability-gated Actions may request the host-owned Confirm/Cancel modal. Cancel never enters provider code; Confirm resumes the existing immediate, draft-mutating, or apply-before-invoke Action semantics. |
+| Semantic composition C2 / HOTAS Flight Axes | Implemented; runtime visual/UX pending | The independently negotiated experimental API adds bounded sections, cards, rows, status/severity, conditional visibility/enabling, anchors, and same-page live slots with validated series/marker associations. Native session/input and the Scaleform bridge/SWF consume the same immutable tree. A subscriber-independent six-card fixture verifies focus, conditions, embedded live publication, fallback, lifecycle, and snapshot cost. AbsoluteHOTAS now publishes its complete 45-control Flight Axes page as 91 semantic nodes, nine cards, six anchors, six per-axis live plots, and 29 associations. Record/context/workflow/progress and direct manipulation remain rejected. |
 | Segmented allocation grid | Next-build interaction implementation complete; in-game acceptance pending | The product bridge and SWF size each row from provider `maximumSegments` (12 for Power), overlay 1/2/3 on colored pips, provide direct Hollow→Green→Yellow→Red→Hollow cycling, and expose +G/+Y/+R/− quick steps without the old request-count text column. Long labels use the reclaimed space; Up/Down grid focus plus Left/Right adjustment covers keyboard/controller routing. All edits retain shared Apply/Cancel ownership. Runtime persistence, layout, and frame-time acceptance remain open. |
 | Text/numeric editor | Bounded text implemented; direct numeric typing pending | TextInput provides provider-bounded printable-ASCII entry with Backspace, Enter-to-draft, Escape cancel, capture teardown, and ordinary Apply/Cancel ownership. Exact integer slider stepping is available; direct numeric typing is not. |
 | Dirty route/close | HOTAS H1 and Head Tracking runtime interaction verified; full input matrix pending | Page/module switching and Close open a host-owned Apply/Discard/Stay modal. Apply failure retains the provider draft and transaction lease, Discard calls provider Cancel, Stay restores the previously published focus, and only a resolved Close queues Hide. The HOTAS H1 smoke and current Head Tracking change/discard/save/stale-setting tests completed without visible seams; abnormal destruction remains fail-safe Cancel exactly once. |
@@ -119,21 +128,25 @@ See [the API contract](MODULE-API.md), [bridge protocol](BRIDGE-PROTOCOL-V1.md),
 | Typography/localization | Vector font implemented; localization pending | Embedded Roboto regular/bold replaces the temporary pixel glyph renderer. Localization, accessibility, and display scaling remain open. |
 
 Absolute Power now registers module `absolute.power` with stable Presets, Automation / Cheats
-(Coming Soon), and
-Diagnostics pages. Its fixed 35-control labeled-choice Presets workbench remains constant across Power's bounded
-256-preset envelope and includes one populated transient source/startup-aware profile selector, create/duplicate/delete-or-hide/
-revert/startup actions, binding, allocator preview, activation status, within-tier ordering, and
-18 exact tier sliders, plus explicitly labeled rename and host-ordered Save & Activate. Power ships a minimal Stealth profile and headless 1-4 bindings for Balanced, Combat, Travel, and Stealth. The six-system segmented grid publishes immutable low-rate frames through a
-three-slot mailbox. All mutating actions/scalars/compound edits share Power's generation-stamped,
-sparse verified transaction and host teardown pin. The early Automation route publishes three
-controls: Coming Soon status, the unresolved cross-weapon/policy explanation, and an immediate
-persisted Disable All action. The implemented rule editor is withheld and is not an SDK promise.
-Diagnostics now exposes 18 grouped read-only runtime, ship, configuration, frontend, support, and
-path rows without moving ownership into Control. Current runtime evidence covers registration,
-three-page model publication, a fresh native snapshot, 22-step startup settlement through
-convergence, normal menu Hide, responsive process state, normal process exit, and no new dump.
-Human visual/pointer/text traversal, preset/rule Apply/Cancel, Save & Activate and Disable All
-persistence qualification, Control-absent execution, and full controller navigation remain pending.
+(Coming Soon), and Diagnostics pages. On a fully capable host, Presets declares 19 descriptors:
+four group headers, one transient source/startup-aware profile selector, rename and startup fields,
+keyboard and Input Bus bindings, four inline lifecycle actions, and six tie-break Choices. The six
+Choices are explicitly associated with their 12-pip grid rows when the live API advertises that
+capability; otherwise they remain ordinary controls. There are no hidden tier-slider, preview,
+activation-status, or Save & Activate rows in the current surface. Power ships a minimal Stealth
+profile and headless 1-4 bindings for Balanced, Combat, Travel, and Stealth. The six-system grid
+publishes immutable low-rate frames through a three-slot mailbox. All mutating actions, scalar
+writes, and compound edits share Power's generation-stamped sparse transaction and host teardown
+pin. The early Automation route publishes three controls: Coming Soon status, the unresolved
+cross-weapon/policy explanation, and an immediate persisted Disable All action. The implemented
+rule editor is withheld and is not an SDK promise. Diagnostics exposes 19 read-only runtime, ship,
+configuration, frontend, Input Bus, support, and path rows without moving ownership into Control.
+Current runtime evidence predates this final compact layout and covers registration, three-page
+model publication, a fresh native snapshot, 22-step startup settlement through convergence, normal
+menu Hide, responsive process state, normal process exit, and no new dump. Human visual/pointer/text
+traversal, preset Apply/Cancel/read-back, Disable All persistence, Control-absent execution, grid-row
+Choice activation, positional pip edits, and full controller navigation remain pending on the
+current artifacts.
 
 ## Source architecture and diagnostics
 
@@ -141,7 +154,7 @@ Native bootstrap, runtime compatibility/state, API registry/leases, session, inp
 menu integration, Scaleform bridge, and diagnostics now have explicit source owners. Release and
 research source lists are explicit. ActionScript is split into document orchestration, bridge
 dispatch, selection, pointer, widgets, shell, layout/theme, text, and slider coordination. The
-complete ordered `interface/src/**/*.as` tree is the authoritative source identity; all ten files
+complete ordered `interface/src/**/*.as` tree is the authoritative source identity; all 18 files
 are hashed into build metadata and manifests.
 
 Hotkey, pointer, and ResearchDev pollers use cooperative stop tokens and callback gates. Their

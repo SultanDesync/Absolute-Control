@@ -13,12 +13,16 @@ historical research instructions and records what must be true before an SDK tag
 - `include/AbsoluteControlPanelAPI.h` — current public C ABI candidate.
 - `include/LiveComponentsExperimentalAPI.h` — active bounded live/compound ABI candidate; name
   retained until performance and accessibility qualification.
+- `include/AbsoluteControlCompositionExperimentalAPI.h` — active C1 semantic composition
+  candidate; only status/card/row/condition/anchor capabilities are currently advertised.
 - `docs/MODULE-API.md` — ownership, discovery, transactions, and failure behavior.
 - `sdk/menu-definition.schema.json` — strict authoring schema.
 - `sdk/tools/menu_codegen.py` — deterministic descriptor generator.
 - `sdk/examples/absolute-head-tracking.menu.json` — reference definition.
 - `sdk/CHANGELOG.md` — additive capability and migration notes.
 - `catalog/catalog.json` — machine-readable component capability and confidence catalogue.
+- `docs/SUBSCRIBER-UI-STANDARD.md` — normative Level A/B/C subscriber acceptance contract.
+- `docs/SDK-RELEASE-PLAN.md` — audited subscriber order, SDK gaps, freeze gates, and rollout waves.
 - `docs/AI-INTEGRATION-HARNESS.md` — provider inventory, implementation, and validation workflow.
 - `docs/TEST-MATRIX.md` — runtime evidence and remaining compatibility coverage.
 - `docs/RUNTIME-UPDATE-RUNBOOK.md` — version-update recovery and validation procedure.
@@ -53,18 +57,32 @@ Subscriber gameplay must remain fully operational when the host is absent, incom
 rejects registration. Existing Workbench, Dear ImGui, INI, and hotkey paths may coexist during the
 experimental period; the host is not a loader dependency.
 
+The optional `ApiV1::requestOpenPage` tail follows the same rule. Subscribers must size-check the
+table and feature-detect `kCapabilityPageOpenRequests`; `Ok` only acknowledges an asynchronous
+validated route. Any unavailable or unsuccessful result retains the subscriber's legacy menu.
+
 ## Required before the first SDK release
 
 - Freeze ABI v1 structure sizes, flags, capacities, calling conventions, and compatibility rules.
 - Freeze the appended ABI-v1 labeled-choice callback and bounded `TextInput` semantics, then add
   deterministic option-kind schema/code-generator coverage. Structured section headers and inline
   actions are now generated through the capability-gated ABI-v1 extension.
+- Qualify the appended fixed-capacity `RecordCollection` callback and host-owned Action
+  confirmation with the HOTAS profiles/layers, macros, and device/calibration journeys. Automated
+  host, bridge, renderer, and generator coverage exists; in-game pointer/controller UX remains a
+  freeze gate.
 - Freeze the appended provider-owned binding-capture callback set after the accepted Head Tracking
   and Absolute Power Input Bus journeys. Before freeze, standardize clear/unbound semantics; the
   provider-reported Reassign/Cancel collision handshake now has deterministic host and SDK
   coverage. Keep device libraries outside the host.
 - Rename/freeze or revise the active live/compound-component protocol after Absolute Power and
-  AbsoluteHOTAS performance/accessibility qualification.
+  AbsoluteHOTAS performance/accessibility qualification. The row-to-Choice association now uses a
+  capability-gated live-channel tail without changing the committed v1 column-array stride.
+- Qualify the experimental semantic-composition protocol through HOTAS Flight Axes and at least
+  one second subscriber before promoting any structures to the stable API. C2 has synthetic
+  native/bridge/renderer/input/performance coverage plus complete HOTAS Flight Axes descriptor,
+  telemetry, draft, and fallback coverage. In-game visual, three-input-mode, physical capture,
+  long-label, accessibility, and teardown evidence remains required.
 - Package the public header, schema, generator, examples, licence/notice files, and version notes
   without research-only sources.
 - Provide CMake and xmake consumption examples while allowing subscribers to keep an existing
@@ -84,7 +102,8 @@ fallback UI, build/test commands, runtime validation, and known limitations in t
 README. Every accepted host capability updates the component catalogue and test matrix in the same
 change so SDK documentation follows executable behavior rather than anticipated behavior.
 
-The current product validator passes the canonical build, 9/9 native tests, 8 generator tests,
-generated fixture check/compile, 26 catalogue entries, 15-source SWF provenance, artifact
+The current product validator passes the canonical build, 11/11 native tests, 9 generator tests,
+generated fixture check/compile, 29 catalogue entries, complete 20-input SWF provenance
+(18 ActionScript sources and two font assets), artifact
 fixtures, canonical manifest, and compatibility ZIP. Runtime/UX is `not_run`; this is not an SDK
 release or support declaration.

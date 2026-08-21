@@ -7,6 +7,7 @@
 
 #include <cmath>
 #include <condition_variable>
+#include <cstdio>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -14,13 +15,26 @@
 #include <thread>
 #include <vector>
 
-#define CHECK(expression)            \
-    do {                             \
-        if (!(expression)) return 1; \
+#define CHECK(expression)                                      \
+    do {                                                       \
+        if (!(expression)) {                                  \
+            std::fprintf(stderr, "CHECK failed at line %d: %s\n", \
+                __LINE__, #expression);                        \
+            return 1;                                          \
+        }                                                      \
     } while (false)
 
 namespace
 {
+    int g_openWakeCalls{};
+    bool g_openWakeSucceeds{ true };
+
+    bool WakeOpenRequest() noexcept
+    {
+        ++g_openWakeCalls;
+        return g_openWakeSucceeds;
+    }
+
     struct Provider
     {
         int reads{};
@@ -41,6 +55,7 @@ namespace
             AbsoluteControlPanelApi::BindingCaptureState::Capturing };
         std::string captureBinding;
         std::string captureDetail;
+        std::string selectedRecord{ "profile-alpha" };
         SlopApi::ValueV1 lastWrite{};
     };
 
@@ -159,6 +174,9 @@ namespace
         } else if (strcmp(a_control, "scale") == 0) {
             a_value->kind = SlopApi::ValueKind::Float;
             a_value->floatValue = 1.5;
+        } else if (strcmp(a_control, "records") == 0) {
+            a_value->kind = SlopApi::ValueKind::String;
+            strcpy_s(a_value->stringValue, provider.selectedRecord.c_str());
         } else {
             a_value->kind = SlopApi::ValueKind::String;
             strcpy_s(a_value->stringValue, "K");
@@ -166,11 +184,16 @@ namespace
         return SlopApi::Result::Ok;
     }
 
-    SlopApi::Result __cdecl WriteDraft(void* a_context, const char*, const SlopApi::ValueV1* a_value) noexcept
+    SlopApi::Result __cdecl WriteDraft(void* a_context, const char* a_control,
+        const SlopApi::ValueV1* a_value) noexcept
     {
         auto& provider = *static_cast<Provider*>(a_context);
         ++provider.writes;
         provider.lastWrite = *a_value;
+        if (a_control && std::string_view{ a_control } == "records" &&
+            a_value->kind == SlopApi::ValueKind::String) {
+            provider.selectedRecord = a_value->stringValue;
+        }
         return provider.duplicateWrites ? SlopApi::Result::Duplicate :
             SlopApi::Result::Ok;
     }
@@ -268,6 +291,31 @@ namespace
         return SlopApi::Result::Ok;
     }
 
+    AbsoluteControlPanelApi::Result __cdecl ReadRecordItems(
+        void*, const char* a_control,
+        AbsoluteControlPanelApi::RecordItemV1* a_items,
+        std::uint32_t a_capacity, std::uint32_t* a_count) noexcept
+    {
+        if (!a_control || !a_items || !a_count ||
+            std::string_view{ a_control } != "records") {
+            return AbsoluteControlPanelApi::Result::NotFound;
+        }
+        if (a_capacity < 2) {
+            return AbsoluteControlPanelApi::Result::CapacityExceeded;
+        }
+        strcpy_s(a_items[0].recordId, "profile-alpha");
+        strcpy_s(a_items[0].label, "Alpha");
+        strcpy_s(a_items[0].summary, "General flight profile");
+        strcpy_s(a_items[0].detail, "Two layers and no macros.");
+        strcpy_s(a_items[1].recordId, "profile-beta");
+        strcpy_s(a_items[1].label, "Beta");
+        strcpy_s(a_items[1].summary, "Combat profile");
+        strcpy_s(a_items[1].detail, "Three layers and four macros.");
+        a_items[1].flags = AbsoluteControlPanelApi::kRecordItemWarning;
+        *a_count = 2;
+        return AbsoluteControlPanelApi::Result::Ok;
+    }
+
     SlopApi::ControlDescriptorV1 MakeDescriptor(SlopApi::ControlKind a_kind, const char* a_id,
         double a_minimum = 0, double a_maximum = 0, double a_step = 0)
     {
@@ -320,12 +368,24 @@ int main()
         AbsoluteControlPanelApi::kCapabilityBindingConflictResolution) != 0);
     CHECK((publicApi->capabilities &
         AbsoluteControlPanelApi::kCapabilityStructuredLayout) != 0);
+    CHECK((publicApi->capabilities &
+        AbsoluteControlPanelApi::kCapabilityRecordCollections) != 0);
+    CHECK((publicApi->capabilities &
+        AbsoluteControlPanelApi::kCapabilityActionConfirmation) != 0);
+    CHECK((publicApi->capabilities &
+        AbsoluteControlPanelApi::kCapabilityPageOpenRequests) != 0);
+    CHECK((publicApi->capabilities &
+        AbsoluteControlPanelApi::kCapabilityPinnedContextControls) != 0);
+    CHECK(publicApi->structSize >=
+        AbsoluteControlPanelApi::kApiV1RequestOpenPageSize &&
+        publicApi->requestOpenPage);
     CHECK(std::string_view(publicApi->version) == ACP_PRODUCT_VERSION);
     CHECK(std::string_view(api->version) == ACP_PRODUCT_VERSION);
     CHECK(MenuApiHost::Lifecycle() == MenuApiHost::HostLifecycle::Initializing);
     CHECK(api->registerPage(nullptr) == Result::NotReady);
     CHECK(publicApi->registerPage(nullptr) == Result::NotReady);
     CHECK(api->requestRefresh("test.module", "general") == Result::NotReady);
+    CHECK(publicApi->requestOpenPage("test.module", "general") == Result::NotReady);
     MenuApiHost::MarkRuntimeReady();
     CHECK(MenuApiHost::Lifecycle() == MenuApiHost::HostLifecycle::Ready);
     CHECK(api->registerPage(nullptr) == Result::InvalidArgument);
@@ -349,17 +409,19 @@ int main()
         MakeDescriptor(ControlKind::IntegerSlider, "broken", 0, 10, 1),
         MakeDescriptor(ControlKind::Action, "mutate"),
         MakeDescriptor(ControlKind::TextInput, "name", 0, 31, 1),
+        MakeDescriptor(ControlKind::Choice, "profile", 0, 10, 1),
         MakeDescriptor(ControlKind::Action, "save-run")
     };
     generalControls[3].flags = kBindingKeyboard | kBindingModifiers | kBindingClearable;
     generalControls[4].flags = kControlReadOnly;
     generalControls[7].flags = kControlMutatesDraft;
-    generalControls[9].flags = kControlAppliesDraftBeforeInvoke;
+    generalControls[10].flags = kControlAppliesDraftBeforeInvoke;
     PageDescriptorV1 general;
     strcpy_s(general.moduleId, "test.module"); strcpy_s(general.pageId, "general"); strcpy_s(general.displayName, "General");
     general.controlCount = static_cast<std::uint32_t>(std::size(generalControls)); general.controls = generalControls;
     general.context = &generalProvider; general.readValue = &ReadValue; general.writeDraft = &WriteDraft;
     general.invokeAction = &Invoke; general.apply = &Apply; general.cancel = &Cancel;
+    general.readChoiceOptions = &ReadChoiceOptions;
     CHECK(publicApi->registerPage(&general) == Result::Ok);
 
     ControlDescriptorV1 bindingControls[]{ MakeDescriptor(ControlKind::Toggle, "other") };
@@ -370,6 +432,26 @@ int main()
     bindings.apply = &Apply; bindings.cancel = &Cancel;
     CHECK(api->registerPage(&bindings) == Result::Ok);
 
+    // Open requests validate registered routes, remain asynchronous, coalesce to
+    // the latest target, and expose no UI work on the provider callback thread.
+    CHECK(publicApi->requestOpenPage("test.module", "general") == Result::NotReady);
+    MenuApiHost::SetOpenRequestWakeCallback(&WakeOpenRequest);
+    CHECK(publicApi->requestOpenPage(nullptr, "general") == Result::InvalidArgument);
+    CHECK(publicApi->requestOpenPage("test module", "general") == Result::InvalidArgument);
+    CHECK(publicApi->requestOpenPage("test.module", "missing") == Result::NotFound);
+    CHECK(publicApi->requestOpenPage("test.module", "general") == Result::Ok);
+    CHECK(publicApi->requestOpenPage("test.module", "bindings") == Result::Ok);
+    CHECK(g_openWakeCalls == 2);
+    MenuApiHost::OpenRequest openRequest;
+    CHECK(MenuApiHost::ConsumeOpenRequest(openRequest));
+    CHECK(openRequest.moduleId == "test.module" &&
+        openRequest.pageId == "bindings" && openRequest.serial != 0);
+    CHECK(!MenuApiHost::ConsumeOpenRequest(openRequest));
+    g_openWakeSucceeds = false;
+    CHECK(publicApi->requestOpenPage("test.module", "general") == Result::NotReady);
+    CHECK(!MenuApiHost::ConsumeOpenRequest(openRequest));
+    g_openWakeSucceeds = true;
+
     // Descriptors must be copied before provider-owned storage is changed.
     strcpy_s(generalControls[0].label, "MUTATED");
     const auto copied = MenuApiHost::FindPage("test.module", "general");
@@ -378,7 +460,7 @@ int main()
     Session session;
     auto model = session.Snapshot();
     CHECK(model.generation != 0);
-    CHECK(model.pages.size() == 2 && model.pages[0].controls.size() == 10);
+    CHECK(model.pages.size() == 2 && model.pages[0].controls.size() == 11);
     CHECK(model.pages[0].moduleTitle == "Test Plugin" &&
         model.pages[1].moduleTitle == "Test Plugin");
     CHECK(model.pages[0].controls[0].available && model.pages[0].controls[0].value.booleanValue == 1);
@@ -386,7 +468,8 @@ int main()
     CHECK(!model.pages[0].controls[4].available);  // read-only actions cannot invoke
     CHECK(model.pages[0].controls[5].available &&
         model.pages[0].controls[7].available &&
-        model.pages[0].controls[9].available && generalProvider.reads == 6);  // actions never read
+        model.pages[0].controls[10].available && generalProvider.reads == 7);  // actions never read
+    CHECK(model.pages[0].controls[9].choiceOptions.size() == 2);
     CHECK(model.pages[0].controls[6].available == false);  // bad reads are isolated to one row
 
     const auto cleanApplies = generalProvider.applies;
@@ -684,6 +767,9 @@ int main()
     channel.readLiveFrame = &ReadCompoundFrame;
     channel.applyCompoundOperation = &ApplyCompoundOperation;
     channel.flags = Live::kSegmentedGridCycleOnClick;
+    channel.associationCount = 1;
+    strcpy_s(channel.associations[0].columnId, "engines");
+    strcpy_s(channel.associations[0].controlId, "profile");
     strcpy_s(channel.segmentedGrid.controlId, "allocation");
     channel.segmentedGrid.columnCount = 1;
     channel.segmentedGrid.tierCount = 2;
@@ -695,15 +781,54 @@ int main()
     strcpy_s(channel.segmentedGrid.tiers[1].tierId, "green");
     strcpy_s(channel.segmentedGrid.tiers[1].label, "Green");
     CHECK(liveApi->registerLiveChannel(&channel) == Live::Result::Ok);
+    CompoundProvider telemetryProvider;
+    telemetryProvider.frame.kind = Live::ComponentKind::TelemetryPlot;
+    telemetryProvider.frame.sequence = 1;
+    telemetryProvider.frame.monotonicTimestampUs = 2;
+    telemetryProvider.frame.telemetryPlot.seriesCount = 1;
+    telemetryProvider.frame.telemetryPlot.availableMask = 1;
+    telemetryProvider.frame.telemetryPlot.values[0] = 0.25;
+    Live::LiveChannelDescriptorV1 telemetryChannel;
+    strcpy_s(telemetryChannel.moduleId, "test.module");
+    strcpy_s(telemetryChannel.pageId, "general");
+    strcpy_s(telemetryChannel.channelId, "axis-history");
+    strcpy_s(telemetryChannel.title, "Axis history");
+    telemetryChannel.kind = Live::ComponentKind::TelemetryPlot;
+    telemetryChannel.context = &telemetryProvider;
+    telemetryChannel.readLiveFrame = &ReadCompoundFrame;
+    telemetryChannel.telemetryPlot.seriesCount = 1;
+    telemetryChannel.telemetryPlot.historyCapacity = 3;
+    telemetryChannel.telemetryPlot.minimumValue = -1.0;
+    telemetryChannel.telemetryPlot.maximumValue = 1.0;
+    strcpy_s(telemetryChannel.telemetryPlot.series[0].seriesId, "input");
+    strcpy_s(telemetryChannel.telemetryPlot.series[0].label, "Input");
+    CHECK(liveApi->registerLiveChannel(&telemetryChannel) == Live::Result::Ok);
     LiveComponents::HostRegistry().SetMenuActive(true);
 
     Session compoundSession;
     auto compoundModel = compoundSession.Snapshot();
     CHECK(!compoundModel.pages.empty() &&
-        compoundModel.pages[0].liveComponents.size() == 1 &&
+        compoundModel.pages[0].liveComponents.size() == 2 &&
         compoundModel.pages[0].liveComponents[0].available &&
         compoundModel.pages[0].liveComponents[0].descriptor.flags ==
-            Live::kSegmentedGridCycleOnClick);
+            Live::kSegmentedGridCycleOnClick &&
+        compoundModel.pages[0].liveComponents[0].descriptor.associationCount == 1 &&
+        std::string_view(compoundModel.pages[0].liveComponents[0].descriptor
+            .associations[0].controlId) == "profile" &&
+        compoundModel.pages[0].liveComponents[1].descriptor.kind ==
+            Live::ComponentKind::TelemetryPlot &&
+        compoundModel.pages[0].liveComponents[1].telemetryHistory.count == 1 &&
+        compoundModel.pages[0].liveComponents[1].telemetryHistory.samples[0]
+            .values[0] == 0.25);
+    telemetryProvider.frame.sequence = 2;
+    telemetryProvider.frame.monotonicTimestampUs = 3;
+    telemetryProvider.frame.telemetryPlot.values[0] = 0.5;
+    const auto livePatch = compoundSession.RefreshLivePatch();
+    CHECK(livePatch && livePatch->moduleId == "test.module" &&
+        livePatch->pageId == "general" &&
+        livePatch->components.size() == 2 &&
+        livePatch->components[1].frame.telemetryPlot.values[0] == 0.5 &&
+        livePatch->components[1].telemetryHistory.count == 0);
     auto gridFocus = MenuInputRouter::FocusState{
         .region = MenuInputRouter::FocusRegion::Grid };
     auto gridRoute = MenuInputRouter::Route(
@@ -838,6 +963,10 @@ int main()
     choicesPage.readValue = &ReadValue;
     choicesPage.writeDraft = &WriteDraft;
     choicesPage.readChoiceOptions = &ReadChoiceOptions;
+    // This is the complete descriptor size from before record collections were
+    // appended. Existing labeled-choice providers remain valid unchanged.
+    choicesPage.structSize = static_cast<std::uint32_t>(
+        offsetof(PageDescriptorV1, readRecordItems));
     CHECK(publicApi->registerPage(&choicesPage) == Result::Ok);
     Session choiceSession;
     Command selectChoices;
@@ -862,6 +991,89 @@ int main()
         choicesProvider.writes == 1 &&
         choicesProvider.lastWrite.integerValue == 7);
     CHECK(publicApi->unregisterModule("choices.module") == Result::Ok);
+
+    // RecordCollection is a bounded list/detail selector whose stable string
+    // selection reuses transient writeDraft semantics. Confirmed actions do not
+    // enter provider code until the host-owned modal resolves affirmatively.
+    ModuleDescriptorV1 recordsModule;
+    strcpy_s(recordsModule.moduleId, "records.module");
+    strcpy_s(recordsModule.displayName, "Record Provider");
+    CHECK(publicApi->registerModule(&recordsModule) == Result::Ok);
+    Provider recordsProvider;
+    AbsoluteControlPanelApi::ControlDescriptorV1 recordsControls[]{
+        MakeDescriptor(AbsoluteControlPanelApi::ControlKind::RecordCollection,
+            "records"),
+        MakeDescriptor(AbsoluteControlPanelApi::ControlKind::Action,
+            "delete-record")
+    };
+    recordsControls[0].flags =
+        AbsoluteControlPanelApi::kControlTransientSelection;
+    recordsControls[1].flags =
+        AbsoluteControlPanelApi::kControlRequiresConfirmation;
+    strcpy_s(recordsControls[1].label, "Delete selected profile");
+    strcpy_s(recordsControls[1].description,
+        "This permanently removes the selected profile and its layers.");
+    AbsoluteControlPanelApi::PageDescriptorV1 recordsPage;
+    strcpy_s(recordsPage.moduleId, "records.module");
+    strcpy_s(recordsPage.pageId, "profiles");
+    strcpy_s(recordsPage.displayName, "Profiles");
+    recordsPage.controlCount = 2;
+    recordsPage.controls = recordsControls;
+    recordsPage.context = &recordsProvider;
+    recordsPage.readValue = &ReadValue;
+    recordsPage.writeDraft = &WriteDraft;
+    recordsPage.invokeAction = &Invoke;
+    CHECK(publicApi->registerPage(&recordsPage) == Result::InvalidArgument);
+    recordsPage.readRecordItems = &ReadRecordItems;
+    CHECK(publicApi->registerPage(&recordsPage) == Result::Ok);
+    Session recordsSession;
+    Command selectRecords;
+    selectRecords.kind = CommandKind::SelectPage;
+    selectRecords.moduleId = "records.module";
+    selectRecords.pageId = "profiles";
+    auto recordsModel = recordsSession.Dispatch(selectRecords);
+    CHECK(recordsModel.error.empty() && recordsModel.pages.size() == 1 &&
+        recordsModel.pages[0].controls[0].recordItems.size() == 2 &&
+        recordsModel.pages[0].controls[0].recordItems[1].recordId ==
+            "profile-beta" &&
+        recordsModel.pages[0].controls[0].value.kind == ValueKind::String &&
+        std::string_view{ recordsModel.pages[0].controls[0].value.stringValue } ==
+            "profile-alpha");
+    const auto nativeRecordCycle = MenuInputRouter::Route(
+        recordsModel, MenuInputRouter::kAccept);
+    CHECK(nativeRecordCycle.command && nativeRecordCycle.command->kind ==
+        CommandKind::Write && nativeRecordCycle.command->value.kind ==
+        ValueKind::String &&
+        std::string_view{ nativeRecordCycle.command->value.stringValue } ==
+            "profile-beta");
+    recordsModel = recordsSession.Dispatch(*nativeRecordCycle.command);
+    CHECK(recordsModel.error.empty() && !recordsModel.dirty &&
+        recordsProvider.writes == 1 &&
+        recordsProvider.selectedRecord == "profile-beta");
+    Command deleteRecord;
+    deleteRecord.kind = CommandKind::Invoke;
+    deleteRecord.moduleId = "records.module";
+    deleteRecord.pageId = "profiles";
+    deleteRecord.controlId = "delete-record";
+    recordsModel = recordsSession.Dispatch(deleteRecord);
+    CHECK(recordsModel.actionConfirmationActive &&
+        recordsModel.actionConfirmationLabel == "Delete selected profile" &&
+        recordsProvider.invokes == 0);
+    auto confirmationCancel = MenuInputRouter::Route(
+        recordsModel, MenuInputRouter::kEscape);
+    CHECK(confirmationCancel.command && confirmationCancel.command->kind ==
+        CommandKind::ResolveActionCancel);
+    recordsModel = recordsSession.Dispatch(*confirmationCancel.command);
+    CHECK(!recordsModel.actionConfirmationActive && recordsProvider.invokes == 0);
+    recordsModel = recordsSession.Dispatch(deleteRecord);
+    auto confirmationAccept = MenuInputRouter::Route(
+        recordsModel, MenuInputRouter::kAccept);
+    CHECK(confirmationAccept.command && confirmationAccept.command->kind ==
+        CommandKind::ResolveActionConfirm);
+    recordsModel = recordsSession.Dispatch(*confirmationAccept.command);
+    CHECK(recordsModel.error.empty() && !recordsModel.actionConfirmationActive &&
+        recordsProvider.invokes == 1);
+    CHECK(publicApi->unregisterModule("records.module") == Result::Ok);
 
     // Device recording is provider-owned while the shell owns the capture
     // session, navigation lock, draft write, and cancellation surface.
@@ -1264,5 +1476,6 @@ int main()
     CHECK(MenuApiHost::Lifecycle() == MenuApiHost::HostLifecycle::Rejected);
     CHECK(api->registerModule(&module) == Result::Rejected);
     CHECK(publicApi->requestRefresh("test.module", "general") == Result::Rejected);
+    CHECK(publicApi->requestOpenPage("test.module", "general") == Result::Rejected);
     return 0;
 }

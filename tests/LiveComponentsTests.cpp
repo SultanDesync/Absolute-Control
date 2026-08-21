@@ -6,9 +6,13 @@
 #include <limits>
 #include <type_traits>
 
-#define CHECK(expression)            \
-    do {                             \
-        if (!(expression)) return 1; \
+#define CHECK(expression)                                      \
+    do {                                                       \
+        if (!(expression)) {                                  \
+            std::fprintf(stderr, "CHECK failed at line %d: %s\n", \
+                __LINE__, #expression);                        \
+            return 1;                                          \
+        }                                                      \
     } while (false)
 
 namespace
@@ -21,6 +25,24 @@ namespace
         CompoundSnapshotV1 replacement{};
         std::uint32_t readCount{};
         std::uint32_t operationCount{};
+    };
+
+    struct LiveChannelDescriptorV1FlagsFixture
+    {
+        std::uint32_t structSize{};
+        std::uint32_t abiVersion{};
+        char moduleId[kIdentifierCapacity]{};
+        char pageId[kIdentifierCapacity]{};
+        char channelId[kIdentifierCapacity]{};
+        char title[kLabelCapacity]{};
+        ComponentKind kind{};
+        RangeMeterDescriptorV1 rangeMeter{};
+        TelemetryPlotDescriptorV1 telemetryPlot{};
+        SegmentedGridDescriptorV1 segmentedGrid{};
+        void* context{};
+        ReadLiveFrameCallback readLiveFrame{};
+        ApplyCompoundOperationCallback applyCompoundOperation{};
+        std::uint32_t flags{};
     };
 
     Result __cdecl ReadFrame(void* context, LiveFrameV1* frame) noexcept
@@ -141,10 +163,19 @@ int main()
     using namespace AbsoluteControlPanelResearch::LiveComponents;
 
     static_assert(std::is_trivially_copyable_v<LiveFrameV1>);
+    static_assert(kLiveFrameV1BaseSize == offsetof(LiveFrameV1, dynamicRange));
     static_assert(std::is_trivially_copyable_v<LiveChannelModelV1>);
+    static_assert(sizeof(GridColumnDescriptorV1) == 168);
+    static_assert(sizeof(SegmentedGridDescriptorV1) == 2092);
+    static_assert(offsetof(LiveChannelDescriptorV1, flags) ==
+        offsetof(LiveChannelDescriptorV1FlagsFixture, flags));
+    static_assert(kLiveChannelDescriptorV1FlagsSize ==
+        offsetof(LiveChannelDescriptorV1FlagsFixture, flags) +
+            sizeof(std::uint32_t));
     CHECK(AbsoluteControlPanel_QueryLiveComponentsExperimental(kAbiVersion + 1) == nullptr);
     const auto* api = AbsoluteControlPanel_QueryLiveComponentsExperimental(kAbiVersion);
-    CHECK(api && api->structSize >= sizeof(ExperimentalApiV1));
+    CHECK(api && api->structSize >= sizeof(ExperimentalApiV1) &&
+        (api->capabilities & kLiveCapabilities) == kLiveCapabilities);
 
     static Registry registry;
     Provider rangeProvider;
@@ -152,6 +183,10 @@ int main()
     InitializeRange(range);
     CHECK(registry.Register(range) == Result::Ok);
     CHECK(registry.Register(range) == Result::Duplicate);
+    const auto initialDiagnostics = registry.Diagnostics();
+    CHECK(initialDiagnostics.size() == 1 &&
+        initialDiagnostics[0].moduleId == "test.module" &&
+        initialDiagnostics[0].channelCount == 1);
 
     // Registration copies static descriptors; the renderer-facing model has no
     // provider context or callback fields to leak into ActionScript.
@@ -171,12 +206,28 @@ int main()
     invalidRange.rangeMeter.bands[0].visualRole = static_cast<VisualRole>(999);
     CHECK(registry.Register(invalidRange) == Result::InvalidArgument);
 
+    Provider presentationProvider;
+    auto presentation = Channel(
+        ComponentKind::RangeMeter, "presentation", presentationProvider);
+    InitializeRange(presentation);
+    presentation.flags = kLivePresentationPinned |
+        kLivePresentationSecondary | kLivePresentationCollapsedByDefault;
+    static Registry presentationRegistry;
+    CHECK(presentationRegistry.Register(presentation) == Result::Ok);
+    LiveChannelModelV1 presentationModel;
+    CHECK(presentationRegistry.Describe("test.module", "live",
+        "presentation", presentationModel) == Result::Ok &&
+        presentationModel.flags == presentation.flags);
+    presentation.flags = kLivePresentationCollapsedByDefault;
+    CHECK(presentationRegistry.Register(presentation) ==
+        Result::InvalidArgument);
+
     Provider legacyProvider;
     auto legacy = Channel(ComponentKind::RangeMeter, "legacy", legacyProvider);
     InitializeRange(legacy);
     legacy.structSize = kLiveChannelDescriptorV1BaseSize;
     legacy.flags = kSegmentedGridCycleOnClick;
-    Registry legacyRegistry;
+    static Registry legacyRegistry;
     CHECK(legacyRegistry.Register(legacy) == Result::Ok);
     LiveChannelModelV1 legacyModel;
     CHECK(legacyRegistry.Describe("test.module", "live", "legacy", legacyModel) ==
@@ -193,6 +244,9 @@ int main()
     auto overflowChannel = Channel(ComponentKind::RangeMeter, "overflow", rangeProvider);
     InitializeRange(overflowChannel);
     CHECK(capacityRegistry.Register(overflowChannel) == Result::CapacityExceeded);
+    const auto capacityDiagnostics = capacityRegistry.Diagnostics();
+    CHECK(capacityDiagnostics.size() == 1 &&
+        capacityDiagnostics[0].channelCount == kMaximumChannels);
 
     rangeProvider.frame = Frame(ComponentKind::RangeMeter, 1, 100);
     rangeProvider.frame.rangeMeter.available = 1;
@@ -215,13 +269,36 @@ int main()
     publication = registry.Poll("test.module", "live", "axis");
     CHECK(publication.result == Result::Ok);
 
+    // The additive frame tail replaces static range bands/markers from the
+    // provider's current draft while the base v1 layout remains accepted.
     rangeProvider.frame.sequence = 3;
-    rangeProvider.frame.monotonicTimestampUs = 150;
+    rangeProvider.frame.monotonicTimestampUs = 300;
+    rangeProvider.frame.dynamicRange.present = 1;
+    rangeProvider.frame.dynamicRange.bandCount = 1;
+    rangeProvider.frame.dynamicRange.markerCount = 1;
+    rangeProvider.frame.dynamicRange.bands[0] =
+        range.rangeMeter.bands[0];
+    rangeProvider.frame.dynamicRange.markers[0] =
+        range.rangeMeter.markers[0];
+    rangeProvider.frame.dynamicRange.markers[0].value = 0.25;
+    publication = registry.Poll("test.module", "live", "axis");
+    CHECK(publication.result == Result::Ok &&
+        publication.frame.dynamicRange.present == 1 &&
+        publication.frame.dynamicRange.markers[0].value == 0.25);
+    rangeProvider.frame.sequence = 4;
+    rangeProvider.frame.monotonicTimestampUs = 400;
+    rangeProvider.frame.dynamicRange.bands[0].maximumValue = 2.0;
+    CHECK(registry.Poll("test.module", "live", "axis").result ==
+        Result::InvalidArgument);
+    rangeProvider.frame.dynamicRange = {};
+
+    rangeProvider.frame.sequence = 4;
+    rangeProvider.frame.monotonicTimestampUs = 250;
     publication = registry.Poll("test.module", "live", "axis");
     CHECK(publication.result == Result::Stale);
 
-    rangeProvider.frame.sequence = 3;
-    rangeProvider.frame.monotonicTimestampUs = 300;
+    rangeProvider.frame.sequence = 4;
+    rangeProvider.frame.monotonicTimestampUs = 400;
     rangeProvider.frame.rangeMeter.liveValue = std::numeric_limits<double>::infinity();
     publication = registry.Poll("test.module", "live", "axis");
     CHECK(publication.result == Result::InvalidArgument && publication.publish == 0);
@@ -254,6 +331,11 @@ int main()
     TelemetryHistoryV1 history;
     CHECK(registry.TelemetryHistory("test.module", "live", "plot", history) == Result::Ok);
     CHECK(history.count == 3 && history.writeIndex == 2);
+    // The fixed ring retains the newest bounded samples. writeIndex points to
+    // the oldest record once capacity is reached: 3, 4, 5 in display order.
+    CHECK(history.samples[history.writeIndex].values[0] == 3.0);
+    CHECK(history.samples[(history.writeIndex + 1) % 3].values[0] == 4.0);
+    CHECK(history.samples[(history.writeIndex + 2) % 3].values[0] == 5.0);
     plotProvider.frame.sequence = 6;
     plotProvider.frame.monotonicTimestampUs = 60;
     plotProvider.frame.telemetryPlot.values[1] = std::numeric_limits<double>::quiet_NaN();
@@ -272,10 +354,48 @@ int main()
     invalidGrid = grid;
     invalidGrid.segmentedGrid.columns[0].maximumSegments = static_cast<std::uint32_t>(kMaximumGridSegments + 1);
     CHECK(registry.Register(invalidGrid) == Result::InvalidArgument);
+    grid.associationCount = 2;
+    Copy(grid.associations[0].columnId,
+        std::size(grid.associations[0].columnId), "engines");
+    Copy(grid.associations[0].controlId,
+        std::size(grid.associations[0].controlId), "order-engines");
+    Copy(grid.associations[1].columnId,
+        std::size(grid.associations[1].columnId), "shields");
+    Copy(grid.associations[1].controlId,
+        std::size(grid.associations[1].controlId), "order-shields");
+    invalidGrid = grid;
+    Copy(invalidGrid.associations[1].columnId,
+        std::size(invalidGrid.associations[1].columnId), "missing");
+    CHECK(registry.Register(invalidGrid) == Result::InvalidArgument);
+    invalidGrid = grid;
+    Copy(invalidGrid.associations[1].controlId,
+        std::size(invalidGrid.associations[1].controlId), "order-engines");
+    CHECK(registry.Register(invalidGrid) == Result::InvalidArgument);
     CHECK(registry.Register(grid) == Result::Ok);
     LiveChannelModelV1 gridModel;
     CHECK(registry.Describe("test.module", "live", "power", gridModel) ==
-        Result::Ok && gridModel.flags == kSegmentedGridCycleOnClick);
+        Result::Ok && gridModel.flags == kSegmentedGridCycleOnClick &&
+        gridModel.associationCount == 2 &&
+        std::strcmp(gridModel.associations[0].controlId,
+            "order-engines") == 0);
+
+    // The pre-association v1 descriptor ended after flags. Its original grid
+    // column stride remains accepted, flags survive, and bytes beyond the
+    // declared size cannot create associations from former tail padding.
+    Provider flagsOnlyProvider;
+    auto flagsOnly = Channel(ComponentKind::SegmentedAllocationGrid,
+        "power-flags-only", flagsOnlyProvider);
+    InitializeGrid(flagsOnly);
+    flagsOnly.flags = kSegmentedGridCycleOnClick;
+    flagsOnly.associationCount = 2;
+    flagsOnly.structSize = sizeof(LiveChannelDescriptorV1FlagsFixture);
+    static Registry flagsOnlyRegistry;
+    CHECK(flagsOnlyRegistry.Register(flagsOnly) == Result::Ok);
+    LiveChannelModelV1 flagsOnlyModel;
+    CHECK(flagsOnlyRegistry.Describe("test.module", "live",
+        "power-flags-only", flagsOnlyModel) == Result::Ok &&
+        flagsOnlyModel.flags == kSegmentedGridCycleOnClick &&
+        flagsOnlyModel.associationCount == 0);
 
     gridProvider.frame = Frame(ComponentKind::SegmentedAllocationGrid, 1, 100);
     gridProvider.frame.segmentedGrid.columnCount = 2;

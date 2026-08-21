@@ -1,7 +1,8 @@
 #pragma once
 
+#include "CompositionRegistry.h"
+#include "LiveComponentsRegistry.h"
 #include "MenuApiHost.h"
-#include "LiveComponentsExperimentalAPI.h"
 #include "SlopAPI.h"  // legacy spelling still used by the v1 input router/bridge
 
 #include <cstddef>
@@ -31,7 +32,9 @@ namespace AbsoluteControlPanelResearch::MenuSession
         ResolveDirtyDiscard,
         ResolveDirtyStay,
         ResolveBindingReassign,
-        ResolveBindingCancel
+        ResolveBindingCancel,
+        ResolveActionConfirm,
+        ResolveActionCancel
     };
 
     struct Control
@@ -39,7 +42,10 @@ namespace AbsoluteControlPanelResearch::MenuSession
         MenuApiHost::Control descriptor;
         AbsoluteControlPanelApi::ValueV1 value{};
         std::vector<MenuApiHost::ChoiceOption> choiceOptions;
+        std::vector<MenuApiHost::RecordItem> recordItems;
         bool available{};
+        bool semanticVisible{ true };
+        bool semanticEnabled{ true };
         std::string error;
     };
 
@@ -55,10 +61,15 @@ namespace AbsoluteControlPanelResearch::MenuSession
         {
             AbsoluteControlPanelExperimental::LiveChannelModelV1 descriptor{};
             AbsoluteControlPanelExperimental::LiveFrameV1 frame{};
+            // Telemetry history is host-owned, fixed-capacity storage. It is
+            // populated only for a visible TelemetryPlot channel and never
+            // causes an additional provider callback.
+            LiveComponents::TelemetryHistoryV1 telemetryHistory{};
             bool available{};
             std::string error;
         };
         std::vector<LiveComponent> liveComponents;
+        Composition::PageModel composition;
     };
 
     struct Module
@@ -87,13 +98,27 @@ namespace AbsoluteControlPanelResearch::MenuSession
         bool bindingCaptureActive{};
         bool textCaptureActive{};
         bool bindingConflictActive{};
+        bool actionConfirmationActive{};
         std::string captureModuleId;
         std::string capturePageId;
         std::string captureControlId;
         std::string bindingConflictDetail;
+        std::string actionConfirmationLabel;
+        std::string actionConfirmationDetail;
         std::string error;
         std::vector<Module> modules;
         std::vector<Page> pages;
+    };
+
+    // Active-route-only live publication. Unlike Model, this never rebuilds
+    // controls, choices, composition, navigation, or provider transactions.
+    // Telemetry plots carry only their newest sample; the movie owns the
+    // bounded visible history between full snapshots.
+    struct LivePatch
+    {
+        std::string moduleId;
+        std::string pageId;
+        std::vector<Page::LiveComponent> components;
     };
 
     struct Command
@@ -136,6 +161,7 @@ namespace AbsoluteControlPanelResearch::MenuSession
         // Polls only live channels on the active route. A model is returned
         // only when at least one provider sequence advances.
         [[nodiscard]] std::optional<Model> RefreshLive();
+        [[nodiscard]] std::optional<LivePatch> RefreshLivePatch();
         [[nodiscard]] bool IsBindingCaptureActive() const noexcept;
         [[nodiscard]] bool IsTextCaptureActive() const noexcept;
         [[nodiscard]] bool IsCaptureActive() const noexcept;
@@ -177,6 +203,11 @@ namespace AbsoluteControlPanelResearch::MenuSession
         std::string conflictControlId_;
         std::string conflictBinding_;
         std::string conflictDetail_;
+        std::string confirmModuleId_;
+        std::string confirmPageId_;
+        std::string confirmControlId_;
+        std::string confirmLabel_;
+        std::string confirmDetail_;
         std::uint64_t generation_{};
         std::uint64_t publishedGeneration_{};
         std::string error_;
@@ -195,6 +226,11 @@ namespace AbsoluteControlPanelResearch::MenuSession
             std::string_view a_pageId, std::string_view a_controlId,
             std::string_view a_binding, std::string_view a_detail);
         void ClearBindingConflict() noexcept;
+        void BeginActionConfirmation(const MenuApiHost::Page& a_page,
+            const MenuApiHost::Control& a_control);
+        void ClearActionConfirmation() noexcept;
+        void ExecuteAction(const MenuApiHost::Page& a_page,
+            const MenuApiHost::Control& a_control);
         void AbandonState() noexcept;
         void SetError(std::string_view a_error);
     };

@@ -41,6 +41,45 @@ class MenuCodegenTests(unittest.TestCase):
         self.assertIn("ControlKind::GroupHeader", first)
         self.assertIn("ReassignBindingCallback reassignBinding", first)
         self.assertIn("pages[0].reassignBinding = provider.reassignBinding", first)
+        self.assertIn("ReadRecordItemsCallback readRecordItems", first)
+        self.assertIn("pages[0].readRecordItems = provider.readRecordItems", first)
+        self.assertIn("SupportsPageOpen", first)
+        self.assertIn("kApiV1RequestOpenPageSize", first)
+        self.assertIn("host->requestOpenPage(kModule.moduleId, pageId)", first)
+
+    def test_record_collection_and_confirmed_action_generate(self):
+        valid = menu_codegen.load(EXAMPLE)
+        candidate = copy.deepcopy(valid)
+        candidate["pages"][0]["sections"][0]["options"].extend([
+            {
+                "id": "profiles",
+                "type": "recordCollection",
+                "label": "Profiles",
+                "description": "Select a provider-owned profile.",
+            },
+            {
+                "id": "profiles.delete",
+                "type": "action",
+                "label": "Delete profile",
+                "description": "Permanently removes the selected profile.",
+                "flags": ["requiresConfirmation"],
+            },
+        ])
+        rendered = menu_codegen.generate(
+            menu_codegen.validate(candidate), "records.menu.json")
+        self.assertIn("ControlKind::RecordCollection", rendered)
+        self.assertIn("kControlTransientSelection", rendered)
+        self.assertIn("kControlRequiresConfirmation", rendered)
+
+        invalid = copy.deepcopy(valid)
+        invalid["pages"][0]["sections"][0]["options"][0]["flags"] = [
+            "requiresConfirmation"
+        ]
+        with self.assertRaisesRegex(
+            menu_codegen.ValidationError,
+            "requiresConfirmation is supported only for actions",
+        ):
+            menu_codegen.validate(invalid)
 
     def test_inline_actions_generate_and_non_actions_reject_flag(self):
         valid = menu_codegen.load(EXAMPLE)

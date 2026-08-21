@@ -25,8 +25,9 @@ TYPE_KEYS = {
     "float": COMMON_KEYS | {"widget", "minimum", "maximum", "step"},
     "action": COMMON_KEYS,
     "inputBinding": COMMON_KEYS | {"capabilities"},
+    "recordCollection": COMMON_KEYS,
 }
-FLAGS = {"readOnly", "requiresRestart", "advanced", "layoutInline"}
+FLAGS = {"readOnly", "requiresRestart", "advanced", "layoutInline", "requiresConfirmation"}
 CAPABILITIES = {"keyboard", "mouse", "controller", "modifiers", "clearable"}
 KINDS = {
     "toggle": "Toggle",
@@ -34,6 +35,7 @@ KINDS = {
     "float": "FloatSlider",
     "action": "Action",
     "inputBinding": "InputBinding",
+    "recordCollection": "RecordCollection",
 }
 
 
@@ -98,6 +100,8 @@ def validate_option(raw: Any, path: str, seen_controls: set[str]) -> dict[str, A
         fail(f"{path}.flags", "readOnly is not meaningful for an action")
     if "layoutInline" in flags and option_type != "action":
         fail(f"{path}.flags", "layoutInline is supported only for actions")
+    if "requiresConfirmation" in flags and option_type != "action":
+        fail(f"{path}.flags", "requiresConfirmation is supported only for actions")
     if option_type in {"integer", "float"}:
         if option["widget"] != "slider":
             fail(f"{path}.widget", "ABI v1 supports only slider")
@@ -211,9 +215,12 @@ def flag_expression(option: dict[str, Any], structured_layout: bool = True) -> s
         "requiresRestart": "kControlRequiresRestart",
         "advanced": "kControlAdvanced",
         "layoutInline": "kControlLayoutInline",
+        "requiresConfirmation": "kControlRequiresConfirmation",
     }
     values = [mapping[name] for name in option.get("flags", [])
               if structured_layout or name != "layoutInline"]
+    if option["type"] == "recordCollection":
+        values.append("kControlTransientSelection")
     if option["type"] == "inputBinding":
         cap_mapping = {
             "keyboard": "kBindingKeyboard",
@@ -273,6 +280,20 @@ def generate(data: dict[str, Any], source_name: str) -> str:
         "        return value;",
         "    }();",
         "",
+        "    inline bool SupportsPageOpen(const ApiV1* host) noexcept",
+        "    {",
+        "        return host && host->structSize >= kApiV1RequestOpenPageSize &&",
+        "            (host->capabilities & kCapabilityPageOpenRequests) != 0 &&",
+        "            host->requestOpenPage;",
+        "    }",
+        "",
+        "    inline Result RequestOpen(const ApiV1* host, const char* pageId) noexcept",
+        "    {",
+        "        if (!pageId) return Result::InvalidArgument;",
+        "        if (!SupportsPageOpen(host)) return Result::NotFound;",
+        "        return host->requestOpenPage(kModule.moduleId, pageId);",
+        "    }",
+        "",
         "    enum class ControlId : std::uint32_t",
         "    {",
     ]
@@ -330,6 +351,7 @@ def generate(data: dict[str, Any], source_name: str) -> str:
         "        PollBindingCaptureCallback pollBindingCapture{};",
         "        CancelBindingCaptureCallback cancelBindingCapture{};",
         "        ReassignBindingCallback reassignBinding{};",
+        "        ReadRecordItemsCallback readRecordItems{};",
         "    };",
         "",
         f"    inline std::array<PageDescriptorV1, {len(data['pages'])}> MakePages(",
@@ -364,6 +386,7 @@ def generate(data: dict[str, Any], source_name: str) -> str:
             f"        pages[{index}].pollBindingCapture = provider.pollBindingCapture;",
             f"        pages[{index}].cancelBindingCapture = provider.cancelBindingCapture;",
             f"        pages[{index}].reassignBinding = provider.reassignBinding;",
+            f"        pages[{index}].readRecordItems = provider.readRecordItems;",
         ]
     lines += ["        return pages;", "    }", "}", ""]
     return "\n".join(lines)

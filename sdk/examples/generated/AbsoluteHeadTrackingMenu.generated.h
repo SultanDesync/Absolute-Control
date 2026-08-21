@@ -41,6 +41,20 @@ namespace AbsoluteControlPanelGenerated::module_absolute_head_tracking
         return value;
     }();
 
+    inline bool SupportsPageOpen(const ApiV1* host) noexcept
+    {
+        return host && host->structSize >= kApiV1RequestOpenPageSize &&
+            (host->capabilities & kCapabilityPageOpenRequests) != 0 &&
+            host->requestOpenPage;
+    }
+
+    inline Result RequestOpen(const ApiV1* host, const char* pageId) noexcept
+    {
+        if (!pageId) return Result::InvalidArgument;
+        if (!SupportsPageOpen(host)) return Result::NotFound;
+        return host->requestOpenPage(kModule.moduleId, pageId);
+    }
+
     enum class ControlId : std::uint32_t
     {
         id_tracking_enabled,
@@ -151,6 +165,7 @@ namespace AbsoluteControlPanelGenerated::module_absolute_head_tracking
         PollBindingCaptureCallback pollBindingCapture{};
         CancelBindingCaptureCallback cancelBindingCapture{};
         ReassignBindingCallback reassignBinding{};
+        ReadRecordItemsCallback readRecordItems{};
     };
 
     inline std::array<PageDescriptorV1, 3> MakePages(
@@ -179,6 +194,7 @@ namespace AbsoluteControlPanelGenerated::module_absolute_head_tracking
         pages[0].pollBindingCapture = provider.pollBindingCapture;
         pages[0].cancelBindingCapture = provider.cancelBindingCapture;
         pages[0].reassignBinding = provider.reassignBinding;
+        pages[0].readRecordItems = provider.readRecordItems;
         CopyLiteral(pages[1].moduleId, "absolute.head_tracking");
         CopyLiteral(pages[1].pageId, "axes");
         CopyLiteral(pages[1].displayName, "Axes");
@@ -198,6 +214,7 @@ namespace AbsoluteControlPanelGenerated::module_absolute_head_tracking
         pages[1].pollBindingCapture = provider.pollBindingCapture;
         pages[1].cancelBindingCapture = provider.cancelBindingCapture;
         pages[1].reassignBinding = provider.reassignBinding;
+        pages[1].readRecordItems = provider.readRecordItems;
         CopyLiteral(pages[2].moduleId, "absolute.head_tracking");
         CopyLiteral(pages[2].pageId, "bindings");
         CopyLiteral(pages[2].displayName, "Bindings");
@@ -217,6 +234,7 @@ namespace AbsoluteControlPanelGenerated::module_absolute_head_tracking
         pages[2].pollBindingCapture = provider.pollBindingCapture;
         pages[2].cancelBindingCapture = provider.cancelBindingCapture;
         pages[2].reassignBinding = provider.reassignBinding;
+        pages[2].readRecordItems = provider.readRecordItems;
         return pages;
     }
 }

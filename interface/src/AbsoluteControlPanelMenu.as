@@ -5,17 +5,20 @@ package
     import acp.ui.BridgeCommandDispatcher;
     import acp.ui.MenuSelectionState;
     import acp.ui.MenuShellRenderer;
+    import acp.ui.LivePatchCoordinator;
     import acp.ui.ModalInputRouter;
     import acp.ui.PanelLayout;
     import acp.ui.PointerInteraction;
     import acp.ui.SliderWriteCoordinator;
+    import acp.ui.SemanticAnchorInputRouter;
+    import acp.ui.LiveSurfaceInputRouter;
     import flash.display.MovieClip;
     import flash.display.Sprite;
     import flash.events.Event;
     import flash.events.KeyboardEvent;
     import flash.events.MouseEvent;
     import flash.ui.Keyboard;
-    [SWF(width="1920", height="1080", frameRate="30", backgroundColor="#060E14")]
+    [SWF(width="1920", height="1080", frameRate="60", backgroundColor="#060E14")]
     public class AbsoluteControlPanelMenu extends MovieClip
     {
         // GameMenuBase installs this object and invokes the public methods below by name.
@@ -32,6 +35,10 @@ package
         private var shell:MenuShellRenderer;
         private var choiceInput:ChoiceInputRouter;
         private var modalInput:ModalInputRouter = new ModalInputRouter();
+        private var anchorInput:SemanticAnchorInputRouter =
+            new SemanticAnchorInputRouter();
+        private var liveSurfaceInput:LiveSurfaceInputRouter =
+            new LiveSurfaceInputRouter();
         private var dirtyDecisionCursor:int = 0;
 
         public function AbsoluteControlPanelMenu()
@@ -72,12 +79,22 @@ package
                 pointer.clearSliderDrag();
             }
             model = next;
-            if (!Boolean(model.dirtyDecisionActive)) dirtyDecisionCursor = 0;
+            if (!Boolean(model.dirtyDecisionActive) &&
+                !Boolean(model.bindingConflictActive) &&
+                !Boolean(model.actionConfirmationActive)) dirtyDecisionCursor = 0;
             selection.applyModel(model);
             redraw();
             if (BGSCodeObj != null && BGSCodeObj.modelApplied != null) {
                 BGSCodeObj.modelApplied(Number(model.generation));
             }
+        }
+
+        public function applyLiveComponents(moduleId:String, pageId:String,
+            next:Array):void
+        {
+            var current:Object = LivePatchCoordinator.apply(model,
+                selection.page(), moduleId, pageId, next);
+            if (current != null && !shell.refreshLive(current)) redraw();
         }
 
         private function onEnterFrame(event:Event):void
@@ -121,6 +138,9 @@ package
 
             var kind:String = String(target.kind);
             if (kind == "disabled") return true;
+            if (liveSurfaceInput.handlePointer(kind, target, stageX, stageY,
+                shell, pointer, sliderWrites, model, selection, syncFocus,
+                sendSelectPage, redraw)) return true;
             if (kind == "dirtyDecision") {
                 dirtyDecisionCursor = int(target.index);
                 sendPage(String(target.payload));
@@ -131,12 +151,19 @@ package
                 sendPage(String(target.payload));
                 return true;
             }
+            if (kind == "actionConfirmation") {
+                dirtyDecisionCursor = int(target.index);
+                sendPage(String(target.payload));
+                return true;
+            }
             if (kind == "page") {
                 selection.focusRegion = int(target.index);
                 syncFocus();
                 sendSelectPage(target.payload);
                 return true;
             }
+            if (anchorInput.handlePointer(kind, target, selection,
+                syncFocus, send, redraw)) return true;
             if (kind == "select") {
                 selection.focusRegion = PanelLayout.FOCUS_CONTROLS;
                 selection.selectedRow = int(target.index);
@@ -144,7 +171,7 @@ package
                 send("selectControl", target.payload, false, 0, 0);
                 return true;
             }
-            if (kind == "choice") {
+            if (kind == "choice" || kind == "recordCollection") {
                 selection.focusRegion = PanelLayout.FOCUS_CONTROLS;
                 selection.selectedRow = int(target.index);
                 syncFocus();
@@ -160,16 +187,6 @@ package
                 if (!choiceInput.activate(target.payload, selection.page(), send)) {
                     ControlWidgets.activate(target.payload, send);
                 } else redraw();
-                return true;
-            }
-            if (kind == "slider") {
-                var current:Object = selection.page();
-                selection.focusRegion = PanelLayout.FOCUS_CONTROLS;
-                syncFocus();
-                pointer.beginSlider(current, target.payload);
-                sliderWrites.prepare(model, current);
-                ControlWidgets.writeSliderFromPointer(target.view as Sprite,
-                    target.payload, stageX, stageY, sliderWrites.queue);
                 return true;
             }
             if (kind == "gridTier") {
@@ -281,6 +298,12 @@ package
 
         private function onKeyDown(event:KeyboardEvent):void
         {
+            if (liveSurfaceInput.handleKey(event.keyCode, shell, model,
+                selection, syncFocus, sendSelectPage, redraw)) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                return;
+            }
             if (model != null && (Boolean(model.bindingCaptureActive) ||
                 Boolean(model.textCaptureActive))) {
                 event.preventDefault();
@@ -333,10 +356,18 @@ package
             } else if (event.keyCode == Keyboard.E || event.keyCode == Keyboard.ENTER ||
                 event.keyCode == Keyboard.SPACE) {
                 if (selection.focusRegion == PanelLayout.FOCUS_ACTIONS) activateAction();
+                else if (anchorInput.activate(selection, syncFocus, send)) {}
                 else if (selection.focusRegion == PanelLayout.FOCUS_GRID) {
-                    selection.focusRegion = PanelLayout.FOCUS_CONTROLS;
-                    syncFocus();
-                    redraw();
+                    var associated:Object = shell.selectedGridControl(
+                        model, current);
+                    if (associated != null && choiceInput.activate(
+                        associated, current, send)) {
+                        redraw();
+                    } else {
+                        selection.focusRegion = PanelLayout.FOCUS_CONTROLS;
+                        syncFocus();
+                        redraw();
+                    }
                 }
                 else if (selection.focusRegion == PanelLayout.FOCUS_CONTROLS &&
                     current != null && current.controls.length > 0) {
@@ -365,13 +396,10 @@ package
 
         private function moveFocusLeft():void
         {
+            if (anchorInput.moveHorizontal(selection, selection.page(), -1,
+                shell.hasGrid(selection.page()), syncFocus, redraw)) return;
             if (selection.focusRegion == PanelLayout.FOCUS_ACTIONS) {
                 selection.focusRegion = PanelLayout.FOCUS_CONTROLS;
-                syncFocus();
-                redraw();
-            } else if (selection.focusRegion == PanelLayout.FOCUS_CONTROLS) {
-                selection.focusRegion = shell.hasGrid(selection.page()) ?
-                    PanelLayout.FOCUS_GRID : PanelLayout.FOCUS_MODULES;
                 syncFocus();
                 redraw();
             }
@@ -379,12 +407,9 @@ package
 
         private function moveFocusRight():void
         {
-            if (selection.focusRegion == PanelLayout.FOCUS_MODULES) {
-                selection.focusRegion = shell.hasGrid(selection.page()) ?
-                    PanelLayout.FOCUS_GRID : PanelLayout.FOCUS_CONTROLS;
-                syncFocus();
-                redraw();
-            } else if (selection.focusRegion == PanelLayout.FOCUS_CONTROLS) {
+            if (anchorInput.moveHorizontal(selection, selection.page(), 1,
+                shell.hasGrid(selection.page()), syncFocus, redraw)) return;
+            if (selection.focusRegion == PanelLayout.FOCUS_CONTROLS) {
                 selection.focusRegion = PanelLayout.FOCUS_ACTIONS;
                 selection.focusedAction = 0;
                 syncFocus();
@@ -398,6 +423,8 @@ package
 
         private function navigateVertical(direction:int, current:Object):void
         {
+            if (anchorInput.moveVertical(selection, current, direction,
+                syncFocus, redraw)) return;
             if (selection.focusRegion == PanelLayout.FOCUS_MODULES) {
                 navigateModule(direction);
             } else if (selection.focusRegion == PanelLayout.FOCUS_ACTIONS) {
@@ -467,14 +494,17 @@ package
         private function sendSelectPage(target:Object):void
         {
             shell.closeChoice();
+            shell.hideGuidance();
             send("selectPage", target, false, 0, 0, false);
         }
 
         private function send(command:String, control:Object, booleanValue:Boolean,
-            integerValue:Number, floatValue:Number, controlIdentity:Boolean = true):void
+            integerValue:Number, floatValue:Number,
+            controlIdentity:Boolean = true, stringValue:String = ""):void
         {
             commandBridge.send(model, selection.page(), command, control,
-                booleanValue, integerValue, floatValue, controlIdentity);
+                booleanValue, integerValue, floatValue, controlIdentity,
+                stringValue);
         }
     }
 }

@@ -30,6 +30,9 @@ package acp.ui
             } else if (kind == 5) {
                 drawBinding(widget, control, enabled, capturing);
                 registerHit(widget, "activate", control, 0);
+            } else if (kind == 8) {
+                drawRecordCollection(widget, control, enabled);
+                registerHit(widget, "recordCollection", control, 0);
             } else {
                 drawTextInput(widget, control, enabled, capturing);
                 registerHit(widget, "activate", control, 0);
@@ -113,6 +116,17 @@ package acp.ui
             }
             if (uint(control.kind) == 2) return String(Number(control.floatValue));
             if (uint(control.kind) == 4) return "";
+            if (uint(control.kind) == 8 && control.recordItems != null) {
+                for (var recordIndex:int = 0;
+                     recordIndex < control.recordItems.length; ++recordIndex) {
+                    if (String(control.recordItems[recordIndex].recordId) ==
+                        String(control.stringValue)) {
+                        return String(control.recordItems[recordIndex].label);
+                    }
+                }
+                return control.recordItems.length == 0 ? "NO RECORDS" :
+                    "SELECT RECORD";
+            }
             return String(control.stringValue);
         }
 
@@ -217,6 +231,21 @@ package acp.ui
             VectorTextRenderer.addText(widget, ">",
                 PanelLayout.CONTROL_ROW_WIDTH - widget.x - 34, 4, 22,
                 enabled ? PanelTheme.TEXT : PanelTheme.TOGGLE_KNOB_OFF);
+        }
+
+        private static function drawRecordCollection(widget:Sprite,
+            control:Object, enabled:Boolean):void
+        {
+            widget.graphics.lineStyle(1,
+                enabled ? PanelTheme.CYAN : PanelTheme.DISABLED_WIDGET);
+            widget.graphics.beginFill(PanelTheme.WIDGET_FILL);
+            widget.graphics.drawRect(145, 0, 478, 34);
+            widget.graphics.endFill();
+            VectorTextRenderer.addText(widget,
+                VectorTextRenderer.fit(displayValue(control), 34), 160, 6, 16,
+                enabled ? PanelTheme.TEXT : PanelTheme.TOGGLE_KNOB_OFF);
+            VectorTextRenderer.addText(widget, "DETAILS >", 525, 7, 13,
+                enabled ? PanelTheme.CYAN : PanelTheme.DISABLED_WIDGET, true);
         }
 
         private static function drawBinding(widget:Sprite, control:Object,

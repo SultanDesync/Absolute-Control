@@ -113,7 +113,7 @@ refresh requests use a separate revision and may coalesce into one replacement s
 
 This is a possible long-term structured bridge, not a committed ABI. The executable host uses the
 bounded generation-aware flat `dispatch` form documented in
-[Bridge Protocol v1](BRIDGE-PROTOCOL-V1.md), plus `applyModel`, `ready`, `focus`, `modelApplied`,
+[Bridge Protocol v1](BRIDGE-PROTOCOL-V1.md), plus `applyModel`, `applyLiveComponents`, `ready`, `focus`, `modelApplied`,
 `close`, and pointer methods. Do not implement against this target list as current ActionScript.
 
 ActionScript to C++:

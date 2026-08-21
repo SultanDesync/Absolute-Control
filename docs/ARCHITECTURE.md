@@ -4,15 +4,16 @@
 > direction; it is not a runtime- or release-readiness claim.
 
 Absolute Control Panel is split by responsibility, version sensitivity, and release ownership.
-The canonical product target owns only the native menu host. The opt-in research target composes
-that host with automation and synthetic providers; subscriber gameplay remains in other projects.
+The canonical product target owns the native menu host and its small self-management/registry
+module. The opt-in research target composes that host with automation; subscriber gameplay remains
+in other projects.
 
 ## Build products
 
 | Role | xmake target and DLL | Manifest | Package policy |
 |---|---|---|---|
 | Canonical host | `AbsoluteControlPanel` / `AbsoluteControlPanel.dll` | `build/artifact-manifests/AbsoluteControlPanel.artifacts.json` | Default target; `role=release`, `packageable=true`. This identifies package inputs but does not mean the product is release-ready. |
-| Research host | `AbsoluteControlPanelResearchDev` / `AbsoluteControlPanelResearchDev.dll` | `build/artifact-manifests/AbsoluteControlPanelResearchDev.artifacts.json` | Explicit opt-in; `role=research-dev`, `packageable=false`; contains the synthetic provider, mailbox/SendInput automation, and DirectInput experiments. |
+| Research host | `AbsoluteControlPanelResearchDev` / `AbsoluteControlPanelResearchDev.dll` | `build/artifact-manifests/AbsoluteControlPanelResearchDev.artifacts.json` | Explicit opt-in; `role=research-dev`, `packageable=false`; contains mailbox/SendInput automation and DirectInput experiments, but no additional user-facing module. |
 
 `xmake.lua` lists release and research sources explicitly. Adding a file beneath `src/` cannot
 silently add it to the product. Research deployment consumes only the ResearchDev manifest and
@@ -33,13 +34,14 @@ SFSE entry (Main)
        -> process-lived input services
 
 public C ABI -> MenuApiHost registry/leases -> MenuSession transactions
+host settings/registry -> ControlPanelModule -> same public C ABI
 live/compound ABI -> LiveComponentsRegistry -> MenuSession page transaction
                                               -> MenuInputRouter
 native menu factory -> ScaleformMenuBridge -> MenuSession / input adapter
                                          -> UI message queue
 all runtime layers -> EvidenceLog -> bounded AsyncLineSink -> disk worker
 
-ResearchDev only -> ResearchModule / ResearchSupport / ResearchInputCapture
+ResearchDev only -> ResearchSupport / ResearchInputCapture
 ```
 
 Responsibilities and dependency rules:
@@ -63,7 +65,7 @@ Responsibilities and dependency rules:
   object-layout assumptions must not spread into the API, session, or ActionScript layers.
 - `EvidenceLog` exposes best-effort structured events. Only `diagnostics/AsyncLineSink` performs
   evidence-file writes, on its worker.
-- `research/**`, `ResearchModule`, and `ResearchInputCapture` may depend on product seams for
+- `research/**` and `ResearchInputCapture` may depend on product seams for
   testing. The canonical product target must never depend on those research-only sources.
 
 The remaining large native files are not automatically defects. PauseMenu composition and the

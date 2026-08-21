@@ -1,6 +1,7 @@
 #include "NativeMenuProbe.h"
 
 #include "EvidenceLog.h"
+#include "ControlPanelModule.h"
 #include "MenuApiHost.h"
 #include "ProbeConfig.h"
 #include "input/PlatformInputServices.h"
@@ -10,7 +11,6 @@
 #include "ui/PauseMenuIntegration.h"
 
 #if defined(ACP_ENABLE_RESEARCH_TOOLS)
-#include "ResearchModule.h"
 #include "research/ResearchSupport.h"
 #endif
 
@@ -23,7 +23,8 @@ namespace AbsoluteControlPanelResearch::NativeMenuProbe
         Runtime::Transition(ProbeEvent::PluginLoaded);
         Runtime::Transition(ProbeEvent::DataReady);
 
-        Runtime::SetConfig(LoadProbeConfig(kConfigPath));
+        Runtime::SetConfig(LoadProbeConfig(
+            kCustomConfigPath, LoadProbeConfig(kConfigPath)));
         const auto& config = Runtime::Config();
 
 #if defined(ACP_ENABLE_RESEARCH_TOOLS)
@@ -80,7 +81,22 @@ namespace AbsoluteControlPanelResearch::NativeMenuProbe
         // The API remains discoverable-but-NotReady until runtime validation,
         // lifecycle hook installation, and retention of the menu factory (whose
         // CreateMenu path owns the native Scaleform bridge) have all succeeded.
+        MenuApiHost::SetOpenRequestWakeCallback(
+            &Ui::ControlPanelMenu::RequestOpenFromProvider);
         MenuApiHost::MarkRuntimeReady();
+
+        const bool controlModuleReady = ControlPanelModule::Register(
+            config, kCustomConfigPath, {
+                .setPauseMenuEntry = &Ui::PauseMenuIntegration::SetEntryEnabled,
+                .setRecoveryHotkey = [](std::uint32_t hotkey) noexcept {
+                    Input::StartOpenHotkey(hotkey,
+                        &Ui::ControlPanelMenu::RequestOpenFromHotkey);
+                }
+            });
+        if (!controlModuleReady) {
+            EvidenceLog::Event("control_module_registration_failed",
+                "release host settings and registry page unavailable");
+        }
 
 #if defined(ACP_ENABLE_RESEARCH_TOOLS)
         EvidenceLog::Event(
@@ -89,12 +105,6 @@ namespace AbsoluteControlPanelResearch::NativeMenuProbe
                 "auto_open={} require_arm={} advance_title={} run_id={}",
                 researchConfig.autoOpen, researchConfig.requireArm,
                 researchConfig.advanceTitleWithSendInput, researchConfig.runId));
-        const bool researchProviderReady = ResearchModule::Register();
-        if (!researchProviderReady) {
-            EvidenceLog::Event(
-                "research_provider_registration_failed",
-                "synthetic API provider could not register; product host remains ready");
-        }
 #endif
 
         Runtime::Transition(ProbeEvent::RegistrationEnabled);
@@ -104,7 +114,7 @@ namespace AbsoluteControlPanelResearch::NativeMenuProbe
         Input::StartPointerPolling(&Ui::ControlPanelMenu::DispatchPointerPhase);
         Ui::PauseMenuIntegration::LogRegistration(config.enablePauseMenuEntry);
 #if defined(ACP_ENABLE_RESEARCH_TOOLS)
-        ResearchSupport::Start(researchConfig, researchProviderReady);
+        ResearchSupport::Start(researchConfig);
 #endif
     }
 

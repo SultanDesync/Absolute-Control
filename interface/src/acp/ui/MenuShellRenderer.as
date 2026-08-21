@@ -10,21 +10,43 @@ package acp.ui
         private var moduleLayer:Sprite;
         private var tabLayer:Sprite;
         private var rowLayer:Sprite;
+        private var liveLayer:Sprite;
+        private var liveHitLayer:Sprite;
         private var scrollLayer:Sprite;
         private var helpLayer:Sprite;
         private var footerLayer:Sprite;
         private var overlayLayer:Sprite;
         private var tooltipLayer:Sprite;
         private var statusField:Sprite;
+        private var semanticRenderer:SemanticCompositionRenderer;
         private var activeGridTiers:Object = {};
         private var gridFocusActive:Boolean = false;
         private var selectedGridColumnId:String = "";
+        private var guidanceActive:Boolean = false;
         private var openChoiceModuleId:String = "";
         private var openChoicePageId:String = "";
         private var openChoiceControlId:String = "";
         private var openChoiceControl:Object;
         private var choiceCursor:int = 0;
         private var choiceFirstVisible:int = 0;
+        private var openRecordModuleId:String = "";
+        private var openRecordPageId:String = "";
+        private var openRecordControlId:String = "";
+        private var openRecordControl:Object;
+        private var recordCursor:int = 0;
+        private var recordFirstVisible:int = 0;
+        private var livePlacements:Array = [];
+        private var expandedLive:Object = {};
+        private static const LIVE_DASHBOARD_MAX_HEIGHT:Number = 520;
+        private static const LIVE_COMPONENT_LIMIT:int = 6;
+        private static const RANGE_CARD_HEIGHT:Number = 86;
+        private static const PINNED_RANGE_CARD_HEIGHT:Number = 132;
+        private static const PLOT_CARD_HEIGHT:Number = 166;
+        private static const LIVE_DISCLOSURE_HEIGHT:Number = 36;
+        private static const LIVE_PINNED:uint = 1 << 8;
+        private static const LIVE_SECONDARY:uint = 1 << 9;
+        private static const LIVE_COLLAPSED:uint = 1 << 10;
+        private static const PINNED_CONTEXT_HEIGHT:Number = 72;
 
         public function MenuShellRenderer(target:MovieClip, pointerHits:PointerInteraction)
         {
@@ -60,6 +82,9 @@ package acp.ui
             moduleLayer = createLayer(PanelLayout.SIDEBAR_X, PanelLayout.SIDEBAR_Y);
             tabLayer = createLayer(PanelLayout.WORKSPACE_X, PanelLayout.TABS_Y);
             rowLayer = createLayer(PanelLayout.WORKSPACE_X, PanelLayout.ROWS_Y);
+            liveLayer = createLayer(PanelLayout.WORKSPACE_X, PanelLayout.ROWS_Y);
+            liveHitLayer = createLayer(PanelLayout.WORKSPACE_X, PanelLayout.ROWS_Y);
+            semanticRenderer = new SemanticCompositionRenderer(rowLayer, hits);
             scrollLayer = createLayer(PanelLayout.WORKSPACE_X, PanelLayout.ROWS_Y);
             helpLayer = createLayer(PanelLayout.WORKSPACE_X, PanelLayout.HELP_Y);
             footerLayer = createLayer(PanelLayout.FOOTER_X, PanelLayout.FOOTER_Y);
@@ -73,11 +98,16 @@ package acp.ui
             inputMode:String, dirtyDecisionCursor:int = 0):void
         {
             if (statusField == null || moduleLayer == null || tabLayer == null ||
-                rowLayer == null || scrollLayer == null || helpLayer == null ||
+                rowLayer == null || liveLayer == null || liveHitLayer == null ||
+                scrollLayer == null ||
+                helpLayer == null ||
                 footerLayer == null || overlayLayer == null ||
                 tooltipLayer == null) return;
 
             clearLayer(rowLayer, true);
+            clearLayer(liveLayer, true);
+            clearLayer(liveHitLayer, true);
+            livePlacements = [];
             clearLayer(scrollLayer, true);
             clearLayer(moduleLayer, false);
             clearLayer(tabLayer, false);
@@ -106,8 +136,19 @@ package acp.ui
             drawTabs(model, state);
             VectorTextRenderer.addText(rowLayer, String(current.title), 0, -38, 19,
                 PanelTheme.TEXT, true);
-            var gridHeight:Number = drawLiveComponents(current);
-            var visibleRows:int = gridHeight > 0 ? 5 : PanelLayout.VISIBLE_ROWS;
+            var pinnedHeight:Number = drawPinnedContext(model, state, current);
+            var gridHeight:Number = drawLiveComponents(current, pinnedHeight);
+            var anchorHeight:Number = semanticRenderer.drawAnchors(
+                current, state, pinnedHeight + gridHeight);
+            var semantic:Boolean = Boolean(current.compositionEnhanced);
+            var rowHeight:Number = semantic ?
+                SemanticCompositionRenderer.ROW_HEIGHT : PanelLayout.ROW_HEIGHT;
+            var availableHeight:Number = PanelLayout.ROWS_BOTTOM -
+                PanelLayout.ROWS_Y - gridHeight - anchorHeight;
+            availableHeight -= pinnedHeight;
+            var visibleRows:int = semantic ? Math.max(1,
+                Math.floor(availableHeight / rowHeight)) :
+                (gridHeight > 0 ? 5 : PanelLayout.VISIBLE_ROWS);
             var controlRows:Array = state.controlRows(current);
             var firstLayoutRow:int = 0;
             for (var rowSearch:int = 0; rowSearch < controlRows.length;
@@ -117,30 +158,83 @@ package acp.ui
                     break;
                 }
             }
-            var visible:int = Math.min(visibleRows,
-                controlRows.length - firstLayoutRow);
             var lastVisibleControl:int = state.firstVisibleRow - 1;
-            for (var i:int = 0; i < visible; ++i) {
-                var physicalRow:Array = controlRows[firstLayoutRow + i];
+            var renderedRows:int = 0;
+            var nextRowY:Number = pinnedHeight + gridHeight + anchorHeight;
+            var rowsBottom:Number = nextRowY + availableHeight;
+            for (var layoutIndex:int = firstLayoutRow;
+                 layoutIndex < controlRows.length; ++layoutIndex) {
+                var physicalRow:Array = controlRows[layoutIndex];
                 var firstControlIndex:int = int(physicalRow[0]);
                 var firstControl:Object = current.controls[firstControlIndex];
-                var rowY:Number = gridHeight + i * PanelLayout.ROW_HEIGHT;
-                if (uint(firstControl.kind) == 7) {
-                    addGroupHeader(firstControl, rowY);
-                } else if (physicalRow.length > 1) {
-                    addInlineRow(model, state, current, physicalRow, rowY);
-                } else {
-                    addRow(model, state, firstControl, firstControlIndex, rowY);
+                var actualRowHeight:Number = semantic ?
+                    semanticRenderer.rowHeight(current, firstControl) : rowHeight;
+                if (renderedRows > 0 &&
+                    nextRowY + actualRowHeight > rowsBottom) break;
+                var rowY:Number = nextRowY;
+                var semanticOffset:Number = semantic ?
+                    semanticRenderer.drawFrame(current, firstControl, rowY) : 0;
+                var rowDrawn:Boolean = false;
+                if (semantic) {
+                    var embedded:Object = semanticRenderer.liveComponentForControl(
+                        current, firstControl);
+                    if (embedded != null) {
+                        // The composition declares source/binding controls
+                        // before its live slot. Preserve that hierarchy: the
+                        // primary control row stays above the graph instead of
+                        // being visually buried beneath it.
+                        if (uint(firstControl.kind) == 7) {
+                            addGroupHeader(firstControl, rowY + semanticOffset);
+                        } else if (physicalRow.length > 1) {
+                            addInlineRow(model, state, current, physicalRow,
+                                rowY + semanticOffset);
+                        } else {
+                            addRow(model, state, firstControl, firstControlIndex,
+                                rowY + semanticOffset);
+                        }
+                        rowDrawn = true;
+                        semanticOffset += SemanticCompositionRenderer.ROW_HEIGHT;
+                        if (uint(embedded.kind) == 0) {
+                            drawRangeMeter(embedded, 0, rowY + semanticOffset,
+                                PanelLayout.CONTROL_ROW_WIDTH - 8,
+                                SemanticCompositionRenderer.EMBEDDED_RANGE_HEIGHT,
+                                true, current);
+                            semanticOffset +=
+                                SemanticCompositionRenderer.EMBEDDED_RANGE_HEIGHT + 6;
+                        } else if (uint(embedded.kind) == 1) {
+                            drawTelemetryPlot(embedded, 0, rowY + semanticOffset,
+                                PanelLayout.CONTROL_ROW_WIDTH - 8,
+                                SemanticCompositionRenderer.EMBEDDED_PLOT_HEIGHT);
+                            semanticOffset +=
+                                SemanticCompositionRenderer.EMBEDDED_PLOT_HEIGHT + 6;
+                        }
+                    }
+                }
+                if (!rowDrawn && uint(firstControl.kind) == 7) {
+                    addGroupHeader(firstControl, rowY + semanticOffset);
+                } else if (!rowDrawn && physicalRow.length > 1) {
+                    addInlineRow(model, state, current, physicalRow,
+                        rowY + semanticOffset);
+                } else if (!rowDrawn) {
+                    addRow(model, state, firstControl, firstControlIndex,
+                        rowY + semanticOffset);
                 }
                 lastVisibleControl = int(physicalRow[physicalRow.length - 1]);
+                nextRowY += actualRowHeight;
+                ++renderedRows;
             }
             current.visibleControlRows = Math.max(0,
                 lastVisibleControl - state.firstVisibleRow + 1);
-            drawScrollBar(current, state, gridHeight, visibleRows,
-                controlRows, firstLayoutRow);
+            drawScrollBar(current, state, pinnedHeight + gridHeight + anchorHeight,
+                Math.max(1, renderedRows), controlRows, firstLayoutRow, rowHeight);
             drawHelp(current, state);
             drawFooter(model, state, inputMode);
-            if (Boolean(model.bindingConflictActive)) {
+            if (Boolean(model.actionConfirmationActive)) {
+                closeChoice();
+                ActionConfirmationDialog.draw(
+                    overlayLayer, hits, model, inputMode == "controller" ?
+                        state.focusedAction : dirtyDecisionCursor, inputMode);
+            } else if (Boolean(model.bindingConflictActive)) {
                 closeChoice();
                 BindingConflictDialog.draw(
                     overlayLayer, hits, model, inputMode == "controller" ?
@@ -150,8 +244,12 @@ package acp.ui
                 DirtyDecisionDialog.draw(
                     overlayLayer, hits, model, inputMode == "controller" ?
                         state.focusedAction : dirtyDecisionCursor, inputMode);
+            } else if (guidanceActive) {
+                closeChoice();
+                drawThrottleGuidance();
             } else {
-                drawChoicePopup(current, state, gridHeight);
+                if (recordCollectionIsOpen) drawRecordCollectionPopup(current);
+                else drawChoicePopup(current, state, gridHeight);
             }
         }
 
@@ -159,6 +257,7 @@ package acp.ui
         {
             if (current == null || control == null || control.choiceOptions == null ||
                 control.choiceOptions.length == 0 || !Boolean(control.available)) return;
+            closeRecordCollection();
             openChoiceModuleId = String(current.moduleId);
             openChoicePageId = String(current.pageId);
             openChoiceControlId = String(control.controlId);
@@ -182,6 +281,125 @@ package acp.ui
             openChoiceControl = null;
             choiceCursor = 0;
             choiceFirstVisible = 0;
+            closeRecordCollection();
+        }
+
+        private function drawPinnedContext(model:Object, state:MenuSelectionState,
+            current:Object):Number
+        {
+            var pinned:Array = state.pinnedControls(current);
+            if (pinned.length == 0) return 0;
+            var gap:Number = 8;
+            var width:Number = (PanelLayout.CONTROL_ROW_WIDTH -
+                gap * (pinned.length - 1)) / pinned.length;
+            for (var index:int = 0; index < pinned.length; ++index) {
+                var entry:Object = pinned[index];
+                var control:Object = entry.control;
+                var card:Sprite = new Sprite();
+                var selected:Boolean = state.focusRegion ==
+                    PanelLayout.FOCUS_CONTROLS &&
+                    int(entry.index) == state.selectedRow;
+                var enabled:Boolean = Boolean(control.available) &&
+                    (uint(control.flags) & 1) == 0;
+                var capturing:Boolean = model != null &&
+                    Boolean(model.bindingCaptureActive) &&
+                    String(model.captureModuleId) == String(current.moduleId) &&
+                    String(model.capturePageId) == String(current.pageId) &&
+                    String(model.captureControlId) == String(control.controlId);
+                card.x = index * (width + gap);
+                card.graphics.lineStyle(selected ? 2 : 1,
+                    selected ? PanelTheme.GOLD : PanelTheme.CYAN);
+                card.graphics.beginFill(selected ? PanelTheme.ROW_SELECTED :
+                    PanelTheme.ROW_EVEN, 1.0);
+                card.graphics.drawRoundRect(0, 0, width,
+                    PINNED_CONTEXT_HEIGHT - 8, 7, 7);
+                card.graphics.endFill();
+                VectorTextRenderer.addText(card,
+                    VectorTextRenderer.fit(String(control.label).toUpperCase(), 28),
+                    12, 7, 12, PanelTheme.DIM_TEXT, true, width - 24, 18);
+                VectorTextRenderer.addText(card,
+                    VectorTextRenderer.fit(capturing ? "PRESS BUTTON OR SELECTOR" :
+                        ControlWidgets.displayValue(control), 38),
+                    12, 29, 16, enabled ? PanelTheme.TEXT :
+                        PanelTheme.DISABLED_TEXT, true, width - 45, 24);
+                VectorTextRenderer.addText(card,
+                    uint(control.kind) == 5 ? "BIND" : "V", width - 35, 30,
+                    13, enabled ? PanelTheme.CYAN : PanelTheme.DISABLED_TEXT,
+                    true, 28, 18);
+                card.buttonMode = enabled;
+                card.mouseChildren = false;
+                rowLayer.addChild(card);
+                var hitKind:String = uint(control.kind) == 8 ?
+                    "recordCollection" : uint(control.kind) == 3 ?
+                    "choice" : "activate";
+                hits.register(card, hitKind, control, int(entry.index));
+            }
+            return PINNED_CONTEXT_HEIGHT;
+        }
+
+        public function openRecordCollection(current:Object, control:Object):void
+        {
+            if (current == null || control == null || control.recordItems == null ||
+                !Boolean(control.available)) return;
+            openChoiceModuleId = "";
+            openChoicePageId = "";
+            openChoiceControlId = "";
+            openChoiceControl = null;
+            openRecordModuleId = String(current.moduleId);
+            openRecordPageId = String(current.pageId);
+            openRecordControlId = String(control.controlId);
+            openRecordControl = control;
+            recordCursor = 0;
+            for (var index:int = 0; index < control.recordItems.length; ++index) {
+                if (String(control.recordItems[index].recordId) ==
+                    String(control.stringValue)) {
+                    recordCursor = index;
+                    break;
+                }
+            }
+            normalizeRecordWindow();
+        }
+
+        public function closeRecordCollection():void
+        {
+            openRecordModuleId = "";
+            openRecordPageId = "";
+            openRecordControlId = "";
+            openRecordControl = null;
+            recordCursor = 0;
+            recordFirstVisible = 0;
+        }
+
+        public function get recordCollectionIsOpen():Boolean
+        {
+            return openRecordControl != null;
+        }
+
+        public function moveRecordCollection(direction:int):void
+        {
+            if (!recordCollectionIsOpen || openRecordControl.recordItems == null ||
+                openRecordControl.recordItems.length == 0) return;
+            recordCursor = Math.max(0, Math.min(
+                openRecordControl.recordItems.length - 1,
+                recordCursor + direction));
+            normalizeRecordWindow();
+        }
+
+        public function selectedRecordItem():Object
+        {
+            if (!recordCollectionIsOpen || openRecordControl.recordItems == null ||
+                recordCursor < 0 ||
+                recordCursor >= openRecordControl.recordItems.length) return null;
+            return {"control":openRecordControl,
+                "item":openRecordControl.recordItems[recordCursor]};
+        }
+
+        private function normalizeRecordWindow():void
+        {
+            if (recordCursor < recordFirstVisible) recordFirstVisible = recordCursor;
+            if (recordCursor >= recordFirstVisible + 8) {
+                recordFirstVisible = recordCursor - 7;
+            }
         }
 
         public function get choiceIsOpen():Boolean
@@ -253,6 +471,75 @@ package acp.ui
             if (tooltipLayer != null) clearLayer(tooltipLayer, true);
         }
 
+        public function showThrottleGuidance():void
+        {
+            guidanceActive = true;
+        }
+
+        public function hideGuidance():void
+        {
+            guidanceActive = false;
+        }
+
+        public function get guidanceIsOpen():Boolean
+        {
+            return guidanceActive;
+        }
+
+        private function drawThrottleGuidance():void
+        {
+            var blocker:Sprite = new Sprite();
+            blocker.graphics.beginFill(PanelTheme.BACKGROUND, 0.78);
+            blocker.graphics.drawRect(0, 0, PanelLayout.STAGE_WIDTH,
+                PanelLayout.STAGE_HEIGHT);
+            blocker.graphics.endFill();
+            overlayLayer.addChild(blocker);
+            hits.register(blocker, "guidanceDismiss", null, 0);
+
+            var width:Number = 820;
+            var height:Number = 300;
+            var dialog:Sprite = new Sprite();
+            dialog.x = (PanelLayout.STAGE_WIDTH - width) / 2;
+            dialog.y = (PanelLayout.STAGE_HEIGHT - height) / 2;
+            dialog.graphics.lineStyle(2, PanelTheme.CYAN);
+            dialog.graphics.beginFill(PanelTheme.PANEL, 1.0);
+            dialog.graphics.drawRect(0, 0, width, height);
+            dialog.graphics.endFill();
+            overlayLayer.addChild(dialog);
+            VectorTextRenderer.addText(dialog, "THROTTLE ZONES ARE READ-ONLY HERE",
+                36, 28, 23, PanelTheme.CYAN, true, width - 72, 34);
+            VectorTextRenderer.addText(dialog,
+                "This graph mirrors the positional zones and landmarks from Throttle Setup. Edit them there so one authoritative tuning surface controls both pages.",
+                36, 82, 17, PanelTheme.MUTED_TEXT, false,
+                width - 72, 74, true);
+
+            var openButton:Sprite = new Sprite();
+            openButton.x = 36;
+            openButton.y = 214;
+            openButton.graphics.lineStyle(2, PanelTheme.CYAN);
+            openButton.graphics.beginFill(PanelTheme.SELECTED_FILL);
+            openButton.graphics.drawRect(0, 0, 470, 52);
+            openButton.graphics.endFill();
+            openButton.buttonMode = true;
+            VectorTextRenderer.addText(openButton, "OPEN THROTTLE SETUP",
+                18, 15, 17, PanelTheme.TEXT, true);
+            dialog.addChild(openButton);
+            hits.register(openButton, "guidanceOpenThrottle", null, 0);
+
+            var stayButton:Sprite = new Sprite();
+            stayButton.x = 526;
+            stayButton.y = 214;
+            stayButton.graphics.lineStyle(1, PanelTheme.BORDER);
+            stayButton.graphics.beginFill(PanelTheme.BUTTON_FILL);
+            stayButton.graphics.drawRect(0, 0, 258, 52);
+            stayButton.graphics.endFill();
+            stayButton.buttonMode = true;
+            VectorTextRenderer.addText(stayButton, "STAY HERE",
+                18, 15, 17, PanelTheme.TEXT, true);
+            dialog.addChild(stayButton);
+            hits.register(stayButton, "guidanceDismiss", null, 1);
+        }
+
         public function hasGrid(current:Object):Boolean
         {
             return gridComponent(current) != null;
@@ -315,6 +602,33 @@ package acp.ui
             return true;
         }
 
+        public function selectedGridControl(model:Object, current:Object):Object
+        {
+            var component:Object = gridComponent(current);
+            if (component == null || component.columns == null ||
+                component.columns.length == 0 || current == null ||
+                current.controls == null) return null;
+            var column:Object = component.columns[0];
+            for (var columnIndex:int = 0;
+                 columnIndex < component.columns.length; ++columnIndex) {
+                if (String(component.columns[columnIndex].columnId) ==
+                    String(model.selectedGridColumnId)) {
+                    column = component.columns[columnIndex];
+                    break;
+                }
+            }
+            var association:String = column.associatedControlId == null ? "" :
+                String(column.associatedControlId);
+            if (association.length == 0) return null;
+            for (var controlIndex:int = 0;
+                 controlIndex < current.controls.length; ++controlIndex) {
+                var control:Object = current.controls[controlIndex];
+                if (String(control.controlId) == association &&
+                    uint(control.kind) == 3) return control;
+            }
+            return null;
+        }
+
         private function gridComponent(current:Object):Object
         {
             if (current == null || current.liveComponents == null) return null;
@@ -326,19 +640,586 @@ package acp.ui
             return null;
         }
 
-        private function drawLiveComponents(current:Object):Number
+        private function drawLiveComponents(current:Object,
+            topOffset:Number = 0):Number
         {
             if (current.liveComponents == null || current.liveComponents.length == 0) {
                 return 0;
             }
-            var component:Object = current.liveComponents[0];
-            if (uint(component.kind) != 2 || component.columns == null ||
-                component.tiers == null) return 0;
-            drawSegmentedGrid(component);
-            return 318;
+            if (Boolean(current.compositionEnhanced) &&
+                current.compositionNodes != null) {
+                for (var semanticIndex:int = 0;
+                     semanticIndex < current.compositionNodes.length;
+                     ++semanticIndex) {
+                    if (uint(current.compositionNodes[semanticIndex].kind) == 10) {
+                        return 0;
+                    }
+                }
+            }
+            var grid:Object = gridComponent(current);
+            if (grid != null) {
+                drawSegmentedGrid(grid, current);
+                return 318;
+            }
+
+            var y:Number = topOffset;
+            var rangeColumn:int = 0;
+            var rendered:int = 0;
+            var eligible:int = 0;
+            var ordered:Array = current.liveComponents.concat();
+            ordered.sort(function(left:Object, right:Object):Number {
+                var leftFlags:uint = uint(left.interactionFlags);
+                var rightFlags:uint = uint(right.interactionFlags);
+                var leftPinned:int = (leftFlags & LIVE_PINNED) != 0 ? 0 : 1;
+                var rightPinned:int = (rightFlags & LIVE_PINNED) != 0 ? 0 : 1;
+                if (leftPinned != rightPinned) return leftPinned - rightPinned;
+                var leftSecondary:int = (leftFlags & LIVE_SECONDARY) != 0 ? 1 : 0;
+                var rightSecondary:int = (rightFlags & LIVE_SECONDARY) != 0 ? 1 : 0;
+                return leftSecondary - rightSecondary;
+            });
+            for (var countIndex:int = 0;
+                 countIndex < ordered.length; ++countIndex) {
+                var candidateKind:uint = uint(ordered[countIndex].kind);
+                if (candidateKind == 0 || candidateKind == 1) ++eligible;
+            }
+            for (var index:int = 0; index < ordered.length &&
+                 rendered < LIVE_COMPONENT_LIMIT; ++index) {
+                var component:Object = ordered[index];
+                var kind:uint = uint(component.kind);
+                if (kind != 0 && kind != 1) continue;
+                var presentation:uint = uint(component.interactionFlags);
+                var pinned:Boolean = (presentation & LIVE_PINNED) != 0;
+                var collapsed:Boolean =
+                    (presentation & LIVE_COLLAPSED) != 0;
+                var expanded:Boolean = isLiveExpanded(current, component);
+                if (kind == 1 && rangeColumn != 0) {
+                    y += RANGE_CARD_HEIGHT + 6;
+                    rangeColumn = 0;
+                }
+                if (collapsed) {
+                    drawLiveDisclosure(current, component, y, expanded);
+                    y += LIVE_DISCLOSURE_HEIGHT + 4;
+                    if (!expanded) {
+                        ++rendered;
+                        continue;
+                    }
+                }
+                if (pinned && rangeColumn != 0) {
+                    y += RANGE_CARD_HEIGHT + 6;
+                    rangeColumn = 0;
+                }
+                var height:Number = kind == 0 ?
+                    (pinned ? PINNED_RANGE_CARD_HEIGHT : RANGE_CARD_HEIGHT) :
+                    PLOT_CARD_HEIGHT;
+                if (y + height > topOffset + LIVE_DASHBOARD_MAX_HEIGHT) break;
+                if (kind == 0) {
+                    if (pinned) {
+                        drawRangeMeter(component, 0, y,
+                            PanelLayout.CONTROL_ROW_WIDTH - 8, height,
+                            true, current);
+                        y += height + 6;
+                    } else {
+                        drawRangeMeter(component, rangeColumn * 690, y, 674,
+                            height, true, current);
+                        ++rangeColumn;
+                        if (rangeColumn == 2) {
+                            rangeColumn = 0;
+                            y += RANGE_CARD_HEIGHT + 6;
+                        }
+                    }
+                } else {
+                    drawTelemetryPlot(component, 0, y,
+                        PanelLayout.CONTROL_ROW_WIDTH - 8, PLOT_CARD_HEIGHT);
+                    y += PLOT_CARD_HEIGHT + 6;
+                }
+                ++rendered;
+            }
+            if (rangeColumn != 0) y += RANGE_CARD_HEIGHT + 6;
+            if (rendered < eligible) {
+                VectorTextRenderer.addText(rowLayer,
+                    "+" + (eligible - rendered) +
+                    " LIVE CHANNELS HIDDEN BY THE BOUNDED PAGE LAYOUT",
+                    8, Math.min(y, topOffset + LIVE_DASHBOARD_MAX_HEIGHT - 22), 13,
+                    PanelTheme.WARNING, true);
+                y = Math.min(topOffset + LIVE_DASHBOARD_MAX_HEIGHT, y + 24);
+            }
+            return y - topOffset;
         }
 
-        private function drawSegmentedGrid(component:Object):void
+        private function liveKey(moduleId:String, pageId:String,
+            channelId:String):String
+        {
+            return moduleId + "\n" + pageId + "\n" + channelId;
+        }
+
+        private function isLiveExpanded(current:Object,
+            component:Object):Boolean
+        {
+            return Boolean(expandedLive[liveKey(String(current.moduleId),
+                String(current.pageId), String(component.channelId))]);
+        }
+
+        private function drawLiveDisclosure(current:Object, component:Object,
+            y:Number, expanded:Boolean):void
+        {
+            var disclosure:Sprite = new Sprite();
+            disclosure.y = y;
+            disclosure.graphics.lineStyle(1, PanelTheme.BORDER);
+            disclosure.graphics.beginFill(PanelTheme.BUTTON_FILL);
+            disclosure.graphics.drawRoundRect(0, 0,
+                PanelLayout.CONTROL_ROW_WIDTH - 8,
+                LIVE_DISCLOSURE_HEIGHT, 6, 6);
+            disclosure.graphics.endFill();
+            disclosure.buttonMode = true;
+            VectorTextRenderer.addText(disclosure,
+                (expanded ? "HIDE  " : "SHOW  ") +
+                String(component.title).toUpperCase(), 14, 8, 14,
+                PanelTheme.CYAN, true,
+                PanelLayout.CONTROL_ROW_WIDTH - 40, 20);
+            rowLayer.addChild(disclosure);
+            hits.register(disclosure, "liveDisclosure", {
+                "moduleId":String(current.moduleId),
+                "pageId":String(current.pageId),
+                "channelId":String(component.channelId)
+            }, 0);
+        }
+
+        public function toggleLiveDisclosure(payload:Object):void
+        {
+            if (payload == null) return;
+            var key:String = liveKey(String(payload.moduleId),
+                String(payload.pageId), String(payload.channelId));
+            expandedLive[key] = !Boolean(expandedLive[key]);
+        }
+
+        public function refreshLive(current:Object):Boolean
+        {
+            if (current == null || liveLayer == null ||
+                gridComponent(current) != null) return false;
+            clearLayer(liveLayer, true);
+            for (var placementIndex:int = 0;
+                 placementIndex < livePlacements.length; ++placementIndex) {
+                var placement:Object = livePlacements[placementIndex];
+                var component:Object = null;
+                for (var componentIndex:int = 0;
+                     componentIndex < current.liveComponents.length;
+                     ++componentIndex) {
+                    if (String(current.liveComponents[componentIndex].channelId) ==
+                        String(placement.channelId)) {
+                        component = current.liveComponents[componentIndex];
+                        break;
+                    }
+                }
+                if (component == null) continue;
+                if (uint(placement.kind) == 0) {
+                    drawRangeMeter(component, Number(placement.x),
+                        Number(placement.y), Number(placement.width),
+                        Number(placement.height), false, current);
+                } else if (uint(placement.kind) == 1) {
+                    drawTelemetryPlot(component, Number(placement.x),
+                        Number(placement.y), Number(placement.width),
+                        Number(placement.height), false);
+                }
+            }
+            return true;
+        }
+
+        private function liveStatus(component:Object, range:Boolean = false):String
+        {
+            if (!Boolean(component.available)) return "WAITING";
+            var flags:uint = uint(component.frameFlags);
+            if ((flags & 4) != 0) return "SUSPENDED";
+            if ((flags & 2) != 0) return "UNAVAILABLE";
+            if ((flags & 1) != 0) return "STALE";
+            if (range && !Boolean(component.liveAvailable)) return "NO SIGNAL";
+            return "LIVE";
+        }
+
+        private function roleColor(role:uint):uint
+        {
+            switch (role) {
+                case 1: return PanelTheme.CYAN;
+                case 2: return PanelTheme.TIER_GREEN;
+                case 3: return PanelTheme.WARNING;
+                case 4: return PanelTheme.ERROR;
+                case 5: return PanelTheme.CYAN;
+                case 6: return PanelTheme.GOLD;
+                case 7: return PanelTheme.TIER_GREEN;
+                case 8: return PanelTheme.TIER_YELLOW;
+                case 9: return PanelTheme.TIER_RED;
+            }
+            return PanelTheme.DIM_TEXT;
+        }
+
+        private function rangeBandColor(band:Object):uint
+        {
+            var semantic:uint = uint(band.semantic);
+            if (semantic == 1) {
+                return uint(band.visualRole) == 3 ?
+                    PanelTheme.RANGE_ZERO : PanelTheme.RANGE_IDLE;
+            }
+            if (semantic == 2) return PanelTheme.RANGE_ACTIVE;
+            if (semantic == 3) {
+                return uint(band.visualRole) == 6 ?
+                    PanelTheme.RANGE_FULL : PanelTheme.RANGE_CRUISE;
+            }
+            if (semantic == 4) return PanelTheme.RANGE_REVERSE;
+            if (semantic == 5) return PanelTheme.RANGE_BOOST;
+            if (uint(band.visualRole) == 6) return PanelTheme.RANGE_FULL;
+            return roleColor(uint(band.visualRole));
+        }
+
+        private function formattedLiveValue(value:Number, format:String):String
+        {
+            var digits:int = 2;
+            var token:String = "%.2f";
+            if (format.indexOf("%.0f") >= 0) {
+                digits = 0;
+                token = "%.0f";
+            } else if (format.indexOf("%.1f") >= 0) {
+                digits = 1;
+                token = "%.1f";
+            } else if (format.indexOf("%.3f") >= 0) {
+                digits = 3;
+                token = "%.3f";
+            }
+            var number:String = value.toFixed(digits);
+            return format.length == 0 ? number : format.split(token).join(number);
+        }
+
+        private function rangePosition(value:Number, minimum:Number,
+            maximum:Number, width:Number):Number
+        {
+            if (maximum <= minimum) return 0;
+            return Math.max(0, Math.min(width,
+                (value - minimum) / (maximum - minimum) * width));
+        }
+
+        private function drawRangeMeter(component:Object, x:Number, y:Number,
+            width:Number, height:Number, record:Boolean = true,
+            current:Object = null):void
+        {
+            if (record) livePlacements.push({
+                "channelId":String(component.channelId), "kind":0,
+                "x":x, "y":y, "width":width, "height":height
+            });
+            var card:Sprite = new Sprite();
+            card.x = x;
+            card.y = y;
+            card.graphics.lineStyle(1, PanelTheme.ROW_BORDER);
+            card.graphics.beginFill(PanelTheme.ROW_EVEN);
+            card.graphics.drawRoundRect(0, 0, width, height, 6, 6);
+            card.graphics.endFill();
+            liveLayer.addChild(card);
+
+            var status:String = liveStatus(component, true);
+            VectorTextRenderer.addText(card,
+                VectorTextRenderer.fit(String(component.title), 34), 10, 7,
+                15, PanelTheme.TEXT, true);
+            VectorTextRenderer.addText(card, status, width - 112, 7, 13,
+                status == "LIVE" ? PanelTheme.CYAN : PanelTheme.WARNING, true);
+
+            var minimum:Number = Number(component.minimum);
+            var maximum:Number = Number(component.maximum);
+            var trackX:Number = 12;
+            var pinned:Boolean =
+                (uint(component.interactionFlags) & LIVE_PINNED) != 0;
+            var trackY:Number = pinned ? 44 : 34;
+            var trackWidth:Number = width - 24;
+            var trackHeight:Number = pinned ? 34 : 24;
+            card.graphics.lineStyle(1, PanelTheme.BORDER);
+            card.graphics.beginFill(PanelTheme.WIDGET_FILL);
+            card.graphics.drawRect(trackX, trackY, trackWidth, trackHeight);
+            card.graphics.endFill();
+            if (component.bands != null) {
+                for (var bandIndex:int = 0;
+                     bandIndex < component.bands.length; ++bandIndex) {
+                    var band:Object = component.bands[bandIndex];
+                    var bandStart:Number = rangePosition(Number(band.minimum),
+                        minimum, maximum, trackWidth);
+                    var bandEnd:Number = rangePosition(Number(band.maximum),
+                        minimum, maximum, trackWidth);
+                    var bandColor:uint = rangeBandColor(band);
+                    card.graphics.beginFill(bandColor, pinned ? 0.68 : 0.48);
+                    card.graphics.drawRect(trackX + bandStart, trackY,
+                        Math.max(1, bandEnd - bandStart), trackHeight);
+                    card.graphics.endFill();
+                    if (pinned && bandEnd - bandStart >= 92 &&
+                        String(band.label).length > 0) {
+                        VectorTextRenderer.addText(card,
+                            VectorTextRenderer.fit(String(band.label).toUpperCase(),
+                                Math.max(5, int((bandEnd - bandStart) / 8))),
+                            trackX + bandStart + 6, trackY + 8, 11,
+                            PanelTheme.TEXT, true, bandEnd - bandStart - 12, 16);
+                    }
+                }
+            }
+            if (component.markers != null) {
+                for (var markerIndex:int = 0;
+                     markerIndex < component.markers.length; ++markerIndex) {
+                    var marker:Object = component.markers[markerIndex];
+                    var markerX:Number = trackX + rangePosition(Number(marker.value),
+                        minimum, maximum, trackWidth);
+                    var markerColor:uint = roleColor(uint(marker.visualRole));
+                    var editable:Boolean = String(marker.controlId).length > 0;
+                    var selected:Boolean = editable &&
+                        String(marker.controlId) == hits.activeRangeControlId;
+                    card.graphics.lineStyle(selected ? 4 : 2, markerColor);
+                    card.graphics.moveTo(markerX, trackY - 3);
+                    card.graphics.lineTo(markerX, trackY + trackHeight + 3);
+                    if (editable) {
+                        card.graphics.lineStyle(1, PanelTheme.TEXT);
+                        card.graphics.beginFill(markerColor, 1.0);
+                        card.graphics.moveTo(markerX, trackY - (selected ? 12 : 9));
+                        card.graphics.lineTo(markerX - (selected ? 8 : 6), trackY - 2);
+                        card.graphics.lineTo(markerX + (selected ? 8 : 6), trackY - 2);
+                        card.graphics.lineTo(markerX, trackY - (selected ? 12 : 9));
+                        card.graphics.endFill();
+                    }
+                }
+            }
+            if (Boolean(component.liveAvailable)) {
+                var liveX:Number = trackX + rangePosition(Number(component.liveValue),
+                    minimum, maximum, trackWidth);
+                card.graphics.lineStyle(pinned ? 4 : 3, PanelTheme.TEXT);
+                card.graphics.moveTo(liveX, trackY - 6);
+                card.graphics.lineTo(liveX, trackY + trackHeight + 6);
+                if (pinned) {
+                    card.graphics.beginFill(PanelTheme.TEXT);
+                    card.graphics.moveTo(liveX, trackY + trackHeight + 8);
+                    card.graphics.lineTo(liveX - 6, trackY + trackHeight + 15);
+                    card.graphics.lineTo(liveX + 6, trackY + trackHeight + 15);
+                    card.graphics.lineTo(liveX, trackY + trackHeight + 8);
+                    card.graphics.endFill();
+                }
+            }
+            var valueY:Number = trackY + trackHeight + 6;
+            VectorTextRenderer.addText(card,
+                formattedLiveValue(Number(component.liveValue),
+                    String(component.valueFormat)), 12, valueY, 13,
+                Boolean(component.liveAvailable) ? PanelTheme.TEXT : PanelTheme.DIM_TEXT);
+            VectorTextRenderer.addText(card,
+                formattedLiveValue(minimum, String(component.valueFormat)),
+                width - 174, valueY, 12, PanelTheme.DIM_TEXT);
+            VectorTextRenderer.addText(card,
+                formattedLiveValue(maximum, String(component.valueFormat)),
+                width - 86, valueY, 12, PanelTheme.DIM_TEXT);
+            if (pinned && component.bands != null) {
+                var legendCount:int = 0;
+                for each (var labeledBand:Object in component.bands) {
+                    if (String(labeledBand.label).length > 0) ++legendCount;
+                }
+                legendCount = Math.max(1, legendCount);
+                var legendWidth:Number = (width - 24) / legendCount;
+                var legendItem:int = 0;
+                for (var legendIndex:int = 0;
+                     legendIndex < component.bands.length;
+                     ++legendIndex) {
+                    var legend:Object = component.bands[legendIndex];
+                    var legendLabel:String = String(legend.label);
+                    if (legendLabel.length == 0) continue;
+                    var legendX:Number = 12 + legendItem * legendWidth;
+                    var legendChipWidth:Number = Math.max(54, legendWidth - 8);
+                    var legendColor:uint = rangeBandColor(legend);
+                    card.graphics.lineStyle(1, legendColor, 1.0);
+                    card.graphics.beginFill(legendColor, 0.48);
+                    card.graphics.drawRoundRect(legendX, height - 25,
+                        legendChipWidth, 20, 6, 6);
+                    card.graphics.endFill();
+                    card.graphics.beginFill(legendColor, 1.0);
+                    card.graphics.drawRoundRect(legendX + 2, height - 23,
+                        8, 16, 4, 4);
+                    card.graphics.endFill();
+                    VectorTextRenderer.addText(card,
+                        VectorTextRenderer.fit(legendLabel,
+                            Math.max(8, int(legendChipWidth / 7))),
+                        legendX + 15, height - 23, 11, PanelTheme.TEXT, true,
+                        legendChipWidth - 20, 16);
+                    ++legendItem;
+                }
+                var hasShapedOutput:Boolean = false;
+                var guideEditable:Boolean = false;
+                if (component.markers != null) {
+                    for each (var guideMarker:Object in component.markers) {
+                        if (String(guideMarker.controlId).length > 0) {
+                            guideEditable = true;
+                        }
+                        if (String(guideMarker.label) == "Shaped output") {
+                            hasShapedOutput = true;
+                            break;
+                        }
+                    }
+                }
+                VectorTextRenderer.addText(card,
+                    !guideEditable ?
+                        "READ-ONLY PREVIEW  /  SELECT GRAPH TO EDIT ON THROTTLE SETUP" :
+                    hasShapedOutput ?
+                        "DRAG EDGES  /  WHITE = INPUT  /  GREEN = SHAPED OUTPUT" :
+                        "DRAG COLOURED LANDMARKS  /  WHITE = PHYSICAL LEVER",
+                    12, 23, 11, PanelTheme.MUTED_TEXT, true,
+                    width - 24, 16);
+            }
+            if (record && current != null && component.markers != null) {
+                var hasEditable:Boolean = false;
+                for each (marker in component.markers) {
+                    if (String(marker.controlId).length > 0) {
+                        hasEditable = true;
+                        break;
+                    }
+                }
+                var throttleGuidance:Boolean =
+                    String(current.moduleId) == "absolute.hotas" &&
+                    String(current.pageId) == "hotas-flight-axes" &&
+                    String(component.channelId) == "axis-throttle";
+                if (hasEditable || throttleGuidance) {
+                    var rangeHit:Sprite = new Sprite();
+                    rangeHit.x = x + trackX;
+                    rangeHit.y = y + trackY - 14;
+                    rangeHit.graphics.beginFill(0xFFFFFF, 0.0);
+                    rangeHit.graphics.drawRect(0, 0, trackWidth,
+                        trackHeight + 30);
+                    rangeHit.graphics.endFill();
+                    rangeHit.buttonMode = true;
+                    liveHitLayer.addChild(rangeHit);
+                    hits.register(rangeHit,
+                        throttleGuidance ? "rangeGuidance" : "rangeMeter", {
+                        "channelId":String(component.channelId),
+                        "component":component,
+                        "trackWidth":trackWidth
+                    }, 0);
+                }
+            }
+        }
+
+        private function plotY(value:Number, minimum:Number, maximum:Number,
+            y:Number, height:Number):Number
+        {
+            if (maximum <= minimum) return y + height * 0.5;
+            return y + height - Math.max(0, Math.min(1,
+                (value - minimum) / (maximum - minimum))) * height;
+        }
+
+        private function drawTelemetryPlot(component:Object, x:Number, y:Number,
+            width:Number, height:Number, record:Boolean = true):void
+        {
+            if (record) livePlacements.push({
+                "channelId":String(component.channelId), "kind":1,
+                "x":x, "y":y, "width":width, "height":height
+            });
+            var card:Sprite = new Sprite();
+            card.x = x;
+            card.y = y;
+            card.graphics.lineStyle(1, PanelTheme.ROW_BORDER);
+            card.graphics.beginFill(PanelTheme.ROW_EVEN);
+            card.graphics.drawRoundRect(0, 0, width, height, 6, 6);
+            card.graphics.endFill();
+            liveLayer.addChild(card);
+
+            var status:String = liveStatus(component);
+            VectorTextRenderer.addText(card,
+                VectorTextRenderer.fit(String(component.title), 52), 10, 7,
+                15, PanelTheme.TEXT, true);
+            VectorTextRenderer.addText(card, status, width - 112, 7, 13,
+                status == "LIVE" ? PanelTheme.CYAN : PanelTheme.WARNING, true);
+            var plotX:Number = 12;
+            var plotTop:Number = 34;
+            var plotWidth:Number = width - 24;
+            var plotHeight:Number = height - 58;
+            card.graphics.lineStyle(1, PanelTheme.BORDER);
+            card.graphics.beginFill(PanelTheme.WIDGET_FILL);
+            card.graphics.drawRect(plotX, plotTop, plotWidth, plotHeight);
+            card.graphics.endFill();
+
+            var minimum:Number = Number(component.minimum);
+            var maximum:Number = Number(component.maximum);
+            var foundValue:Boolean = false;
+            if (Boolean(component.autoRange) && component.samples != null) {
+                for (var autoSample:int = 0;
+                     autoSample < component.samples.length; ++autoSample) {
+                    var autoRow:Object = component.samples[autoSample];
+                    for (var autoSeries:int = 0;
+                         autoSeries < autoRow.values.length; ++autoSeries) {
+                        if ((uint(autoRow.availableMask) & (1 << autoSeries)) == 0) continue;
+                        var autoValue:Number = Number(autoRow.values[autoSeries]);
+                        if (!foundValue) {
+                            minimum = maximum = autoValue;
+                            foundValue = true;
+                        } else {
+                            minimum = Math.min(minimum, autoValue);
+                            maximum = Math.max(maximum, autoValue);
+                        }
+                    }
+                }
+                if (foundValue && maximum <= minimum) {
+                    minimum -= 1;
+                    maximum += 1;
+                } else if (foundValue) {
+                    var pad:Number = (maximum - minimum) * 0.05;
+                    minimum -= pad;
+                    maximum += pad;
+                }
+            }
+            if (component.bands != null) {
+                for (var bandIndex:int = 0;
+                     bandIndex < component.bands.length; ++bandIndex) {
+                    var band:Object = component.bands[bandIndex];
+                    var top:Number = plotY(Number(band.maximum), minimum,
+                        maximum, plotTop, plotHeight);
+                    var bottom:Number = plotY(Number(band.minimum), minimum,
+                        maximum, plotTop, plotHeight);
+                    card.graphics.beginFill(roleColor(uint(band.visualRole)), 0.24);
+                    card.graphics.drawRect(plotX, top, plotWidth,
+                        Math.max(1, bottom - top));
+                    card.graphics.endFill();
+                }
+            }
+            if (component.markers != null) {
+                for (var markerIndex:int = 0;
+                     markerIndex < component.markers.length; ++markerIndex) {
+                    var marker:Object = component.markers[markerIndex];
+                    var markerY:Number = plotY(Number(marker.value), minimum,
+                        maximum, plotTop, plotHeight);
+                    card.graphics.lineStyle(1, roleColor(uint(marker.visualRole)));
+                    card.graphics.moveTo(plotX, markerY);
+                    card.graphics.lineTo(plotX + plotWidth, markerY);
+                }
+            }
+            var sampleCount:int = component.samples == null ? 0 :
+                component.samples.length;
+            if (component.series != null && sampleCount > 0) {
+                for (var seriesIndex:int = 0;
+                     seriesIndex < component.series.length; ++seriesIndex) {
+                    var series:Object = component.series[seriesIndex];
+                    card.graphics.lineStyle(2, roleColor(uint(series.visualRole)));
+                    var drawing:Boolean = false;
+                    for (var sampleIndex:int = 0;
+                         sampleIndex < sampleCount; ++sampleIndex) {
+                        var sample:Object = component.samples[sampleIndex];
+                        if ((uint(sample.availableMask) & (1 << seriesIndex)) == 0) {
+                            drawing = false;
+                            continue;
+                        }
+                        var sampleX:Number = plotX + (sampleCount == 1 ? plotWidth :
+                            sampleIndex / (sampleCount - 1) * plotWidth);
+                        var sampleY:Number = plotY(Number(sample.values[seriesIndex]),
+                            minimum, maximum, plotTop, plotHeight);
+                        if (!drawing) card.graphics.moveTo(sampleX, sampleY);
+                        else card.graphics.lineTo(sampleX, sampleY);
+                        drawing = true;
+                    }
+                    VectorTextRenderer.addText(card,
+                        VectorTextRenderer.fit(String(series.label), 20),
+                        12 + seriesIndex * 180, height - 20, 12,
+                        roleColor(uint(series.visualRole)), true);
+                }
+            } else {
+                VectorTextRenderer.addText(card, "WAITING FOR BOUNDED HISTORY",
+                    plotX + 12, plotTop + plotHeight * 0.5 - 8, 13,
+                    PanelTheme.DIM_TEXT, true);
+            }
+        }
+
+        private function drawSegmentedGrid(component:Object, current:Object = null):void
         {
             var channelId:String = String(component.channelId);
             var cycleOnClick:Boolean =
@@ -518,12 +1399,77 @@ package acp.ui
                             columnIndex);
                     }
                 }
-                VectorTextRenderer.addText(rowLayer,
-                    "LIVE " + int(column.currentCount) + "/" + int(column.maximumCount) +
-                    "  TARGET " + int(column.targetCount), quickX + 198,
-                    rowY + 4, 14,
-                    Boolean(component.available) ? PanelTheme.DIM_TEXT : PanelTheme.WARNING);
+                var choiceControl:Object = findGridControl(current, column);
+                if (choiceControl != null) {
+                    var dropdown:Sprite = new Sprite();
+                    var dropX:Number = quickX + 198;
+                    dropdown.x = dropX;
+                    dropdown.y = rowY;
+                    dropdown.graphics.lineStyle(1, PanelTheme.CYAN);
+                    dropdown.graphics.beginFill(PanelTheme.WIDGET_FILL);
+                    dropdown.graphics.drawRoundRect(0, 0, 280, 24, 4, 4);
+                    dropdown.graphics.endFill();
+                    dropdown.buttonMode = true;
+                    dropdown.mouseChildren = false;
+                    var valText:String = ControlWidgets.displayValue(choiceControl);
+                    VectorTextRenderer.addText(dropdown,
+                        VectorTextRenderer.fit(valText, 26), 10, 3, 14, PanelTheme.TEXT, false);
+                    VectorTextRenderer.addText(dropdown, "V", 260, 3, 14, PanelTheme.DIM_TEXT);
+                    rowLayer.addChild(dropdown);
+                    var choiceIdx:int = findControlIndex(current, choiceControl);
+                    hits.register(dropdown, "choice", choiceControl, choiceIdx);
+                } else {
+                    VectorTextRenderer.addText(rowLayer,
+                        "LIVE " + int(column.currentCount) + "/" + int(column.maximumCount) +
+                        "  TARGET " + int(column.targetCount), quickX + 198,
+                        rowY + 4, 14,
+                        Boolean(component.available) ? PanelTheme.DIM_TEXT : PanelTheme.WARNING);
+                }
             }
+        }
+
+        private function findControlIndex(current:Object, control:Object):int
+        {
+            if (current == null || current.controls == null || control == null) return 0;
+            for (var i:int = 0; i < current.controls.length; ++i) {
+                if (current.controls[i] == control ||
+                    String(current.controls[i].controlId) == String(control.controlId)) {
+                    return i;
+                }
+            }
+            return 0;
+        }
+
+        private function findGridControl(current:Object, column:Object):Object
+        {
+            if (current == null || current.controls == null || column == null) return null;
+            var assocId:String = column.associatedControlId != null ? String(column.associatedControlId) : "";
+            for (var i:int = 0; i < current.controls.length; ++i) {
+                var control:Object = current.controls[i];
+                var cId:String = String(control.controlId);
+                if (assocId.length > 0 && cId == assocId &&
+                    uint(control.kind) == 3) return control;
+            }
+            return null;
+        }
+
+        private function gridRowIndexForControl(current:Object, control:Object):int
+        {
+            if (current == null || control == null || current.liveComponents == null) return 0;
+            var cId:String = String(control.controlId);
+            for (var compIdx:int = 0; compIdx < current.liveComponents.length; ++compIdx) {
+                var comp:Object = current.liveComponents[compIdx];
+                if (uint(comp.kind) == 2 && comp.columns != null) {
+                    for (var colIdx:int = 0; colIdx < comp.columns.length; ++colIdx) {
+                        var col:Object = comp.columns[colIdx];
+                        var assocId:String = col.associatedControlId != null ? String(col.associatedControlId) : "";
+                        if (assocId.length > 0 && cId == assocId) {
+                            return colIdx;
+                        }
+                    }
+                }
+            }
+            return 0;
         }
 
         private function tierIndex(component:Object, tierId:String):int
@@ -706,30 +1652,55 @@ package acp.ui
                 PanelLayout.ROW_HEIGHT - 4);
             row.graphics.endFill();
             var gap:Number = 8;
-            var width:Number = (PanelLayout.CONTROL_ROW_WIDTH - 28 -
-                gap * (indices.length - 1)) / indices.length;
+            var availableWidth:Number = PanelLayout.CONTROL_ROW_WIDTH - 28 -
+                gap * (indices.length - 1);
+            var totalWeight:Number = 0;
+            for (var weightIndex:int = 0; weightIndex < indices.length;
+                 ++weightIndex) {
+                var weightControl:Object = current.controls[int(indices[weightIndex])];
+                totalWeight += uint(weightControl.kind) == 5 ? 2 : 1;
+            }
+            var nextX:Number = 14;
             for (var item:int = 0; item < indices.length; ++item) {
                 var index:int = int(indices[item]);
                 var control:Object = current.controls[index];
+                var weight:Number = uint(control.kind) == 5 ? 2 : 1;
+                var width:Number = availableWidth * weight / totalWeight;
                 var button:Sprite = new Sprite();
                 var selected:Boolean = state.focusRegion ==
                     PanelLayout.FOCUS_CONTROLS && state.selectedRow == index;
-                button.x = 14 + item * (width + gap);
+                button.x = nextX;
                 button.y = 7;
                 button.graphics.lineStyle(selected ? 2 : 1,
                     selected ? PanelTheme.CYAN : PanelTheme.BORDER);
                 button.graphics.beginFill(selected ? PanelTheme.SELECTED_FILL :
                     PanelTheme.BUTTON_FILL);
-                button.graphics.drawRoundRect(0, 0, width, 34, 6, 6);
+                button.graphics.drawRoundRect(0, 0, width, 60, 6, 6);
                 button.graphics.endFill();
                 button.buttonMode = Boolean(control.available);
                 VectorTextRenderer.addText(button,
                     VectorTextRenderer.fit(String(control.label), 30),
-                    14, 7, 16, Boolean(control.available) ? PanelTheme.TEXT :
+                    14, 6, 15, Boolean(control.available) ? PanelTheme.TEXT :
                     PanelTheme.DISABLED_TEXT, selected);
+                if (uint(control.kind) != 4) {
+                    var displayed:String = ControlWidgets.displayValue(control);
+                    var valueColor:uint = Boolean(control.available) ?
+                        (uint(control.kind) == 5 &&
+                         (displayed.length == 0 || displayed == "(unbound)") ?
+                            PanelTheme.WARNING : PanelTheme.CYAN) :
+                        PanelTheme.DISABLED_TEXT;
+                    VectorTextRenderer.addText(button,
+                        VectorTextRenderer.fit(displayed, 42), 14, 31, 15,
+                        valueColor, true, width - 28, 20);
+                }
                 row.addChild(button);
-                hits.register(button, Boolean(control.available) ? "activate" :
-                    "disabled", control, index);
+                var interactive:String = "disabled";
+                if (Boolean(control.available)) {
+                    interactive = uint(control.kind) == 1 ||
+                        uint(control.kind) == 2 ? "select" : "activate";
+                }
+                hits.register(button, interactive, control, index);
+                nextX += width + gap;
             }
             rowLayer.addChild(row);
         }
@@ -745,10 +1716,31 @@ package acp.ui
             var description:String = String(current.description);
             if (current.controls != null && current.controls.length > 0) {
                 description = String(current.controls[state.selectedRow].description);
+                var semanticDetail:String = semanticRenderer.detailForControl(
+                    current, current.controls[state.selectedRow]);
+                if (semanticDetail.length > 0) {
+                    description += "  " + semanticDetail;
+                }
                 if (uint(current.controls[state.selectedRow].kind) == 5 &&
                     String(current.controls[state.selectedRow].stringValue).length > 0) {
                     description += "  ASSIGNED: " +
                         String(current.controls[state.selectedRow].stringValue);
+                }
+                if (uint(current.controls[state.selectedRow].kind) == 8 &&
+                    current.controls[state.selectedRow].recordItems != null) {
+                    var selectedRecordId:String =
+                        String(current.controls[state.selectedRow].stringValue);
+                    for (var recordIndex:int = 0; recordIndex <
+                        current.controls[state.selectedRow].recordItems.length;
+                        ++recordIndex) {
+                        var record:Object = current.controls[state.selectedRow]
+                            .recordItems[recordIndex];
+                        if (String(record.recordId) == selectedRecordId) {
+                            description = String(record.summary) + "  " +
+                                String(record.detail);
+                            break;
+                        }
+                    }
                 }
             }
             VectorTextRenderer.addText(helpLayer, "SELECTED CONTROL", 14, 10, 13,
@@ -759,10 +1751,10 @@ package acp.ui
 
         private function drawScrollBar(current:Object, state:MenuSelectionState,
             yOffset:Number, visibleRows:int, layoutRows:Array,
-            firstLayoutRow:int):void
+            firstLayoutRow:int, rowHeight:Number = PanelLayout.ROW_HEIGHT):void
         {
             if (layoutRows == null || layoutRows.length <= visibleRows) return;
-            var trackHeight:Number = visibleRows * PanelLayout.ROW_HEIGHT - 4;
+            var trackHeight:Number = visibleRows * rowHeight - 4;
             var thumbHeight:Number = Math.max(42,
                 trackHeight * visibleRows / layoutRows.length);
             var travel:Number = trackHeight - thumbHeight;
@@ -817,8 +1809,9 @@ package acp.ui
                     break;
                 }
             }
-            if (controlIndex < state.firstVisibleRow ||
-                controlIndex >= state.firstVisibleRow + int(current.visibleControlRows) ||
+            var isGridControl:Boolean = MenuSelectionState.isGridRowControl(current, openChoiceControl);
+            if ((!isGridControl && (controlIndex < state.firstVisibleRow ||
+                controlIndex >= state.firstVisibleRow + int(current.visibleControlRows))) ||
                 openChoiceControl.choiceOptions == null ||
                 openChoiceControl.choiceOptions.length == 0) {
                 closeChoice();
@@ -839,12 +1832,25 @@ package acp.ui
             var visible:int = Math.min(PanelLayout.VISIBLE_CHOICE_OPTIONS,
                 openChoiceControl.choiceOptions.length - choiceFirstVisible);
             var popupHeight:Number = visible * PanelLayout.CHOICE_OPTION_HEIGHT;
-            var anchorRow:Number = gridHeight +
-                (controlIndex - state.firstVisibleRow) * PanelLayout.ROW_HEIGHT;
-            var popupX:Number = PanelLayout.WORKSPACE_X + 625;
-            var popupY:Number = PanelLayout.ROWS_Y + anchorRow + 42;
-            if (popupY + popupHeight > PanelLayout.HELP_Y) {
-                popupY = PanelLayout.ROWS_Y + anchorRow - popupHeight - 4;
+            var popupWidth:Number = isGridControl ? 280 : PanelLayout.CHOICE_POPUP_WIDTH;
+            var popupX:Number = isGridControl ?
+                PanelLayout.WORKSPACE_X + 798 :
+                PanelLayout.WORKSPACE_X + 625;
+            var popupY:Number;
+            if (isGridControl) {
+                var gridRowIdx:int = gridRowIndexForControl(current, openChoiceControl);
+                var anchorY:Number = 105 + gridRowIdx * 34;
+                popupY = PanelLayout.ROWS_Y + anchorY + 28;
+                if (popupY + popupHeight > PanelLayout.HELP_Y) {
+                    popupY = PanelLayout.ROWS_Y + anchorY - popupHeight - 4;
+                }
+            } else {
+                var anchorRow:Number = gridHeight +
+                    (controlIndex - state.firstVisibleRow) * PanelLayout.ROW_HEIGHT;
+                popupY = PanelLayout.ROWS_Y + anchorRow + 42;
+                if (popupY + popupHeight > PanelLayout.HELP_Y) {
+                    popupY = PanelLayout.ROWS_Y + anchorRow - popupHeight - 4;
+                }
             }
             popupY = Math.max(PanelLayout.SAFE_MARGIN,
                 Math.min(PanelLayout.STAGE_HEIGHT - PanelLayout.SAFE_MARGIN -
@@ -855,7 +1861,7 @@ package acp.ui
             popup.y = popupY;
             popup.graphics.lineStyle(2, PanelTheme.CYAN);
             popup.graphics.beginFill(PanelTheme.PANEL, 1.0);
-            popup.graphics.drawRect(0, 0, PanelLayout.CHOICE_POPUP_WIDTH,
+            popup.graphics.drawRect(0, 0, popupWidth,
                 popupHeight);
             popup.graphics.endFill();
             overlayLayer.addChild(popup);
@@ -872,12 +1878,13 @@ package acp.ui
                 optionRow.graphics.beginFill(focused ? PanelTheme.ROW_SELECTED :
                     (selected ? PanelTheme.SELECTED_FILL : PanelTheme.WIDGET_FILL));
                 optionRow.graphics.drawRect(0, 0,
-                    PanelLayout.CHOICE_POPUP_WIDTH, PanelLayout.CHOICE_OPTION_HEIGHT);
+                    popupWidth, PanelLayout.CHOICE_OPTION_HEIGHT);
                 optionRow.graphics.endFill();
                 optionRow.y = visibleIndex * PanelLayout.CHOICE_OPTION_HEIGHT;
                 optionRow.buttonMode = true;
+                optionRow.mouseChildren = false;
                 VectorTextRenderer.addText(optionRow,
-                    VectorTextRenderer.fit(String(option.label), 42), 14, 8, 16,
+                    VectorTextRenderer.fit(String(option.label), isGridControl ? 24 : 42), 14, 8, 16,
                     selected ? PanelTheme.CYAN : PanelTheme.TEXT, focused);
                 popup.addChild(optionRow);
                 hits.register(optionRow, "choiceOption",
@@ -890,15 +1897,137 @@ package acp.ui
                     openChoiceControl.choiceOptions.length - choiceFirstVisible - visible);
                 if (hiddenAbove > 0) {
                     VectorTextRenderer.addText(popup, "^ +" + hiddenAbove,
-                        PanelLayout.CHOICE_POPUP_WIDTH - 58, 6, 13,
+                        popupWidth - 58, 6, 13,
                         PanelTheme.CYAN, true);
                 }
                 if (hiddenBelow > 0) {
                     VectorTextRenderer.addText(popup, "+" + hiddenBelow + " V",
-                        PanelLayout.CHOICE_POPUP_WIDTH - 58,
+                        popupWidth - 58,
                         popupHeight - 22, 13, PanelTheme.CYAN, true);
                 }
             }
+        }
+
+        private function drawRecordCollectionPopup(current:Object):void
+        {
+            if (!recordCollectionIsOpen) return;
+            if (current == null || String(current.moduleId) != openRecordModuleId ||
+                String(current.pageId) != openRecordPageId) {
+                closeRecordCollection();
+                return;
+            }
+            var found:Boolean = false;
+            for (var controlIndex:int = 0;
+                 controlIndex < current.controls.length; ++controlIndex) {
+                if (String(current.controls[controlIndex].controlId) ==
+                    openRecordControlId) {
+                    openRecordControl = current.controls[controlIndex];
+                    found = true;
+                    break;
+                }
+            }
+            if (!found || openRecordControl.recordItems == null) {
+                closeRecordCollection();
+                return;
+            }
+            var itemCount:int = openRecordControl.recordItems.length;
+            if (itemCount > 0) {
+                recordCursor = Math.max(0, Math.min(recordCursor, itemCount - 1));
+                normalizeRecordWindow();
+            } else {
+                recordCursor = 0;
+                recordFirstVisible = 0;
+            }
+
+            var blocker:Sprite = new Sprite();
+            blocker.graphics.beginFill(PanelTheme.BACKGROUND, 0.78);
+            blocker.graphics.drawRect(0, 0, PanelLayout.STAGE_WIDTH,
+                PanelLayout.STAGE_HEIGHT);
+            blocker.graphics.endFill();
+            overlayLayer.addChild(blocker);
+            hits.register(blocker, "recordDismiss", null, 0);
+
+            var width:Number = 1080;
+            var height:Number = 540;
+            var dialog:Sprite = new Sprite();
+            dialog.x = (PanelLayout.STAGE_WIDTH - width) / 2;
+            dialog.y = (PanelLayout.STAGE_HEIGHT - height) / 2;
+            dialog.graphics.lineStyle(2, PanelTheme.CYAN);
+            dialog.graphics.beginFill(PanelTheme.PANEL, 1.0);
+            dialog.graphics.drawRect(0, 0, width, height);
+            dialog.graphics.endFill();
+            overlayLayer.addChild(dialog);
+
+            VectorTextRenderer.addText(dialog,
+                String(openRecordControl.label).toUpperCase(), 28, 20, 23,
+                PanelTheme.TEXT, true, width - 56, 32);
+            VectorTextRenderer.addText(dialog,
+                VectorTextRenderer.fit(String(openRecordControl.description), 92),
+                28, 54, 15, PanelTheme.MUTED_TEXT, false, width - 56, 28);
+
+            var listX:Number = 28;
+            var listY:Number = 96;
+            var listWidth:Number = 390;
+            var rowHeight:Number = 48;
+            var visible:int = Math.min(8, itemCount - recordFirstVisible);
+            if (itemCount == 0) {
+                VectorTextRenderer.addText(dialog, "NO RECORDS AVAILABLE", listX,
+                    listY + 18, 17, PanelTheme.DIM_TEXT, true);
+            }
+            for (var visibleIndex:int = 0; visibleIndex < visible;
+                 ++visibleIndex) {
+                var itemIndex:int = recordFirstVisible + visibleIndex;
+                var item:Object = openRecordControl.recordItems[itemIndex];
+                var row:Sprite = new Sprite();
+                row.x = listX;
+                row.y = listY + visibleIndex * rowHeight;
+                var focused:Boolean = itemIndex == recordCursor;
+                var selected:Boolean = String(item.recordId) ==
+                    String(openRecordControl.stringValue);
+                var disabled:Boolean = (uint(item.flags) & 1) != 0;
+                row.graphics.lineStyle(focused ? 2 : 1,
+                    focused ? PanelTheme.GOLD : PanelTheme.ROW_BORDER);
+                row.graphics.beginFill(focused ? PanelTheme.ROW_SELECTED :
+                    (selected ? PanelTheme.SELECTED_FILL : PanelTheme.WIDGET_FILL));
+                row.graphics.drawRect(0, 0, listWidth, rowHeight - 4);
+                row.graphics.endFill();
+                row.buttonMode = !disabled;
+                VectorTextRenderer.addText(row,
+                    VectorTextRenderer.fit(String(item.label), 34), 12, 7, 16,
+                    disabled ? PanelTheme.DISABLED_TEXT :
+                        ((uint(item.flags) & 2) != 0 ? PanelTheme.WARNING :
+                            (selected ? PanelTheme.CYAN : PanelTheme.TEXT)), true);
+                VectorTextRenderer.addText(row,
+                    VectorTextRenderer.fit(String(item.summary), 44), 12, 26,
+                    12, PanelTheme.DIM_TEXT);
+                dialog.addChild(row);
+                hits.register(row, disabled ? "disabled" : "recordItem",
+                    {"control":openRecordControl, "item":item}, itemIndex);
+            }
+
+            var detailX:Number = 450;
+            dialog.graphics.lineStyle(1, PanelTheme.BORDER);
+            dialog.graphics.beginFill(PanelTheme.WIDGET_FILL);
+            dialog.graphics.drawRect(detailX, listY, width - detailX - 28, 390);
+            dialog.graphics.endFill();
+            if (itemCount > 0) {
+                var detailItem:Object = openRecordControl.recordItems[recordCursor];
+                VectorTextRenderer.addText(dialog, String(detailItem.label),
+                    detailX + 22, listY + 20, 21,
+                    (uint(detailItem.flags) & 2) != 0 ? PanelTheme.WARNING :
+                        PanelTheme.TEXT, true, width - detailX - 72, 32);
+                VectorTextRenderer.addText(dialog, String(detailItem.summary),
+                    detailX + 22, listY + 62, 16, PanelTheme.CYAN, false,
+                    width - detailX - 72, 54, true);
+                VectorTextRenderer.addText(dialog, String(detailItem.detail),
+                    detailX + 22, listY + 132, 16, PanelTheme.MUTED_TEXT, false,
+                    width - detailX - 72, 220, true);
+            }
+            VectorTextRenderer.addText(dialog,
+                "ENTER SELECT    ESC CLOSE" +
+                    (itemCount > 8 ? "    " + (recordFirstVisible + 1) + "-" +
+                        (recordFirstVisible + visible) + " / " + itemCount : ""),
+                28, height - 40, 14, PanelTheme.DIM_TEXT, true);
         }
 
         private function drawFooter(model:Object, state:MenuSelectionState,

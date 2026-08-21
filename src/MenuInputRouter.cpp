@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <ranges>
 
 namespace AbsoluteControlPanelResearch::MenuInputRouter
@@ -63,14 +64,17 @@ namespace AbsoluteControlPanelResearch::MenuInputRouter
             const auto found = std::ranges::find_if(a_page.controls, [&](const auto& control) {
                 return control.descriptor.controlId == a_model.selectedControlId;
             });
-            if (found != a_page.controls.end()) {
+            if (found != a_page.controls.end() && found->semanticVisible &&
+                found->semanticEnabled) {
                 return static_cast<std::size_t>(
                     std::distance(a_page.controls.begin(), found));
             }
             const auto first = std::ranges::find_if(
                 a_page.controls, [](const auto& control) {
                     return control.descriptor.kind !=
-                        SlopApi::ControlKind::GroupHeader;
+                               SlopApi::ControlKind::GroupHeader &&
+                           control.semanticVisible &&
+                           control.semanticEnabled;
                 });
             return first == a_page.controls.end() ? 0 :
                 static_cast<std::size_t>(
@@ -191,6 +195,30 @@ namespace AbsoluteControlPanelResearch::MenuInputRouter
             return command;
         }
 
+        [[nodiscard]] bool Selectable(
+            const MenuSession::Control& control) noexcept
+        {
+            return control.descriptor.kind !=
+                       SlopApi::ControlKind::GroupHeader &&
+                   control.semanticVisible && control.semanticEnabled;
+        }
+
+        [[nodiscard]] std::optional<MenuSession::Command> AnchorCommand(
+            const MenuSession::Page& page,
+            const Composition::AnchorTarget& anchor) noexcept
+        {
+            const auto control = std::ranges::find(
+                page.controls, anchor.controlId,
+                [](const MenuSession::Control& candidate) {
+                    return candidate.descriptor.controlId;
+                });
+            if (control == page.controls.end() || !Selectable(*control)) {
+                return std::nullopt;
+            }
+            return ControlCommand(
+                MenuSession::CommandKind::SelectControl, page, *control);
+        }
+
         [[nodiscard]] std::optional<MenuSession::Command> Adjust(
             const MenuSession::Page& a_page, const MenuSession::Control& a_control,
             std::int32_t a_direction) noexcept
@@ -217,6 +245,32 @@ namespace AbsoluteControlPanelResearch::MenuInputRouter
                     a_control.value.floatValue + a_direction * descriptor.stepValue,
                     descriptor.minimumValue, descriptor.maximumValue);
                 return command;
+            }
+            if (descriptor.kind == SlopApi::ControlKind::RecordCollection &&
+                !a_control.recordItems.empty()) {
+                const auto selected = std::ranges::find(
+                    a_control.recordItems,
+                    std::string_view{ a_control.value.stringValue },
+                    &MenuApiHost::RecordItem::recordId);
+                const auto count = a_control.recordItems.size();
+                auto index = selected == a_control.recordItems.end() ?
+                    (a_direction < 0 ? 0U : count - 1) :
+                    static_cast<std::size_t>(std::distance(
+                        a_control.recordItems.begin(), selected));
+                for (std::size_t attempts{}; attempts < count; ++attempts) {
+                    index = a_direction < 0 ? (index + count - 1) % count :
+                        (index + 1) % count;
+                    const auto& item = a_control.recordItems[index];
+                    if ((item.flags &
+                            AbsoluteControlPanelApi::kRecordItemDisabled) != 0) {
+                        continue;
+                    }
+                    command.value.kind = SlopApi::ValueKind::String;
+                    std::ranges::fill(command.value.stringValue, '\0');
+                    std::memcpy(command.value.stringValue,
+                        item.recordId.data(), item.recordId.size());
+                    return command;
+                }
             }
             return std::nullopt;
         }
@@ -278,8 +332,34 @@ namespace AbsoluteControlPanelResearch::MenuInputRouter
         FocusState a_focus) noexcept
     {
         RouteResult result{ .handled = IsMenuKey(a_keyCode), .focus = a_focus };
-        result.focus.actionIndex = (std::min)(result.focus.actionIndex, kActionCount - 1);
+        if (result.focus.region != FocusRegion::Anchors) {
+            result.focus.actionIndex =
+                (std::min)(result.focus.actionIndex, kActionCount - 1);
+        }
         if (!result.handled) {
+            return result;
+        }
+        if (a_model.actionConfirmationActive) {
+            result.focus.region = FocusRegion::Actions;
+            result.focus.actionIndex = (std::min)(result.focus.actionIndex, 1U);
+            const auto ConfirmationCommand = [](MenuSession::CommandKind a_kind) {
+                MenuSession::Command command;
+                command.kind = a_kind;
+                return command;
+            };
+            if (a_keyCode == kEscape || a_keyCode == kTab ||
+                a_keyCode == kCancel) {
+                result.command = ConfirmationCommand(
+                    MenuSession::CommandKind::ResolveActionCancel);
+            } else if (IsUp(a_keyCode) || IsLeft(a_keyCode) ||
+                IsDown(a_keyCode) || IsRight(a_keyCode)) {
+                result.focus.actionIndex = 1U - result.focus.actionIndex;
+            } else if (IsAccept(a_keyCode)) {
+                result.command = ConfirmationCommand(
+                    result.focus.actionIndex == 0 ?
+                        MenuSession::CommandKind::ResolveActionConfirm :
+                        MenuSession::CommandKind::ResolveActionCancel);
+            }
             return result;
         }
         if (a_model.dirtyDecisionActive) {
@@ -350,6 +430,16 @@ namespace AbsoluteControlPanelResearch::MenuInputRouter
         const auto pageIndex = (std::min)(ActivePageIndex(a_model), a_model.pages.size() - 1);
         const auto& page = a_model.pages[pageIndex];
         const auto* grid = GridComponent(page);
+        const auto anchors = Composition::AnchorTargets(page.composition);
+        if (result.focus.region == FocusRegion::Anchors) {
+            if (anchors.empty()) {
+                result.focus.region = FocusRegion::Controls;
+                result.focus.actionIndex = 0;
+            } else {
+                result.focus.actionIndex = (std::min)(result.focus.actionIndex,
+                    static_cast<std::uint32_t>(anchors.size() - 1));
+            }
+        }
         if (a_keyCode == kApply || a_keyCode == kCancel) {
             result.command = PageCommand(a_keyCode == kApply ?
                 MenuSession::CommandKind::Apply : MenuSession::CommandKind::Cancel, page);
@@ -372,14 +462,42 @@ namespace AbsoluteControlPanelResearch::MenuInputRouter
                     IsLeft(a_keyCode) ? -1 : 1);
             } else if (IsRight(a_keyCode) && result.focus.region == FocusRegion::Modules) {
                 result.focus.region = grid ? FocusRegion::Grid :
-                    FocusRegion::Controls;
+                    (!anchors.empty() ? FocusRegion::Anchors :
+                        FocusRegion::Controls);
+                result.focus.actionIndex = 0;
+            } else if (IsRight(a_keyCode) &&
+                result.focus.region == FocusRegion::Anchors) {
+                result.focus.region = FocusRegion::Controls;
             } else if (IsLeft(a_keyCode) && result.focus.region == FocusRegion::Controls) {
                 result.focus.region = grid ? FocusRegion::Grid :
-                    FocusRegion::Modules;
+                    (!anchors.empty() ? FocusRegion::Anchors :
+                        FocusRegion::Modules);
+                result.focus.actionIndex = 0;
+            } else if (IsLeft(a_keyCode) &&
+                result.focus.region == FocusRegion::Anchors) {
+                result.focus.region = FocusRegion::Modules;
             } else if (IsRight(a_keyCode) && result.focus.region == FocusRegion::Controls) {
                 result.focus.region = FocusRegion::Actions;
                 result.focus.actionIndex = 0;
             } else if (IsLeft(a_keyCode) && result.focus.region == FocusRegion::Actions) {
+                result.focus.region = FocusRegion::Controls;
+            }
+            return result;
+        }
+
+        if (result.focus.region == FocusRegion::Anchors) {
+            if (anchors.empty()) {
+                result.focus.region = FocusRegion::Controls;
+                return result;
+            }
+            if (IsUp(a_keyCode) || IsDown(a_keyCode)) {
+                const auto count = static_cast<std::uint32_t>(anchors.size());
+                result.focus.actionIndex = IsUp(a_keyCode) ?
+                    (result.focus.actionIndex + count - 1) % count :
+                    (result.focus.actionIndex + 1) % count;
+            } else if (IsAccept(a_keyCode)) {
+                result.command = AnchorCommand(
+                    page, anchors[result.focus.actionIndex]);
                 result.focus.region = FocusRegion::Controls;
             }
             return result;
@@ -440,10 +558,8 @@ namespace AbsoluteControlPanelResearch::MenuInputRouter
             do {
                 target = IsUp(a_keyCode) ?
                     (target + count - 1) % count : (target + 1) % count;
-            } while (target != selected && page.controls[target].descriptor.kind ==
-                SlopApi::ControlKind::GroupHeader);
-            if (page.controls[target].descriptor.kind ==
-                SlopApi::ControlKind::GroupHeader) return result;
+            } while (target != selected && !Selectable(page.controls[target]));
+            if (!Selectable(page.controls[target])) return result;
             result.command = ControlCommand(
                 MenuSession::CommandKind::SelectControl, page, page.controls[target]);
             return result;

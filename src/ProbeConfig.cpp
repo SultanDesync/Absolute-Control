@@ -5,6 +5,7 @@
 #include <charconv>
 #include <fstream>
 #include <string_view>
+#include <utility>
 
 namespace AbsoluteControlPanelResearch
 {
@@ -59,9 +60,10 @@ namespace AbsoluteControlPanelResearch
         }
     }
 
-    ProbeConfig LoadProbeConfig(const std::filesystem::path& a_path) noexcept
+    ProbeConfig LoadProbeConfig(const std::filesystem::path& a_path,
+        ProbeConfig a_fallback) noexcept
     {
-        ProbeConfig config;
+        ProbeConfig config = std::move(a_fallback);
         std::ifstream stream{ a_path };
         if (!stream) {
             return config;
@@ -91,6 +93,17 @@ namespace AbsoluteControlPanelResearch
                 config.openHotkey = ParseUnsigned(value, config.openHotkey);
             } else if (key == "MenuFlags") {
                 config.menuFlags = ParseUnsigned(value, config.menuFlags);
+            } else if (key == "ModuleSort") {
+                std::string normalized{ value };
+                std::ranges::transform(normalized, normalized.begin(),
+                    [](const unsigned char character) {
+                        return static_cast<char>(std::tolower(character));
+                    });
+                if (normalized == "alphabetical") {
+                    config.moduleSort = ModuleSortMode::Alphabetical;
+                } else if (normalized == "registration") {
+                    config.moduleSort = ModuleSortMode::Registration;
+                }
             }
         }
 
