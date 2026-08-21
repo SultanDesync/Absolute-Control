@@ -54,7 +54,19 @@ Each standalone page remains the authoritative source for that module's full des
 
 The bundle contains the same standalone DLLs and mod-owned default INIs supplied by the individual projects. It never includes or overwrites custom INIs, HOTAS profiles, logs, PDBs, or research builds.
 
-[b]Selection warnings:[/b] Absolute Power ships preset shortcuts on number keys 1-4 until changed or cleared. AbsoluteZero is enabled by default and changes mouse-flight centering immediately. When AbsoluteZero and AbsoluteHOTAS are installed together, AbsoluteZero owns pitch and yaw, so a HOTAS stick cannot control those two axes; HOTAS continues to control roll, strafe, throttle, buttons, and profiles. Select that combination only when you want mouse pitch/yaw steering.
+[b]Selection warnings:[/b] Absolute Power ships preset shortcuts on number keys 1-4 until changed or cleared. AbsoluteZero is enabled by default and changes mouse-flight centering immediately. AbsoluteZero and AbsoluteHOTAS cannot safely act as simultaneous pitch/yaw writers. When both are installed, the integration resolves that authority race by assigning pitch and yaw to AbsoluteZero and making HOTAS yield those axes. A HOTAS stick therefore cannot control pitch or yaw in this combination; HOTAS continues to control roll, strafe, throttle, buttons, and profiles. Select both only when you want AbsoluteZero mouse steering to own pitch and yaw.
+
+[line]
+
+[center][size=5][color=#00ccff][b]For mod authors — menu integration[/b][/color][/size][/center]
+
+Absolute Control is a modular in-game menu host, not only a launcher for the Absolute Suite. Its native SDK allows SFSE plugins to register their own pages, settings, input capture, live telemetry, and optional suite services inside the shared [color=#ffaa00][b]MOD OPTIONS[/b][/color] interface without creating a hard dependency between gameplay modules.
+
+Mod authors interested in giving an existing or new plugin a native integrated configuration menu are invited to build against the SDK, review the reference integrations, or get in touch through the project repository.
+
+[b]Developer-preview status:[/b] The host and current module integrations are runtime-proven, but the public SDK is not yet frozen or packaged as a stable developer release. Contracts may evolve as outside integrations expose new requirements.
+
+[center][url=https://github.com/SultanDesync/Absolute-Control#sdk-development][color=#00ff88][b]SDK Overview[/b][/color][/url] · [url=https://github.com/SultanDesync/Absolute-Control/blob/checkpoint/modular-suite-ui/docs/SDK-STATUS.md]SDK Status[/url][/center]
 
 [line]
 
