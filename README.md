@@ -6,7 +6,9 @@ inside one consistent **MOD OPTIONS** interface while retaining ownership of the
 and gameplay behavior.
 
 The current release line is Absolute Suite `0.2.0-beta.1`, a guided all-in-one installer containing
-Absolute Control plus optional HOTAS, Power, Head Tracking, and mouse-steering modules.
+Absolute Control plus optional HOTAS, Power, Head Tracking, and mouse-steering modules. A matching
+standalone Absolute Control archive is also available for users who install gameplay modules from
+their individual Nexus pages.
 
 ## Why “Absolute”?
 
@@ -40,14 +42,19 @@ Absolute Control host currently does.
 
 ## Installation and use
 
-1. Install the Absolute Suite archive with MO2 or Vortex.
-2. Use the guided FOMOD to select the gameplay modules you want.
+1. Install either the Absolute Suite archive or the standalone Absolute Control menu host with MO2
+   or Vortex.
+2. With the suite, use the guided FOMOD to select gameplay modules. With the standalone host,
+   install each gameplay module from its own page.
 3. Launch Starfield through SFSE.
 4. Open the Pause Menu and select **MOD OPTIONS**.
 5. Choose a module from the left sidebar and configure its pages.
 
 Absolute Control provides common navigation, Apply/Cancel, dirty-close dialogs, binding capture,
 help text, and live presentation. The selected module still validates and persists every change.
+
+Do not enable the standalone host alongside the suite's Absolute Control core. They contain the
+same menu files, and one mod-manager entry would overwrite the other.
 
 ## Current menu capabilities
 
