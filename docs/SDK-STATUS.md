@@ -1,6 +1,6 @@
 # SDK status and release checklist
 
-> **Status:** `0.1.0-beta.1` coordinated private beta. The public SDK and experimental APIs are not
+> **Status:** `0.1.0-beta.2` coordinated private beta. The public SDK and experimental APIs are not
 > frozen. Beta applicants contact the author so integrations and deployment baselines remain
 > reviewable.
 

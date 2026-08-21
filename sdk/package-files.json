@@ -3,7 +3,7 @@
   "sdk": {
     "id": "absolute-control-sdk",
     "name": "Absolute Control Integration SDK",
-    "version": "0.1.0-beta.1",
+    "version": "0.1.0-beta.2",
     "channel": "private-beta",
     "publicRelease": "coming-soon"
   },
@@ -15,6 +15,12 @@
     { "source": "include/AbsoluteControlCompositionExperimentalAPI.h", "destination": "include/AbsoluteControlCompositionExperimentalAPI.h" },
     { "source": "sdk/VERSION", "destination": "sdk/VERSION" },
     { "source": "sdk/README.md", "destination": "sdk/README.md" },
+    { "source": "sdk/INTERFACE-GALLERY.md", "destination": "sdk/INTERFACE-GALLERY.md" },
+    { "source": "sdk/assets/interface-examples/pause-menu-entry.png", "destination": "sdk/assets/interface-examples/pause-menu-entry.png" },
+    { "source": "sdk/assets/interface-examples/shared-module-shell.png", "destination": "sdk/assets/interface-examples/shared-module-shell.png" },
+    { "source": "sdk/assets/interface-examples/live-throttle-composition.png", "destination": "sdk/assets/interface-examples/live-throttle-composition.png" },
+    { "source": "sdk/assets/interface-examples/power-preset-editor.png", "destination": "sdk/assets/interface-examples/power-preset-editor.png" },
+    { "source": "sdk/assets/interface-examples/mixed-input-bindings.png", "destination": "sdk/assets/interface-examples/mixed-input-bindings.png" },
     { "source": "sdk/BETA-ACCESS.md", "destination": "sdk/BETA-ACCESS.md" },
     { "source": "sdk/CHANGELOG.md", "destination": "sdk/CHANGELOG.md" },
     { "source": "sdk/integration-registry.json", "destination": "sdk/integration-registry.json" },

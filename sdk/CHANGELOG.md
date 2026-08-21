@@ -1,5 +1,16 @@
 # SDK change notes
 
+## 0.1.0-beta.2 — interface documentation refresh
+
+- Added a five-capture interface gallery showing native Pause Menu entry, the shared module shell,
+  a live composed throttle editor, a domain-specific segmented-grid editor, and mixed keyboard and
+  flight-control bindings.
+- Documented the ownership boundary visible in each example: the host owns presentation while the
+  provider owns semantics, state, validation, transactions, persistence, and fallback behavior.
+- Included the SDR PNG assets and gallery in the exact SDK package manifest.
+- Retained the `0.1.0-beta.1` host and header baseline. This release changes no ABI, capability bit,
+  schema rule, generator output, or integration requirement.
+
 ## 0.1.0-beta.1 — private integration beta
 
 - Established a numbered private-beta package identity tied to the Absolute Suite

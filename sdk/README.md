@@ -1,6 +1,6 @@
 # Absolute Control Integration SDK
 
-> **Status:** `0.1.0-beta.1` coordinated private beta. The public SDK release is coming soon.
+> **Status:** `0.1.0-beta.2` coordinated private beta. The public SDK release is coming soon.
 > Mod authors can message the Absolute Control author through Nexus Mods to apply. Use
 > [`CURRENT-STATE.md`](../docs/CURRENT-STATE.md) and
 > [`SDK-STATUS.md`](../docs/SDK-STATUS.md) to distinguish implemented ABI-v1 behavior from the
@@ -27,6 +27,16 @@ version when requesting integration support.
 Subscriber developers can either handwrite ABI v1 descriptors or generate the same descriptors
 from strict JSON. Both routes use `AbsoluteControlPanelAPI.h`; neither transfers configuration
 ownership to the host.
+
+## Interface examples
+
+The [interface gallery](INTERFACE-GALLERY.md) shows the current host running real providers: native
+Pause Menu entry, the shared module shell, mixed keyboard and flight-control binding capture, a
+domain-specific allocation grid, and a live composed throttle editor. Each example explains which
+parts belong to the host, which remain provider-owned, and what fallback an integration must retain.
+
+The screenshots demonstrate capability rather than fixed geometry. SDK consumers describe
+semantics and supply bounded state; Absolute Control owns layout, focus, visual style, and rendering.
 
 ## Generate descriptors
 
