@@ -1,21 +1,22 @@
 # SDK release and subscriber rollout plan
 
-> **Prepared:** 2026-08-19. This is the execution map for bringing every current subscriber to the
-> [subscriber UI standard](SUBSCRIBER-UI-STANDARD.md) and freezing a modular SDK capable of the
-> Absolute Power workbench without making Power a hard-coded host special case.
+> **Prepared:** 2026-08-19. **Updated:** 2026-08-21 after the Absolute Suite `0.2.0-beta.1`
+> packaging checkpoint. This is now the execution map for coordinated outside beta integrations
+> and eventual public SDK freeze.
 
 ## Audited subscriber baseline
 
-| Subscriber | Current UI role | Conformance target | Next migration focus |
+| Subscriber | Deployed UI role | Conformance | Private-beta evidence role |
 |---|---|---|---|
-| AbsoluteZero | compact single-page scalar editor | A | first canary for packaged headers, sections, labels, fallback, and full input traversal |
-| Absolute Head Tracking | three-page settings, axes, keyboard and Input Bus capture | B | adopt current structured layout/conflict contract and prove capture/error/read-back matrix |
-| Absolute Power | dynamic profile editor plus six-row live allocation grid | C | reference row associations, positional pip edits, transactions, long binding names, and compound performance |
-| AbsoluteHOTAS | broad multi-page flight-control suite | A/B per page, C where live telemetry is justified | scale, discoverability, conditional groups, deep-link needs, and controller-only end-to-end acceptance |
+| AbsoluteZero | compact single-page scalar editor | A | oldest-prefix compatibility, fallback ownership, and a small integration reference |
+| Absolute Head Tracking | three-page settings, axes, keyboard and Input Bus capture | B | binding capture, read-back, and multi-page reference |
+| Absolute Power | profile editor plus six-row live allocation grid | C | older live-header compatibility, compound editing, and telemetry reference |
+| AbsoluteHOTAS | broad multi-page flight-control suite | A/B/C by page | current-header C2 scale, composition, direct tuning, profiles, layers, and deep-link reference |
 
-The repositories currently vendor different generations of `AbsoluteControlPanelAPI.h`. The rollout
-must not normalize them with blind file copies. Each migration records the SDK package identity,
-compiles an ABI fixture, and lands independently so unrelated subscriber work remains reviewable.
+The repositories intentionally vendor different generations of `AbsoluteControlPanelAPI.h`. The
+registry records those exact shipped hashes; the SDK rollout must not normalize them with blind file
+copies. Each future migration records its SDK package identity, compiles an ABI fixture, and lands
+independently so stable standalone modules remain reviewable and deployable.
 
 ## SDK product shape
 
@@ -42,9 +43,9 @@ offset, enum meaning, ownership, or callback contract incompatibly.
 | confirmation metadata | delete/reset actions need consistent host-owned confirmation | specify destructive-action policy before broad subscriber migration |
 | conditional visibility/enabling | HOTAS has dependent controls and mode-specific groups | prefer bounded provider predicates/state over arbitrary layout scripting |
 | live components in schema/codegen | Power-level UI is handwritten today | generate bounded descriptors, callbacks, capability checks, and fallback controls |
-| deep-link/open request | HOTAS and other frontends need a supported route into a module/page/control | design separately from descriptor registration and gameplay input |
+| deep-link/open request | HOTAS and other frontends need a supported route into a module/page/control | appended page-open request is implemented; qualify it with outside consumers before freeze |
 | localization | labels are currently provider literals | freeze string ownership and key/catalog strategy before declaring SDK stable |
-| packaged dependency identity | copied headers drift silently | ship version metadata and add consumer-side hash/layout fixtures |
+| packaged dependency identity | copied headers drift silently | beta kit now ships version/manifest metadata and a deployment registry; add installed-consumer layout fixtures before public release |
 
 ## Execution waves
 
@@ -106,12 +107,15 @@ non-goal, and controller-only traversal does not depend on the legacy Dear ImGui
   missing-provider, and incompatible-host journeys appropriate to their conformance level.
 - Test evidence distinguishes automated, runtime-observed, human-judged, and still-pending claims.
 
-## First-session queue after the usage reset
+## Coordinated private-beta queue
 
-1. Decide the status/notice, confirmation, conditional-visibility, deep-link, and localization scope
-   for SDK v1; record each as accept, defer, or experimental.
-2. Extend the schema/code generator through the accepted stable features and add an installed-SDK
-   consumer matrix.
-3. Package a numbered SDK candidate and migrate AbsoluteZero as the first external canary.
-4. Migrate Head Tracking, then finish the Power Level-C runtime journeys.
-5. Start HOTAS page-family migration only after the smaller consumers stop finding contract gaps.
+1. Issue the numbered beta kit only to applicants accepted through direct author contact and add a
+   contact-free deployment record for each accepted module.
+2. Review the applicant's existing configuration ownership, fallback UI, build system, target
+   pages, bindings, telemetry, and release window before selecting API levels.
+3. Require an installed-kit compile check plus host-absent, incompatible-host, Apply/Cancel,
+   persistence, and supported-input acceptance before deployment.
+4. Feed generic gaps into the schema, generator, examples, and capability-gated APIs; never add a
+   mod-named host branch to satisfy one applicant.
+5. Freeze a public SDK only after at least one outside integration has exercised the private kit
+   and its upgrade path without destabilizing the shipped suite modules.

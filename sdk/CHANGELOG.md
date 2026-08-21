@@ -1,6 +1,15 @@
 # SDK change notes
 
-## Next build — structured layout, accessible grids, and binding conflicts
+## 0.1.0-beta.1 — private integration beta
+
+- Established a numbered private-beta package identity tied to the Absolute Suite
+  `0.2.0-beta.1` host baseline.
+- Added a deployment registry recording the exact API-header generations consumed by the four
+  shipped integrations without forcing stable modules onto newer append-only tails.
+- Added coordinated beta-access guidance and an exact manifest/ZIP packaging boundary for approved
+  integration applicants.
+- Synchronized the SDK status and rollout plan with the shipped HOTAS, Power, Head Tracking, and
+  AbsoluteZero menu integrations.
 
 - Added the independently negotiated experimental semantic-composition query and
   installed `AbsoluteControlCompositionExperimentalAPI.h`. C2 advertises

@@ -1,9 +1,28 @@
-# Absolute Control Panel menu-definition SDK
+# Absolute Control Integration SDK
 
-> **Status:** Experimental SDK candidate, not a supported release. Use
+> **Status:** `0.1.0-beta.1` coordinated private beta. The public SDK release is coming soon.
+> Mod authors can message the Absolute Control author through Nexus Mods to apply. Use
 > [`CURRENT-STATE.md`](../docs/CURRENT-STATE.md) and
 > [`SDK-STATUS.md`](../docs/SDK-STATUS.md) to distinguish implemented ABI-v1 behavior from the
 > target menu language.
+
+This beta targets the Absolute Control host shipped in **Absolute Suite 0.2.0-beta.1**. It packages
+the current ABI-v1 configuration header, the separately negotiated experimental live and C2
+composition headers, the menu-definition generator, examples, tests, and integration guidance.
+The SDK package version and each API's ABI version are independent.
+
+## Beta access and integration identity
+
+Read [`BETA-ACCESS.md`](BETA-ACCESS.md) before starting an integration. Every accepted beta
+consumer receives a specific package version and records its module ID, header identities, host
+baseline, fallback behavior, and deployment state in
+[`integration-registry.json`](integration-registry.json). Do not replace a working vendored header
+in an existing released module merely to make its hash match the newest package: ABI-v1 additions
+are size- and capability-gated, and stable consumers may intentionally remain on an older prefix.
+
+The package's `AbsoluteControlSDK.manifest.json` is the distribution authority for exact file
+hashes and its source commit. Report that SDK version together with the Absolute Control plugin
+version when requesting integration support.
 
 Subscriber developers can either handwrite ABI v1 descriptors or generate the same descriptors
 from strict JSON. Both routes use `AbsoluteControlPanelAPI.h`; neither transfers configuration
@@ -107,6 +126,13 @@ See [CHANGELOG.md](CHANGELOG.md) for additive capability and migration notes.
 python -m unittest discover -s sdk/tests -v
 xmake -P sdk/tests/compile
 xmake run -P sdk/tests/compile generated_menu_compile_test
+```
+
+The same installed-kit compile fixture is available through CMake:
+
+```powershell
+cmake -S sdk/tests/compile -B build/sdk-consumer
+cmake --build build/sdk-consumer --config Release
 ```
 
 Negative fixtures cover forbidden presentation fields, duplicate callback IDs, and invalid ranges.

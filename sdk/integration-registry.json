@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "lastReviewed": "2026-08-21",
+  "sdkChannel": {
+    "version": "0.1.0-beta.1",
+    "access": "private-beta",
+    "publicRelease": "coming-soon"
+  },
+  "hostBaseline": {
+    "suiteVersion": "0.2.0-beta.1",
+    "controlComponentVersion": "0.2.0-dev",
+    "controlCommit": "9c2f42929563372c433bc222710fced64721036c",
+    "pluginSha256": "2F9CE08733D7AE8A683A5356E01A12237D9D88FC92AE08EA307B8497176E8383",
+    "runtime": "Starfield 1.16.244 / SFSE 0.2.20 or later"
+  },
+  "apiBaseline": {
+    "configuration": {
+      "abiVersion": 1,
+      "header": "include/AbsoluteControlPanelAPI.h",
+      "sha256": "A9E3097E9C80902EDE908017C8F7E8E51147A3F0285FEEDED33CF2C48322F540"
+    },
+    "liveComponents": {
+      "abiVersion": 1,
+      "status": "experimental",
+      "header": "include/LiveComponentsExperimentalAPI.h",
+      "sha256": "6D61DD4E38F19BB1113C7CB0547DF33CB6C1E554604D7F9F6F3AC2C9B8997DA4"
+    },
+    "semanticComposition": {
+      "abiVersion": 1,
+      "advertisedMilestone": "C2",
+      "status": "experimental",
+      "header": "include/AbsoluteControlCompositionExperimentalAPI.h",
+      "sha256": "468CC7737A63EF1128F059541658F89DD3755763F59BBDCF4C4551DFD60092A7"
+    }
+  },
+  "integrations": [
+    {
+      "moduleId": "absolute.hotas",
+      "name": "AbsoluteHOTAS",
+      "deployedVersion": "5.0.1",
+      "repository": "https://github.com/SultanDesync/AbsoluteHOTAS",
+      "bundleCommit": "ca403da6acd6b886d0c407abef4a04491bd0a90d",
+      "conformance": ["A", "B", "C"],
+      "configurationHeaderSha256": "A9E3097E9C80902EDE908017C8F7E8E51147A3F0285FEEDED33CF2C48322F540",
+      "liveHeaderSha256": "6D61DD4E38F19BB1113C7CB0547DF33CB6C1E554604D7F9F6F3AC2C9B8997DA4",
+      "compositionHeaderSha256": "468CC7737A63EF1128F059541658F89DD3755763F59BBDCF4C4551DFD60092A7",
+      "deploymentState": "suite-bundled-and-standalone-stable"
+    },
+    {
+      "moduleId": "absolute.power",
+      "name": "Absolute Power",
+      "deployedVersion": "0.2.0-alpha",
+      "repository": "https://github.com/SultanDesync/Absolute-Power",
+      "bundleCommit": "9559a89731852fe5f640fb8e1900d9dd4bda57a9",
+      "conformance": ["C"],
+      "configurationHeaderSha256": "5B6B8E125253EBAC062844210F12333988899A11D51A23B972E703333193A3C8",
+      "liveHeaderSha256": "82145DF4EAA0B3BC9949CD3963237799F1321F275A5A2E44A1D754AE48C8A7D3",
+      "deploymentState": "suite-bundled-and-standalone-stable",
+      "compatibilityNote": "Consumes an older append-compatible configuration header and the pre-C2 live header."
+    },
+    {
+      "moduleId": "absolute.head_tracking",
+      "name": "Absolute Head Tracking",
+      "deployedVersion": "0.2.0-alpha",
+      "repository": "https://github.com/SultanDesync/Absolute-Head-Tracking",
+      "bundleCommit": "026fd20f9ba022cd9ce51a3b6cc2d62c83d5fba7",
+      "conformance": ["B"],
+      "configurationHeaderSha256": "B1AF52F52F62D2E441FD57A8BF1F36AE77CBFA3FF8FB88BE5C17AF7DDBDA2F01",
+      "deploymentState": "suite-bundled-and-standalone-stable",
+      "compatibilityNote": "Consumes an older append-compatible ABI-v1 binding-capture generation."
+    },
+    {
+      "moduleId": "absolute.zero",
+      "name": "AbsoluteZero Mouse Steering",
+      "deployedVersion": "0.2.0",
+      "repository": "https://github.com/SultanDesync/AbsoluteZero-Ship-Control",
+      "bundleCommit": "9d926dd890387ac1bea2775b6b715e87fe981902",
+      "conformance": ["A"],
+      "configurationHeaderSha256": "D41D8227C3FD439C361381E36D1CD47DDC01B902BF37804C4C16E9879A76E6BE",
+      "deploymentState": "suite-bundled-and-standalone-stable",
+      "compatibilityNote": "Consumes an older append-compatible ABI-v1 labeled-choice generation."
+    }
+  ]
+}
