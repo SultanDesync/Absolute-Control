@@ -1,0 +1,130 @@
+Absolute Suite v@BUNDLE_VERSION@ Beta
+====================================
+
+One guided installer for Absolute Control and the modular Absolute ecosystem.
+Absolute Control is always installed. The FOMOD lets you select HOTAS flight
+control, ship-power management, OpenTrack head tracking, and mouse steering.
+
+Each gameplay module remains an independent SFSE plugin with its own runtime,
+configuration, version, and standalone release. The bundle does not merge
+plugins or move gameplay ownership into Absolute Control.
+
+
+INCLUDED COMPONENTS
+-------------------
+
+@COMPONENT_LIST@
+
+
+REQUIREMENTS
+------------
+
+- Starfield 1.16.244.0
+- SFSE 0.2.20 or later
+- Address Library for SFSE Plugins for Absolute Control
+- OpenTrack only when Absolute Head Tracking is selected and used
+- A DirectInput joystick, throttle, pedals, or button box only when needed by
+  the selected gameplay modules
+
+
+INSTALL / UPDATE
+----------------
+
+Install @ARCHIVE_NAME@ normally with a FOMOD-capable mod manager such as MO2 or
+Vortex. Absolute Control is required by this installer; every gameplay module
+is optional.
+
+The archive includes only mod-owned runtime files. It does not include or
+overwrite user-owned custom INIs, HOTAS Profiles, logs, PDBs, research builds,
+or retired Absolute Workbench descriptors.
+
+When updating, keep and back up:
+
+- AbsoluteControlPanel_Custom.ini
+- AbsoluteHOTAS_Custom.ini
+- AbsoluteHOTAS Profiles directory
+- AbsolutePower_Custom.ini
+- any other user-created module configuration or profiles
+
+Installing a standalone module over the all-in-one is supported when it is a
+newer compatible version. Do not enable a second copy of the same DLL from a
+different mod-manager entry.
+
+
+MODULE SELECTION NOTES
+----------------------
+
+- AbsoluteHOTAS has no axis bindings by default. Configure it in Absolute
+  Control before expecting flight input.
+- Absolute Power ships optional preset shortcuts on number keys 1-4 during
+  flight. Change or clear them if they conflict with another setup.
+- Absolute Head Tracking requires OpenTrack with FreeTrack 2.0 Enhanced output.
+- AbsoluteZero Mouse Steering is enabled by default and changes mouse-flight
+  centering immediately. Select it deliberately.
+
+
+QUICK START
+-----------
+
+1. Install the archive and choose the modules you want.
+2. Launch Starfield through SFSE.
+3. Open the Pause Menu and select MOD OPTIONS.
+4. Open each installed module and review its bindings and enabled state.
+5. Apply changes, close the menu, and test in a safe flight context.
+
+
+COMPATIBILITY CONTRACT
+----------------------
+
+- Absolute Control owns presentation, menu navigation, capture dialogs, and
+  shared host registries.
+- Gameplay modules own their configuration, runtime behavior, validation,
+  fallback policy, and failure behavior.
+- Missing optional modules do not disable the remaining suite.
+- Missing or incompatible Absolute Control does not make a gameplay module a
+  mandatory load-time dependency; supported standalone fallbacks remain owned
+  by each module.
+- Version-specific native operations fail closed when their runtime gates do
+  not validate.
+
+
+KNOWN BETA BOUNDARIES
+---------------------
+
+- Hardware combinations, duplicate DirectInput device names, overlays, and
+  third-party ship-control mods may expose behavior not present in the
+  maintainer setup.
+- Controller-only navigation and some compound record workflows need broader
+  public hardware coverage.
+- Power automation remains disabled by default and is not part of the supported
+  beta feature promise.
+- Head tracking is rotational only; translation is not implemented.
+
+
+ROLLBACK
+--------
+
+Disable or uninstall the all-in-one, then reinstall the previous standalone
+versions you were using. Restore user-owned custom files only if a test save
+changed them in an unwanted way.
+
+
+REPORTING FEEDBACK
+------------------
+
+Include the Absolute Suite manifest, Starfield and SFSE versions, selected
+modules, hardware/tracker names, exact reproduction steps, and the relevant
+module log with logging enabled. Sanitize custom configuration before sharing.
+
+Source and issue tracker:
+https://github.com/SultanDesync/Absolute-Control
+
+
+RELEASE FILE HASHES
+-------------------
+
+@ARCHIVE_NAME@
+  SHA-256: @ARCHIVE_SHA256@
+
+AbsoluteSuite.manifest.json
+  SHA-256: @MANIFEST_SHA256@

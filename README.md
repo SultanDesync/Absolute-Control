@@ -68,6 +68,10 @@ See [current state](docs/CURRENT-STATE.md), [architecture](docs/ARCHITECTURE.md)
 [technical debt register](docs/DEBT-REGISTER.md) for the authoritative implementation and release
 gates.
 
+The Nexus-facing ecosystem bundle preserves those module boundaries. See the
+[Absolute Suite all-in-one packaging contract](docs/SUITE-RELEASE-PACKAGING.md) for its guided
+FOMOD layout, exact-content manifest, deterministic archive, and standalone-module policy.
+
 ## Build and test
 
 Clone recursively, then build with Windows, MSVC C++23, and xmake 3.0 or newer:

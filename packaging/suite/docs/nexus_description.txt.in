@@ -1,0 +1,56 @@
+[center][size=6][color=#00ccff][b]Absolute Suite @BUNDLE_VERSION@ Beta[/b][/color][/size]
+[size=4][b][color=#ffaa00]One guided installer for Absolute Control, HOTAS flight, ship power, head tracking, and mouse steering.[/color][/b][/size]
+
+[i]The ecosystem remains modular. Install only the gameplay modules you want, or use their standalone Nexus pages for independent updates.[/i][/center]
+
+[line]
+
+[center][size=5][color=#ffcc00][b]Included ecosystem[/b][/color][/size][/center]
+
+[list]
+[*][b][color=#00ff88]Absolute Control:[/color][/b] Required native suite menu, shared input capture, live presentation, and registry diagnostics.[/*]
+[*][b][color=#00ff88]AbsoluteHOTAS:[/color][/b] Optional DirectInput HOTAS/HOSAS flight control, ship buttons, tuning, profiles, macros, and calibration.[/*]
+[*][b][color=#00ff88]Absolute Power:[/color][/b] Optional priority-based ship-power presets and allocation controls.[/*]
+[*][b][color=#00ff88]Absolute Head Tracking:[/color][/b] Optional OpenTrack-compatible rotational cockpit tracking.[/*]
+[*][b][color=#00ff88]AbsoluteZero Mouse Steering:[/color][/b] Optional idle centering and locked-reticule mouse steering.[/*]
+[/list]
+
+[line]
+
+[center][size=5][color=#00ccff][b]Install[/b][/color][/size][/center]
+
+[list=1]
+[*]Install the all-in-one archive with MO2 or Vortex.[/*]
+[*]Use the guided installer to select the gameplay modules you want.[/*]
+[*]Launch Starfield through SFSE.[/*]
+[*]Open the Pause Menu and select [color=#ffaa00][b]MOD OPTIONS[/b][/color].[/*]
+[*]Review each installed module, apply its settings, and test in a safe flight context.[/*]
+[/list]
+
+[b]Requirements[/b]
+[list]
+[*]Starfield 1.16.244.0[/*]
+[*]SFSE 0.2.20 or later[/*]
+[*]Address Library for SFSE Plugins for Absolute Control[/*]
+[*]OpenTrack only for Absolute Head Tracking[/*]
+[/list]
+
+[line]
+
+[center][size=5][color=#ffaa00][b]Safe modular ownership[/b][/color][/size][/center]
+
+The bundle contains the same standalone DLLs and mod-owned default INIs supplied by the individual projects. It never includes or overwrites custom INIs, HOTAS profiles, logs, PDBs, or research builds.
+
+[b]Selection warnings:[/b] Absolute Power ships preset shortcuts on number keys 1-4 until changed or cleared. AbsoluteZero is enabled by default and changes mouse-flight centering immediately. Select those modules deliberately.
+
+[line]
+
+[center][size=5][color=#ffcc00][b]Beta boundaries and feedback[/b][/color][/size][/center]
+
+This is a public ecosystem beta, not a promise that every hardware combination or mod stack has been covered. Power automation remains disabled by default. Head tracking is rotational only. Version-specific native operations fail closed when validation does not pass.
+
+Please include the suite manifest, selected modules, Starfield/SFSE versions, hardware or tracker names, reproduction steps, and the relevant module log when reporting a problem.
+
+[center][url=https://github.com/SultanDesync/Absolute-Control#readme][color=#00ff88][b]Complete Suite Guide[/b][/color][/url]
+
+[url=https://github.com/SultanDesync/Absolute-Control]Source[/url] · [url=https://github.com/SultanDesync/Absolute-Control/issues]Issue Tracker[/url][/center]

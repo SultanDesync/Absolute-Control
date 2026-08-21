@@ -1,0 +1,44 @@
+Absolute Suite v@BUNDLE_VERSION@ Beta
+=====================================
+
+ALL-IN-ONE INSTALLER
+--------------------
+
+- Added one guided FOMOD for Absolute Control and the modular Absolute
+  ecosystem.
+- Kept Absolute Control required while making HOTAS, Power, Head Tracking, and
+  Mouse Steering independently selectable.
+- Preserved the exact standalone DLL and default-INI boundaries. No gameplay
+  module is merged into the host.
+- Added clear warnings for Power's shipped 1-4 preset shortcuts and
+  AbsoluteZero's immediately active mouse-centering behavior.
+
+
+RELEASE INTEGRITY
+-----------------
+
+- Added a machine-readable suite manifest containing component versions,
+  source commits, installed paths, sizes, and SHA-256 hashes.
+- Added deterministic archive ordering and timestamps.
+- Excluded custom INIs, profiles, logs, PDBs, research artifacts, and retired
+  Workbench descriptors.
+- Added fail-closed package validation for exact contents and recorded hashes.
+
+
+VALIDATION
+----------
+
+- Absolute Control native suites: 12/12 passed
+- AbsoluteHOTAS native suites: 22/22 passed
+- Absolute Power native suites: 9/9 passed
+- Absolute Head Tracking native suites: 8/8 passed
+- FOMOD and suite archive content validation: passed
+
+
+KNOWN BETA BOUNDARIES
+---------------------
+
+- The all-in-one simplifies distribution; it does not change gameplay features
+  or replace each module's standalone support boundary.
+- Final public release still requires a clean canonical all-module runtime pass
+  and soak using release rather than research artifacts.
