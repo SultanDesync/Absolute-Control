@@ -1,10 +1,18 @@
 # SDK status and release checklist
 
-> **Status:** Current SDK-readiness index. The ABI and tooling are experimental and not frozen.
+> **Status:** `0.1.0-beta.2` coordinated private beta. The public SDK and experimental APIs are not
+> frozen. Beta applicants contact the author so integrations and deployment baselines remain
+> reviewable.
 
-Absolute Control Panel has a working provider ABI and integration harness, but the SDK is not yet
-frozen or packaged as a supported developer release. This index separates current contracts from
-historical research instructions and records what must be true before an SDK tag is published.
+Absolute Control has a working provider ABI, four deployed suite integrations, a menu-definition
+generator, an integration harness, and a versioned private-beta kit. The stable configuration query
+remains ABI version 1 with append-only size/capability gates. Live components and semantic
+composition remain separately negotiated experimental APIs. This index records what must be true
+before a public SDK tag is published.
+
+The beta baseline is the Absolute Control artifact in Absolute Suite `0.2.0-beta.1` (commit
+`9c2f42929563372c433bc222710fced64721036c`, plugin SHA-256
+`2F9CE08733D7AE8A683A5356E01A12237D9D88FC92AE08EA307B8497176E8383`).
 
 ## Authoritative development sources
 
@@ -13,11 +21,20 @@ historical research instructions and records what must be true before an SDK tag
 - `include/AbsoluteControlPanelAPI.h` — current public C ABI candidate.
 - `include/LiveComponentsExperimentalAPI.h` — active bounded live/compound ABI candidate; name
   retained until performance and accessibility qualification.
+- `include/AbsoluteControlCompositionExperimentalAPI.h` — active C2 semantic composition
+  candidate; status/card/row/condition/anchor and same-page live-association capabilities are
+  currently advertised.
 - `docs/MODULE-API.md` — ownership, discovery, transactions, and failure behavior.
 - `sdk/menu-definition.schema.json` — strict authoring schema.
 - `sdk/tools/menu_codegen.py` — deterministic descriptor generator.
 - `sdk/examples/absolute-head-tracking.menu.json` — reference definition.
+- `sdk/CHANGELOG.md` — additive capability and migration notes.
+- `sdk/VERSION` and `sdk/package-files.json` — private-beta package identity and exact source list.
+- `sdk/BETA-ACCESS.md` — application, privacy, fallback, and coordinated deployment rules.
+- `sdk/integration-registry.json` — shipped and accepted integrations with consumed header hashes.
 - `catalog/catalog.json` — machine-readable component capability and confidence catalogue.
+- `docs/SUBSCRIBER-UI-STANDARD.md` — normative Level A/B/C subscriber acceptance contract.
+- `docs/SDK-RELEASE-PLAN.md` — audited subscriber order, SDK gaps, freeze gates, and rollout waves.
 - `docs/AI-INTEGRATION-HARNESS.md` — provider inventory, implementation, and validation workflow.
 - `docs/TEST-MATRIX.md` — runtime evidence and remaining compatibility coverage.
 - `docs/RUNTIME-UPDATE-RUNBOOK.md` — version-update recovery and validation procedure.
@@ -52,19 +69,48 @@ Subscriber gameplay must remain fully operational when the host is absent, incom
 rejects registration. Existing Workbench, Dear ImGui, INI, and hotkey paths may coexist during the
 experimental period; the host is not a loader dependency.
 
-## Required before the first SDK release
+The optional `ApiV1::requestOpenPage` tail follows the same rule. Subscribers must size-check the
+table and feature-detect `kCapabilityPageOpenRequests`; `Ok` only acknowledges an asynchronous
+validated route. Any unavailable or unsuccessful result retains the subscriber's legacy menu.
+
+## Current deployed compatibility baseline
+
+AbsoluteHOTAS consumes the current configuration, live, and C2 composition headers. Absolute Power,
+Absolute Head Tracking, and AbsoluteZero intentionally consume older append-compatible ABI-v1
+generations proven with the shipped host. Their exact header hashes and bundled commits are recorded
+in `sdk/integration-registry.json`. Updating the SDK must not trigger blind header replacement or a
+standalone-module rebuild.
+
+The private-beta kit is for individually coordinated integrations. It is not a Nexus optional file,
+does not promise long-term source compatibility for the experimental APIs, and does not make
+Absolute Control a loader dependency. Each applicant must retain provider-owned configuration,
+host-absent operation, and a fallback UI while the SDK is in beta.
+
+## Required before the first public SDK release
 
 - Freeze ABI v1 structure sizes, flags, capacities, calling conventions, and compatibility rules.
 - Freeze the appended ABI-v1 labeled-choice callback and bounded `TextInput` semantics, then add
-  deterministic schema/code-generator coverage. Decide whether rendered sections and presentation
-  hints use a compatible extension or require ABI v2.
+  deterministic option-kind schema/code-generator coverage. Structured section headers and inline
+  actions are now generated through the capability-gated ABI-v1 extension.
+- Qualify the appended fixed-capacity `RecordCollection` callback and host-owned Action
+  confirmation with the HOTAS profiles/layers, macros, and device/calibration journeys. Automated
+  host, bridge, renderer, and generator coverage exists; in-game pointer/controller UX remains a
+  freeze gate.
 - Freeze the appended provider-owned binding-capture callback set after the accepted Head Tracking
-  and Absolute Power Input Bus journeys. Before freeze, standardize clear/unbound semantics and a
-  provider-reported structured collision handshake; keep device libraries outside the host.
+  and Absolute Power Input Bus journeys. Before freeze, standardize clear/unbound semantics; the
+  provider-reported Reassign/Cancel collision handshake now has deterministic host and SDK
+  coverage. Keep device libraries outside the host.
 - Rename/freeze or revise the active live/compound-component protocol after Absolute Power and
-  AbsoluteHOTAS performance/accessibility qualification.
-- Package the public header, schema, generator, examples, licence/notice files, and version notes
-  without research-only sources.
+  AbsoluteHOTAS performance/accessibility qualification. The row-to-Choice association now uses a
+  capability-gated live-channel tail without changing the committed v1 column-array stride.
+- Qualify the experimental semantic-composition protocol through HOTAS Flight Axes and at least
+  one second subscriber before promoting any structures to the stable API. C2 has synthetic
+  native/bridge/renderer/input/performance coverage plus complete HOTAS Flight Axes descriptor,
+  telemetry, draft, and fallback coverage. In-game visual, three-input-mode, physical capture,
+  long-label, accessibility, and teardown evidence remains required.
+- Promote the private-beta package boundary only after its public header, schema, generator,
+  examples, licence/notice files, and version notes have survived an outside integration without
+  acquiring research-only sources.
 - Provide CMake and xmake consumption examples while allowing subscribers to keep an existing
   compiler preset and build system.
 - Run ABI layout tests with at least the Head Tracking and AbsoluteZero subscribers.
@@ -82,7 +128,7 @@ fallback UI, build/test commands, runtime validation, and known limitations in t
 README. Every accepted host capability updates the component catalogue and test matrix in the same
 change so SDK documentation follows executable behavior rather than anticipated behavior.
 
-The current product validator passes the canonical build, 9/9 native tests, 7 generator tests,
-generated fixture check/compile, 26 catalogue entries, ten-source SWF provenance, artifact
-fixtures, canonical manifest, and compatibility ZIP. Runtime/UX is `not_run`; this is not an SDK
-release or support declaration.
+The suite release baseline was built from clean component repositories and the final FOMOD passed
+its exact 14-entry archive and hash validation. The user then validated the suite installer in both
+MO2 and Vortex. Those results establish the beta host/deployment baseline; they do not freeze the
+public SDK or replace per-integration runtime, fallback, and persistence acceptance.

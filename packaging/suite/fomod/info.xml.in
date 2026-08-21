@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fomod>
+  <Name>Absolute Suite</Name>
+  <Author>SultanDesync</Author>
+  <Version>@BUNDLE_VERSION@</Version>
+  <Website>https://github.com/SultanDesync/Absolute-Control</Website>
+  <Description>Absolute Control and its independently selectable gameplay modules.</Description>
+</fomod>

@@ -40,7 +40,9 @@ namespace AbsoluteControlPanelResearch::Runtime
             VerifiedRelocation{ "IMenu::Unk19", 130634, 0x02553940 },
             VerifiedRelocation{
                 "IMenu::ProcessEvent(UpdateSceneRectEvent)", 130642, 0x02554370 },
-            VerifiedRelocation{ "UI::IsMenuOpen", 130475, 0x02544EC0 }
+            VerifiedRelocation{ "UI::IsMenuOpen", 130475, 0x02544EC0 },
+            VerifiedRelocation{ "MenuAudioMode::Acquire", 82727, 0x012EE410 },
+            VerifiedRelocation{ "MenuAudioMode::Release", 82728, 0x012EE4A0 }
         };
     }
 

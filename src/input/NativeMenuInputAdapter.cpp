@@ -336,6 +336,7 @@ namespace AbsoluteControlPanelResearch::Input
         switch (a_kind) {
         case MenuSession::CommandKind::SelectPage: return "selectPage";
         case MenuSession::CommandKind::SelectControl: return "selectControl";
+        case MenuSession::CommandKind::SelectGridColumn: return "selectGridColumn";
         case MenuSession::CommandKind::Write: return "write";
         case MenuSession::CommandKind::Invoke: return "invoke";
         case MenuSession::CommandKind::BeginBindingCapture: return "beginBindingCapture";
@@ -346,6 +347,10 @@ namespace AbsoluteControlPanelResearch::Input
         case MenuSession::CommandKind::ResolveDirtyApply: return "dirtyApply";
         case MenuSession::CommandKind::ResolveDirtyDiscard: return "dirtyDiscard";
         case MenuSession::CommandKind::ResolveDirtyStay: return "dirtyStay";
+        case MenuSession::CommandKind::ResolveBindingReassign: return "bindingReassign";
+        case MenuSession::CommandKind::ResolveBindingCancel: return "bindingCancel";
+        case MenuSession::CommandKind::ResolveActionConfirm: return "actionConfirm";
+        case MenuSession::CommandKind::ResolveActionCancel: return "actionCancel";
         case MenuSession::CommandKind::Compound: return "compound";
         }
         return "unknown";

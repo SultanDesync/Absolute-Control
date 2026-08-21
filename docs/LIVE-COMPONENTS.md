@@ -1,9 +1,9 @@
 # Live and compound components
 
 > **Status:** Product-integrated ABI candidate. The registry, MenuSession transaction lane, native
-> bridge, and Scaleform renderer consume the segmented allocation grid for Absolute Power. Range
-> meters and telemetry plots remain headless/tested contracts without product renderers. The export
-> retains its experimental name until ABI freeze and in-game performance/accessibility acceptance.
+> bridge, and Scaleform renderer consume range meters, telemetry plots, and segmented grids. The
+> export retains its experimental name until ABI freeze and in-game performance/accessibility
+> acceptance.
 
 ## Feasibility conclusion
 
@@ -33,9 +33,17 @@ Providers select bounded semantic visual roles; the host theme resolves their ac
 states. Raw provider-supplied ARGB values are not part of the shared component contract.
 
 This covers the AbsoluteHOTAS throttle graph, bipolar-axis graph, and Absolute Head Tracking live
-output bars. Ordinary sliders can adjust the overlay values and cause an immediate redraw. A later
-direct-manipulation pass may allow a marker or band edge to be dragged; that interaction emits a
-normal typed draft write to the associated control rather than bypassing provider validation.
+output bars. Ordinary sliders adjust the overlay values and cause an immediate redraw. A marker
+with a non-empty `controlId` is directly editable on pointer-capable hosts: clicking its handle or
+bounded non-active zone selects it and dragging emits the same coalesced typed draft writes as the
+ordinary slider. Provider validation, generation checks, and Apply/Cancel remain authoritative;
+the graph never owns a second draft. Widths and other transforms that are not a one-to-one marker
+value remain ordinary controls until the contract declares an explicit mapping.
+
+Range colours are semantic rather than a provider-selected palette. The host deliberately keeps
+idle/dead, zero thrust, active travel, cruise, full thrust, reverse, and boost distinguishable;
+the physical live marker uses a separate high-contrast treatment. Editable marker handles and the
+active-drag state are host-owned presentation.
 
 ### Telemetry plot
 
@@ -44,27 +52,56 @@ The component owns a fixed-size history ring and downsampling. Providers publish
 they do not allocate or transmit an ever-growing history. This component is reserved for cases
 where change over time is useful, rather than replacing the cheaper range meter.
 
+### Presentation hints
+
+The additive descriptor `flags` tail also carries renderer-owned presentation hints. A pinned
+component remains fixed above the scrolling control region. A secondary component may start
+collapsed and is disclosed by the host without adding a provider setting. Collapsed diagnostics
+continue to receive only their latest bounded sample; they do not force a full page redraw.
+
 ### Segmented allocation grid
 
 A segmented grid contains bounded labeled columns and bounded segments per column. Each segment
 has a semantic state, preview state, live state, and optional interaction. This covers Absolute
-Power's six ship systems and up to 32 pips per system:
+Power's six ship systems and its current 12-pip allocation bars while retaining a bounded maximum
+of 32 segments per provider column:
 
 - hollow, green, yellow, and red allocation tiers;
 - explicit Green-first, Yellow-after-Green, Red-last semantics;
 - cyan-outline live powered/current indication;
 - gold-tick target-preview indication;
 - per-column current, maximum, and target labels;
-- per-system G/Y/R requested-count labels and add-tier selection; and
-- click/keyboard/controller operations to add, trim, or change tier.
+- direct Hollow→Green→Yellow→Red→Hollow pip cycling with 1/2/3 glyphs;
+- compact +G/+Y/+R/− quick-step operations; and
+- pointer, keyboard, and controller operations to add, trim, or change tier.
 
-The current renderer rebuilds the visible six-by-32 display from a bounded copied model at a
-low-rate Power cadence. Selecting a hollow pip fills through that position with the chosen tier;
-selecting a filled pip trims that position and everything above it. Power's companion 18 integer
-sliders expose the same exact tier counts to keyboard navigation. A current Starfield run registered
-the channel as ready and published the Power route; pointer behavior, persistence, controller
-routing, and frame-time measurement remain qualification work. Pool reuse remains a performance
-optimization required before the public SDK freezes.
+The renderer sizes each bar from `maximumSegments` instead of reserving 32 visual slots. A channel
+opts into direct cycling through the size-gated `flags` tail and
+`kSegmentedGridCycleOnClick`; older descriptors normalize to zero flags. Power registered the
+earlier channel as ready and published its route in Starfield; the next-build interaction,
+persistence, controller, and frame-time acceptance pass remains qualification work.
+
+#### Grid-row Choice associations
+
+`kLiveCapabilityGridControlAssociations` advertises an additive, size-gated live-channel tail.
+`GridControlAssociationV1` explicitly links one segmented-grid `columnId` to one `Choice`
+`controlId` declared on the same page. The mapping is deliberately outside
+`GridColumnDescriptorV1`: changing a record embedded in the fixed column array would change its
+stride and break already-compiled ABI-v1 providers.
+
+- The association tail is one-to-one, bounded by `kMaximumGridControlAssociations`, and validated
+  for identifiers, declared columns, duplicate columns, and duplicate controls.
+- Menu snapshot construction retains only targets that exist on the same page and are `Choice`
+  controls. Invalid or unavailable targets remain ordinary controls rather than disappearing.
+- A retained Choice renders at the end of its grid row and is suppressed from the lower scrolling
+  list. A section containing only associated Choices is pruned with them.
+- Pointer click or keyboard/controller activation on the focused grid row opens the same bounded
+  host-owned choice popup and routes the write through the ordinary provider transaction.
+- If the queried API lacks the capability, the provider publishes no associations. The grid keeps
+  its normal `LIVE / TARGET` summary and the Choices remain in the ordinary list.
+
+This v1 association supports Choice only. Toggle, action, status, and arbitrary renderer slots are
+not inferred from IDs and require a future explicit capability if accepted into the SDK.
 
 ## Live-data lane
 
@@ -72,13 +109,20 @@ A provider registers a live channel associated with a page/component. The host p
 that page is visible and the menu is active. A callback copies the latest fixed-capacity POD frame
 without blocking, allocating, accessing disk, or traversing unsafe gameplay objects.
 
-The host polls only the visible route, copies the latest frame into the immutable page model, and
-coalesces replacement publication at the existing ActionScript frame boundary. Full page
-descriptors and ordinary configuration values remain on the configuration model lane.
+The host polls only the visible route. Full page descriptors and ordinary configuration values
+remain on the configuration model lane. After the initial snapshot, live updates use an
+active-page-only patch: range values/bands/markers replace their live fields, while telemetry
+plots append one newest sample to a movie-owned bounded history. The patch redraws only registered
+live placements and never rebuilds controls, tabs, help, focus, or provider transactions.
+
+`LiveFrameV1::dynamicRange` is an append-only, size-gated tail. It lets a provider publish bands
+and markers from its current draft, including during a tuning gesture, while older providers and
+hosts continue to use the static descriptor bands. `kLiveCapabilityPresentationFlags` and
+`kLiveCapabilityDynamicRangeFrames` make these additions discoverable.
 
 Initial policy targets are:
 
-- host-selected cadence capped at 30 Hz for axis/head-tracking meters;
+- host-selected cadence aligned to the visible movie frame for axis/head-tracking meters;
 - lower cadence for ship power snapshots, with immediate refresh after an accepted edit;
 - sequence number and monotonic sample timestamp on every frame;
 - visible stale state when the source stops advancing;
@@ -98,6 +142,7 @@ segmented grid should emit operations such as:
 set-segment-count(controlId, columnId, tierId, count)
 trim-column(controlId, columnId, count)
 set-tier(controlId, tierId)
+set-segment-tier(controlId, columnId, segmentIndex, tierId)
 ```
 
 The provider validates the operation, mutates its draft, computes any allocation preview, and

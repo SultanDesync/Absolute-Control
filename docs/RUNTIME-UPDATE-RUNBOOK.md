@@ -90,14 +90,15 @@ At minimum revalidate:
 
 Stop at the first unsafe layer; do not use a heavy profile to discover basic ownership corruption.
 
-1. **Automated:** the current product validator passes build, 9 native test targets, 7 SDK tests,
+1. **Automated:** the current product validator passes build, 9 native test targets, 8 SDK tests,
    codegen/compile fixture, catalogue, complete SWF provenance, artifact fixtures, canonical
    manifest, and package checks. Record actual counts if they change; runtime/UX remains not run.
 2. **Host absent:** Head Tracking and AbsoluteZero still load and retain legacy configuration.
 3. **Registration only:** launch isolated profile, confirm plugin load, factory registration, and
    no diagnostic dialog or crash without opening the panel.
-4. **F2 lifecycle:** open/close repeatedly, verify bridge model, input ownership, and return to
-   gameplay.
+4. **Opt-in recovery-hotkey lifecycle:** explicitly assign `OpenHotkey`, open/close repeatedly,
+   verify bridge model, input ownership, audio restoration, and ultrawide viewport restoration;
+   restore `OpenHotkey=0x00` afterward.
 5. **PauseMenu composition:** require populated vanilla entries, append once, activate, return, and
    repeat at least 25 cycles in one retained save.
 6. **Standard controls:** toggle, Apply, Cancel, binding chord, wheel in both directions, and slider

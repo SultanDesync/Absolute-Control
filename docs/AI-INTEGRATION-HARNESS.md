@@ -87,18 +87,21 @@ Follow [the harness status](RESEARCH-HARNESS.md) and perform these gates:
    desktop control;
 3. load the safe test save manually or through bounded game-thread input when that path is under
    test;
-4. open and close PauseMenu as a synchronization check;
-5. require PauseMenu to be closed before showing Absolute Control Panel;
+4. open PauseMenu as a synchronization check;
+5. open Absolute Control from its injected row and require PauseMenu to remain resident beneath the
+   higher-priority panel, with no gameplay frame or gameplay/ambient audio transition;
 6. require bridge-model and menu-lifecycle acknowledgements;
 7. exercise representative controls through native keyboard and mouse input, with a human judging
    layout and interaction feel;
 8. record a keyboard chord and require the normalized binding to round-trip;
 9. validate provider-owned persisted values;
-10. when opened directly/F2, close Absolute Control and require gameplay to resume with PauseMenu
-    still closed;
-11. when opened from PauseMenu, use Back and require PauseMenu to reappear, close PauseMenu, and at
-    ultrawide resolution require gameplay to resume at the pre-open aspect/scene rect; then reopen
-    from PauseMenu only after the selecting mouse button has been released; and
+10. when the standalone recovery hotkey is explicitly enabled, close a directly opened Absolute
+    Control session and require gameplay to resume with PauseMenu still closed; treat ultrawide
+    viewport restoration as a required negative regression;
+11. when opened from PauseMenu, use Back and require the resident PauseMenu to be revealed without
+    a second Show, close PauseMenu, and at ultrawide resolution require gameplay to resume at the
+    pre-open aspect/scene rect; then reopen from PauseMenu only after the selecting mouse button has
+    been released; and
 12. preserve ignored logs and screenshots on both success and failure.
 
 The runtime input mailbox is independent from automatic menu opening and lives in SFSE's resolved
@@ -133,4 +136,5 @@ automation, and multi-provider composition are separately proven.
 A provider integration is complete when it registers without linking gameplay to the host,
 round-trips every supported setting type, uses the module's existing validation and persistence,
 survives host absence, passes the supervised isolated in-game proof, and introduces no local-machine data
-into Git.  The current synthetic provider is the reference fixture, not a product dependency.
+into Git. Headless contract fixtures remain the reference proof; no synthetic provider is exposed
+in either runtime menu.

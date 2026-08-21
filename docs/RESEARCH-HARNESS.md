@@ -53,7 +53,8 @@ SFSE, Address Library, or another dependency.
 
 1. Launch the manifest's `shortcut` directly.
 2. Load the safe Continue save manually unless startup automation itself is under test.
-3. Open Absolute Control Panel through its populated PauseMenu entry or F2 fallback.
+3. Open Absolute Control Panel through its populated PauseMenu entry. Enable a standalone recovery
+   hotkey explicitly only when that path is the subject of the run.
 4. Exercise the intended UX while the evidence log records lifecycle and semantic commands.
 5. Preserve diagnostics locally, then report semantic outcomes without copying local paths.
 
@@ -82,7 +83,7 @@ Current commands are:
 - `probe_pause_root` and `probe_main_root`.
 
 `show_probe` is a research invocation seam, not the product launch design. The product path is the
-additive PauseMenu entry with F2 fallback.
+additive PauseMenu entry. The standalone recovery hotkey is unbound by default.
 
 ### Retained PauseMenu cycles
 
@@ -106,8 +107,8 @@ support must repeat that test according to [the update runbook](RUNTIME-UPDATE-R
 ## Current process versus archived v1
 
 `tools/process/validate-current.cmd` is the maintained process. On the audited tree it passed the
-release build, 9/9 native tests, 7 SDK tests, generated fixture check/compile, 26-entry catalogue,
-ten-source SWF provenance, artifact fixtures, canonical manifest, and compatibility ZIP. It always
+release build, 11/11 native tests, 9 SDK tests, generated fixture check/compile, 29-entry catalogue,
+complete 20-input SWF provenance, artifact fixtures, canonical manifest, and compatibility ZIP. It always
 reports runtime/UX `not_run`.
 
 The disposable builder-v1 contract lives under `tools/process/legacy/v1` and requires explicit

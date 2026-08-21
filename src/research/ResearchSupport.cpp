@@ -830,13 +830,9 @@ namespace AbsoluteControlPanelResearch::ResearchSupport
         }
     }
 
-    void Start(const Config& a_config, bool a_providerReady) noexcept
+    void Start(const Config& a_config) noexcept
     {
         Stop();
-        if (!a_providerReady) {
-            return;
-        }
-
         auto& services = Services();
         const std::scoped_lock lifecycleLock{ services.lifecycleLock };
         auto gate = std::make_shared<Runtime::CallbackGate>();

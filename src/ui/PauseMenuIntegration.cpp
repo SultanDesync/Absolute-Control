@@ -18,6 +18,41 @@ namespace AbsoluteControlPanelResearch::Ui::PauseMenuIntegration
     namespace
     {
         constexpr std::uint32_t kControlPanelPauseAction = 0x534C4F50;
+        constexpr std::string_view kPauseEntryLabel = "MOD OPTIONS";
+
+        class EntryMemberCopyVisitor final :
+            public RE::Scaleform::GFx::Value::ObjectVisitor
+        {
+        public:
+            explicit EntryMemberCopyVisitor(RE::Scaleform::GFx::Value& a_target) noexcept :
+                target_(a_target)
+            {}
+
+            void Visit(
+                const char* a_name, const RE::Scaleform::GFx::Value& a_value) override
+            {
+                if (a_name && *a_name && target_.SetMember(a_name, a_value)) {
+                    ++copiedMemberCount_;
+                } else {
+                    ++rejectedMemberCount_;
+                }
+            }
+
+            [[nodiscard]] std::uint32_t CopiedMemberCount() const noexcept
+            {
+                return copiedMemberCount_;
+            }
+
+            [[nodiscard]] std::uint32_t RejectedMemberCount() const noexcept
+            {
+                return rejectedMemberCount_;
+            }
+
+        private:
+            RE::Scaleform::GFx::Value& target_;
+            std::uint32_t copiedMemberCount_{};
+            std::uint32_t rejectedMemberCount_{};
+        };
 
         enum class InjectionResult : std::uint8_t
         {
@@ -27,7 +62,7 @@ namespace AbsoluteControlPanelResearch::Ui::PauseMenuIntegration
             Failed
         };
 
-        bool g_enablePauseEntry{};
+        std::atomic_bool g_enablePauseEntry{};
         std::atomic<RE::Scaleform::GFx::Movie*> g_expectedMovie{};
         std::atomic<std::uint32_t> g_cycle{};
         std::atomic<std::uint32_t> g_completedCycle{};
@@ -35,7 +70,7 @@ namespace AbsoluteControlPanelResearch::Ui::PauseMenuIntegration
         std::atomic<std::uint32_t> g_advanceAttemptCount{};
         std::atomic<std::int32_t> g_lastAdvanceResult{ -1 };
         std::atomic<std::uint32_t> g_requestedCommand{};
-        // -1 has no queued origin, 0 is direct/F2, and 1 is PauseMenu. The
+        // -1 has no queued origin, 0 is direct/standalone-hotkey, and 1 is PauseMenu. The
         // first queued Show wins until the displayed session claims it, so a
         // duplicate overlapping Show cannot rewrite that session's back stack.
         std::atomic<std::int32_t> g_returnToPauseOnClose{ -1 };
@@ -110,8 +145,14 @@ namespace AbsoluteControlPanelResearch::Ui::PauseMenuIntegration
                     std::format(
                         "action=0x{:08X} propagation_stopped={}",
                         actionValue, stopped));
-                Ui::QueueNamedMenuMessage(
-                    "PauseMenu", RE::UI_MESSAGE_TYPE::kHide, "slop-pause-entry");
+                // Keep the native PauseMenu resident as the gameplay-pause owner while
+                // the higher-priority Control Panel covers it. Hiding it before the
+                // panel's Show exposed gameplay for a frame. The custom panel takes
+                // its own balanced native PauseMenu audio-mode lease on Show because
+                // Starfield's MenuAudioHandler recognizes only hard-coded menu names.
+                EvidenceLog::Event(
+                    "pause_entry_underlay_retained",
+                    "menu=PauseMenu target=AbsoluteControlPanelMenu");
                 Ui::QueueControlPanelMessage(
                     RE::UI_MESSAGE_TYPE::kShow, "pause-entry");
             }
@@ -159,9 +200,11 @@ namespace AbsoluteControlPanelResearch::Ui::PauseMenuIntegration
                 }
 
                 RE::Scaleform::GFx::Value entries;
+                RE::Scaleform::GFx::Value nativeEntryTemplate;
                 movieRoot->CreateArray(&entries);
                 bool alreadyPresent = false;
                 bool cloned = entries.IsArray();
+                bool gotNativeEntryTemplate = false;
                 for (std::int32_t index = 0; cloned && index < entryCount; ++index) {
                     cloned = list.SetMember(
                         "selectedIndex", RE::Scaleform::GFx::Value(index));
@@ -177,6 +220,12 @@ namespace AbsoluteControlPanelResearch::Ui::PauseMenuIntegration
                         action.GetUInt() == kControlPanelPauseAction) {
                         alreadyPresent = true;
                     }
+                    // Retain the last ordinary row (normally Quit) as the
+                    // closest safe style/data template for our appended row.
+                    // The shorter label then uses PauseMenu's native text
+                    // format and scale instead of forcing a squeezed fallback.
+                    nativeEntryTemplate = entry;
+                    gotNativeEntryTemplate = true;
                     cloned = entries.PushBack(entry);
                 }
                 list.SetMember("selectedIndex", RE::Scaleform::GFx::Value(originalIndex));
@@ -257,7 +306,11 @@ namespace AbsoluteControlPanelResearch::Ui::PauseMenuIntegration
                 RE::Scaleform::GFx::Value label;
                 RE::Scaleform::GFx::Value confirmText;
                 movieRoot->CreateObject(&entry);
-                movieRoot->CreateString(&label, "ABSOLUTE CONTROL PANEL");
+                EntryMemberCopyVisitor templateCopy(entry);
+                if (gotNativeEntryTemplate) {
+                    nativeEntryTemplate.VisitMembers(&templateCopy);
+                }
+                movieRoot->CreateString(&label, kPauseEntryLabel.data());
                 movieRoot->CreateString(&confirmText, "");
                 const bool populated = entry.IsObject() &&
                     entry.SetMember("sActionText", label) &&
@@ -276,9 +329,13 @@ namespace AbsoluteControlPanelResearch::Ui::PauseMenuIntegration
                     invoked ? "pause_entry_injected" : "pause_entry_injection_rejected",
                     std::format(
                         "cycle={} id={} vanilla_count={} requested_count={} action=0x{:08X} "
+                        "template={} members_copied={} members_rejected={} label={} "
                         "populated={} invoked={} selection_restored={}",
                         a_cycle, a_commandId, entryCount, entryCount + 1,
-                        kControlPanelPauseAction, populated, invoked, restored));
+                        kControlPanelPauseAction, gotNativeEntryTemplate,
+                        templateCopy.CopiedMemberCount(),
+                        templateCopy.RejectedMemberCount(), kPauseEntryLabel,
+                        populated, invoked, restored));
                 return invoked ? InjectionResult::Injected : InjectionResult::Failed;
             } catch (...) {
                 EvidenceLog::Event(
@@ -454,7 +511,8 @@ namespace AbsoluteControlPanelResearch::Ui::PauseMenuIntegration
                         "name={} menu=0x{:X} count={} index={}", name ? name : "<null>",
                         reinterpret_cast<std::uintptr_t>(menu), after.count, after.index));
 
-                if (isPauseMenu && g_enablePauseEntry) {
+                if (isPauseMenu &&
+                    g_enablePauseEntry.load(std::memory_order_acquire)) {
                     OnPauseMenuInserted(menu);
                 }
             }
@@ -463,7 +521,7 @@ namespace AbsoluteControlPanelResearch::Ui::PauseMenuIntegration
 
     bool InstallLifecycleHook(bool a_enablePauseEntry) noexcept
     {
-        g_enablePauseEntry = a_enablePauseEntry;
+        g_enablePauseEntry.store(a_enablePauseEntry, std::memory_order_release);
         constexpr std::uintptr_t kCallsiteRva = 0x0254181C;
         constexpr std::uintptr_t kExpectedTargetRva = 0x0253EF10;
         const auto imageBase = REX::FModule::GetExecutingModule().GetBaseAddress();
@@ -494,6 +552,18 @@ namespace AbsoluteControlPanelResearch::Ui::PauseMenuIntegration
         return true;
     }
 
+    void SetEntryEnabled(bool a_enabled) noexcept
+    {
+        g_enablePauseEntry.store(a_enabled, std::memory_order_release);
+        EvidenceLog::Event("pause_entry_setting_changed",
+            std::format("enabled={}", a_enabled));
+    }
+
+    bool IsEntryEnabled() noexcept
+    {
+        return g_enablePauseEntry.load(std::memory_order_acquire);
+    }
+
     void LogRegistration(bool a_enablePauseEntry) noexcept
     {
         if (!a_enablePauseEntry) {
@@ -502,7 +572,7 @@ namespace AbsoluteControlPanelResearch::Ui::PauseMenuIntegration
         }
         EvidenceLog::Event(
             "pause_entry_integration_registered",
-            "mode=active-menu-boundary+scaleform-advance fail_closed=true fallback=F2");
+            "mode=active-menu-boundary+scaleform-advance fail_closed=true recovery_hotkey=opt-in");
     }
 
     void RequestInjection(std::uint32_t a_commandId) noexcept

@@ -150,7 +150,8 @@ namespace AbsoluteControlPanelResearch::LiveComponents
                 const auto& column = descriptor.columns[index];
                 if (column.structSize < sizeof(GridColumnDescriptorV1) ||
                     !IsIdentifier(column.columnId) || !IsLabel(column.label) ||
-                    column.maximumSegments == 0 || column.maximumSegments > kMaximumGridSegments) return false;
+                    column.maximumSegments == 0 ||
+                    column.maximumSegments > kMaximumGridSegments) return false;
             }
             for (std::size_t index = 0; index < descriptor.tierCount; ++index) {
                 const auto& tier = descriptor.tiers[index];
@@ -162,19 +163,66 @@ namespace AbsoluteControlPanelResearch::LiveComponents
                    !HasDuplicateId(descriptor.tiers, descriptor.tierCount, &GridTierDescriptorV1::tierId);
         }
 
+        [[nodiscard]] bool ValidateAssociations(
+            const LiveChannelDescriptorV1& descriptor) noexcept
+        {
+            if (descriptor.structSize < sizeof(LiveChannelDescriptorV1)) return true;
+            if (descriptor.associationCount > kMaximumGridControlAssociations ||
+                (descriptor.kind != ComponentKind::SegmentedAllocationGrid &&
+                    descriptor.associationCount != 0)) return false;
+            for (std::size_t index = 0; index < descriptor.associationCount; ++index) {
+                const auto& association = descriptor.associations[index];
+                if (association.structSize < sizeof(GridControlAssociationV1) ||
+                    !IsIdentifier(association.columnId) ||
+                    !IsIdentifier(association.controlId)) return false;
+                const auto columnExists = std::ranges::any_of(
+                    std::span{ descriptor.segmentedGrid.columns,
+                        descriptor.segmentedGrid.columnCount },
+                    [&](const GridColumnDescriptorV1& candidate) {
+                        return View(candidate.columnId) ==
+                            View(association.columnId);
+                    });
+                if (!columnExists) return false;
+                for (std::size_t prior = 0; prior < index; ++prior) {
+                    if (View(descriptor.associations[prior].columnId) ==
+                            View(association.columnId) ||
+                        View(descriptor.associations[prior].controlId) ==
+                            View(association.controlId)) return false;
+                }
+            }
+            return true;
+        }
+
         [[nodiscard]] bool ValidateDescriptor(const LiveChannelDescriptorV1& descriptor) noexcept
         {
-            if (descriptor.structSize < sizeof(LiveChannelDescriptorV1) ||
+            if (descriptor.structSize < kLiveChannelDescriptorV1BaseSize ||
                 descriptor.abiVersion != kAbiVersion || !IsComponentKind(descriptor.kind) ||
                 !IsIdentifier(descriptor.moduleId) || !IsIdentifier(descriptor.pageId) ||
                 !IsIdentifier(descriptor.channelId) || !IsLabel(descriptor.title) ||
                 !descriptor.readLiveFrame) return false;
+            const auto flags = descriptor.structSize >=
+                    kLiveChannelDescriptorV1FlagsSize ?
+                descriptor.flags : kSegmentedGridNone;
+            constexpr std::uint32_t presentationFlags =
+                kLivePresentationPinned | kLivePresentationSecondary |
+                kLivePresentationCollapsedByDefault;
+            constexpr std::uint32_t knownFlags =
+                kSegmentedGridCycleOnClick | presentationFlags;
+            if ((flags & ~knownFlags) != 0 ||
+                (descriptor.kind != ComponentKind::SegmentedAllocationGrid &&
+                    (flags & kSegmentedGridCycleOnClick) != 0) ||
+                ((flags & kLivePresentationCollapsedByDefault) != 0 &&
+                    (flags & kLivePresentationSecondary) == 0)) return false;
+            bool validComponent{};
             switch (descriptor.kind) {
-            case ComponentKind::RangeMeter: return ValidateRange(descriptor.rangeMeter);
-            case ComponentKind::TelemetryPlot: return ValidatePlot(descriptor.telemetryPlot);
-            case ComponentKind::SegmentedAllocationGrid: return ValidateGrid(descriptor.segmentedGrid);
+            case ComponentKind::RangeMeter:
+                validComponent = ValidateRange(descriptor.rangeMeter); break;
+            case ComponentKind::TelemetryPlot:
+                validComponent = ValidatePlot(descriptor.telemetryPlot); break;
+            case ComponentKind::SegmentedAllocationGrid:
+                validComponent = ValidateGrid(descriptor.segmentedGrid); break;
             }
-            return false;
+            return validComponent && ValidateAssociations(descriptor);
         }
 
         [[nodiscard]] LiveChannelModelV1 CopyModel(const LiveChannelDescriptorV1& descriptor) noexcept
@@ -185,6 +233,14 @@ namespace AbsoluteControlPanelResearch::LiveComponents
             std::memcpy(model.channelId, descriptor.channelId, sizeof(model.channelId));
             std::memcpy(model.title, descriptor.title, sizeof(model.title));
             model.kind = descriptor.kind;
+            model.flags = descriptor.structSize >=
+                    kLiveChannelDescriptorV1FlagsSize ?
+                descriptor.flags : kSegmentedGridNone;
+            if (descriptor.structSize >= sizeof(LiveChannelDescriptorV1)) {
+                model.associationCount = descriptor.associationCount;
+                std::copy_n(descriptor.associations,
+                    descriptor.associationCount, model.associations);
+            }
             switch (descriptor.kind) {
             case ComponentKind::RangeMeter: model.rangeMeter = descriptor.rangeMeter; break;
             case ComponentKind::TelemetryPlot: model.telemetryPlot = descriptor.telemetryPlot; break;
@@ -221,15 +277,32 @@ namespace AbsoluteControlPanelResearch::LiveComponents
         [[nodiscard]] bool ValidateFrame(const LiveFrameV1& frame,
             const LiveChannelDescriptorV1& descriptor) noexcept
         {
-            if (frame.structSize < sizeof(LiveFrameV1) || frame.abiVersion != kAbiVersion ||
+            if (frame.structSize < kLiveFrameV1BaseSize || frame.abiVersion != kAbiVersion ||
                 frame.kind != descriptor.kind || frame.sequence == 0 || frame.monotonicTimestampUs == 0 ||
                 (frame.flags & ~(kFrameStale | kFrameUnavailable | kFrameSuspended)) != 0) return false;
             switch (frame.kind) {
-            case ComponentKind::RangeMeter:
-                return frame.rangeMeter.structSize >= sizeof(RangeMeterFrameV1) && frame.rangeMeter.available <= 1 &&
+            case ComponentKind::RangeMeter: {
+                const bool validBase =
+                    frame.rangeMeter.structSize >= sizeof(RangeMeterFrameV1) &&
+                    frame.rangeMeter.available <= 1 &&
                        std::isfinite(frame.rangeMeter.liveValue) &&
                        (!frame.rangeMeter.available || (frame.rangeMeter.liveValue >= descriptor.rangeMeter.minimumValue &&
                            frame.rangeMeter.liveValue <= descriptor.rangeMeter.maximumValue));
+                if (!validBase || frame.structSize < sizeof(LiveFrameV1)) {
+                    return validBase;
+                }
+                const auto& dynamic = frame.dynamicRange;
+                return dynamic.structSize >= sizeof(LiveFrameV1::DynamicRangeV1) &&
+                    dynamic.present <= 1 &&
+                    (!dynamic.present ||
+                        (dynamic.bandCount <= kMaximumRangeBands &&
+                         dynamic.markerCount <= kMaximumRangeMarkers &&
+                         ValidateBandsAndMarkers(dynamic.bands,
+                             dynamic.bandCount, dynamic.markers,
+                             dynamic.markerCount,
+                             descriptor.rangeMeter.minimumValue,
+                             descriptor.rangeMeter.maximumValue, true)));
+            }
             case ComponentKind::TelemetryPlot:
                 if (frame.telemetryPlot.structSize < sizeof(TelemetrySampleV1) ||
                     frame.telemetryPlot.seriesCount != descriptor.telemetryPlot.seriesCount ||
@@ -290,7 +363,12 @@ namespace AbsoluteControlPanelResearch::LiveComponents
             }
             case CompoundOperationKind::SetTier:
                 return columnId.empty() && operation.count == 0 &&
+                        ContainsId(descriptor.tiers, descriptor.tierCount, tierId);
+            case CompoundOperationKind::SetSegmentTier: {
+                const auto* column = FindColumn(descriptor, columnId);
+                return column && operation.count < column->maximumSegments &&
                        ContainsId(descriptor.tiers, descriptor.tierCount, tierId);
+            }
             }
             return false;
         }
@@ -322,10 +400,23 @@ namespace AbsoluteControlPanelResearch::LiveComponents
         if (duplicate != slots_.end()) return Result::Duplicate;
         const auto empty = std::ranges::find_if(slots_, [](const Slot& slot) { return !slot.occupied; });
         if (empty == slots_.end()) return Result::CapacityExceeded;
+        LiveChannelDescriptorV1 normalized{};
+        std::memcpy(&normalized, &descriptor,
+            (std::min)(static_cast<std::size_t>(descriptor.structSize),
+                sizeof(normalized)));
+        if (descriptor.structSize < kLiveChannelDescriptorV1FlagsSize) {
+            normalized.flags = kSegmentedGridNone;
+        }
+        if (descriptor.structSize < sizeof(LiveChannelDescriptorV1)) {
+            normalized.associationCount = 0;
+            std::fill(std::begin(normalized.associations),
+                std::end(normalized.associations), GridControlAssociationV1{});
+        }
+        normalized.structSize = sizeof(normalized);
         *empty = Slot{};
         empty->occupied = true;
-        empty->descriptor = descriptor;
-        empty->model = CopyModel(descriptor);
+        empty->descriptor = normalized;
+        empty->model = CopyModel(normalized);
         return Result::Ok;
     }
 
@@ -531,6 +622,25 @@ namespace AbsoluteControlPanelResearch::LiveComponents
         }));
     }
 
+    std::vector<SubscriberDiagnostics> Registry::Diagnostics() const
+    {
+        std::vector<SubscriberDiagnostics> subscribers;
+        for (const auto& slot : slots_) {
+            if (!slot.occupied) continue;
+            const std::string_view moduleId{ slot.descriptor.moduleId };
+            const auto found = std::ranges::find_if(subscribers,
+                [&](const SubscriberDiagnostics& subscriber) {
+                    return subscriber.moduleId == moduleId;
+                });
+            if (found == subscribers.end()) {
+                subscribers.push_back({ std::string{ moduleId }, 1 });
+            } else {
+                ++found->channelCount;
+            }
+        }
+        return subscribers;
+    }
+
     bool Registry::PollVisiblePage() noexcept
     {
         if (!menuActive_ || visibleModuleId_[0] == '\0' ||
@@ -593,7 +703,8 @@ namespace AbsoluteControlPanelResearch::LiveComponents
         kAbiVersion,
         &RegisterChannel,
         &UnregisterModuleApi,
-        &RequestImmediateRefreshApi
+        &RequestImmediateRefreshApi,
+        kLiveCapabilities
     };
 }
 

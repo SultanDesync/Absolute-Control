@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstddef>
+#include <string>
 #include <vector>
 
 namespace AbsoluteControlPanelResearch::LiveComponents
@@ -34,6 +35,12 @@ namespace AbsoluteControlPanelResearch::LiveComponents
         TelemetrySampleV1 samples[kMaximumPlotSamples]{};
     };
 
+    struct SubscriberDiagnostics
+    {
+        std::string moduleId;
+        std::size_t channelCount{};
+    };
+
     // Registry ownership is confined to the game/UI thread. Registration may
     // copy descriptors, while Poll uses only fixed storage and never locks or
     // allocates around a provider live callback.
@@ -60,6 +67,8 @@ namespace AbsoluteControlPanelResearch::LiveComponents
             const char* moduleId, const char* pageId, const char* channelId,
             TelemetryHistoryV1& history) const noexcept;
         [[nodiscard]] std::size_t ChannelCount() const noexcept;
+        [[nodiscard]] std::vector<SubscriberDiagnostics>
+            Diagnostics() const;
 
         // UI-thread integration lane. PollVisiblePage invokes only channels on
         // the active route and reports whether any valid sequence advanced.

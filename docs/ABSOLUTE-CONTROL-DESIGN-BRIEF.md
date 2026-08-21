@@ -203,20 +203,21 @@ contextual unavailability, then ready. Do not show several competing badges or r
 The Presets page must accommodate:
 
 - one populated source/startup-aware preset selector;
-- create, duplicate, delete-or-hide, revert, and set-startup actions;
-- preset shortcut binding and capture state;
-- activation status and an allocation preview;
-- separate **Activate Saved** and **Save & Activate** actions;
-- explicit power-allocation tie-break order;
-- 18 exact numeric tier controls; and
-- a six-system by 32-pip maximum allocation visualization.
+- a bounded rename field and startup toggle;
+- compact inline create/duplicate and delete-or-hide/revert action pairs;
+- keyboard and optional Input Bus shortcut binding/capture state;
+- explicit per-system power-allocation tie-break Choices; and
+- a six-system visualization sized to each provider-declared maximum (12 pips for Power).
 
 The six systems need clear installed/not-installed, live current/maximum, draft preview, and clipped
 states. Keep the Green-first/Yellow-after-Green/Red-last, live-outline, preview-tick, and hollow-capacity
-legend on the visualization itself. Show G/Y/R request counts and selected-priority editing context
-per system. Tier semantics must also have non-color cues. Favor a responsive grouping
-that makes comparison easy without creating 192 focus targets or requiring every datum to live in a
-large card.
+legend on the visualization itself. Remove the old G/Y/R request-count column and exact tier-slider
+duplicates. Each colored pip carries a 1/2/3 glyph; each row provides direct pip cycling, quick-step
+buttons, and an explicitly associated tie-break Choice reachable from pointer, keyboard, and
+controller focus. Favor a responsive grouping that makes comparison easy without creating a
+pip-per-tab-stop trap or requiring every datum to live in a large card. Use the normal host
+Apply/Cancel footer. Manual activation is an explicit product decision still to be settled, not a
+hidden selector side effect.
 
 ### Automation / Cheats
 
@@ -267,6 +268,12 @@ Provide two title/accent recommendations:
 1. a quiet production treatment that sits naturally beside the other Pause Menu entries; and
 2. an early-release treatment that is easier to locate, using a restrained accent color, rule,
    marker, or build tag rather than an unrelated novelty typeface.
+
+The current PauseMenu product label is **MOD OPTIONS**. It should inherit the neighboring native
+row's typography, scale, selection behavior, and white text. A dark desaturated purple background
+such as `#4A365D` is the preferred discoverability experiment, but it must be applied as a row accent
+rather than a custom font or purple text, and it is not accepted until normal, hover, selected,
+disabled, controller-focus, and high-brightness contrast states are verified in game.
 
 The current prototype palette is dark blue-black with cyan text/accent, gold warning/dirty accents,
 soft red errors, and green/yellow/red allocation tiers. It is provisional, not a mandate. A revised

@@ -18,8 +18,8 @@
 - **Public API drift:** `AbsoluteControlPanelAPI.h` is the single type/constant/callback authority.
   `SlopAPI.h` aliases those types and exposes only the exact legacy table prefix and export.
 - **Research leakage:** product and research source sets are explicit and tested at source and
-  binary level. DirectInput, SendInput/mailbox automation, the synthetic provider, and live
-  components are absent from the canonical target.
+  binary level. DirectInput and SendInput/mailbox automation are absent from the canonical target;
+  the retired synthetic provider is absent from both artifacts.
 - **Registry/model capacities:** one host authority admits 512 modules, 2,048 pages, 32 pages per
   module, 128 controls per page, 512 controls per module, and 32,768 controls total. Snapshots carry
   all module summaries, active-module page metadata, and active-page controls only; the 512-module
@@ -37,7 +37,7 @@
 - **Control-ID scopes:** the raw ABI's page-local uniqueness is intentional because each page may
   carry distinct context/callbacks. The generator's module-wide uniqueness is also intentional for
   its one shared `ProviderCallbacks` set and module-wide ID parser. Both rules are documented.
-- **Interface provenance:** dist metadata and artifact manifests enumerate and hash all ten current
+- **Interface provenance:** dist metadata and artifact manifests enumerate and hash all 18 current
   ActionScript sources; helper changes can no longer pass a root-file-only check.
 - **Detached/infinite workers and synchronous evidence writes:** polling uses cooperative,
   restartable services with callback invalidation; process-lived ownership is explicit. Evidence
@@ -75,8 +75,9 @@
 The current automated process passed; it did **not** run Starfield or judge UX. Before a release
 claim, record at least:
 
-- PauseMenu and F2 first-open, close/reopen, 25-cycle lifecycle, bridge-root failure, and crash/dump
-  monitoring on the canonical DLL/SWF pair;
+- PauseMenu first-open, close/reopen, 25-cycle lifecycle, bridge-root failure, and crash/dump
+  monitoring on the canonical DLL/SWF pair; test the opt-in standalone recovery hotkey separately,
+  including ultrawide viewport restoration;
 - repeated pointer and keyboard module/page selections on the deferred-publication build, proving
   next-frame `bridge_model_flush`, no publication between pointer down entry/return, and no new dump;
 - two-direction wheel behavior in workspace/sidebar/overflowing tabs, keyboard-only navigation,

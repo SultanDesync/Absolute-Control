@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "bundle": {
+    "id": "absolute-suite",
+    "name": "Absolute Suite",
+    "author": "SultanDesync",
+    "website": "https://github.com/SultanDesync/Absolute-Control"
+  },
+  "components": [
+    {
+      "id": "control",
+      "name": "Absolute Control",
+      "version": "0.2.0-dev",
+      "repository": "Absolute-Control",
+      "installGroup": "00 Core",
+      "required": true,
+      "files": [
+        {
+          "source": "build/windows/x64/release/AbsoluteControlPanel.dll",
+          "destination": "SFSE/Plugins/AbsoluteControlPanel.dll"
+        },
+        {
+          "source": "interface/dist/AbsoluteControlPanelMenu.swf",
+          "destination": "Interface/AbsoluteControlPanelMenu.swf"
+        },
+        {
+          "source": "config/AbsoluteControlPanel.ini",
+          "destination": "SFSE/Plugins/AbsoluteControlPanel.ini"
+        }
+      ]
+    },
+    {
+      "id": "hotas",
+      "name": "AbsoluteHOTAS",
+      "version": "5.0.1",
+      "repository": "AbsoluteHOTAS",
+      "installGroup": "10 HOTAS",
+      "required": false,
+      "files": [
+        {
+          "source": "contrib/PluginRelease/Data/SFSE/Plugins/AbsoluteHOTAS.dll",
+          "destination": "SFSE/Plugins/AbsoluteHOTAS.dll"
+        },
+        {
+          "source": "contrib/PluginRelease/Data/SFSE/Plugins/AbsoluteHOTAS.ini",
+          "destination": "SFSE/Plugins/AbsoluteHOTAS.ini"
+        }
+      ]
+    },
+    {
+      "id": "power",
+      "name": "Absolute Power",
+      "version": "0.2.0-alpha",
+      "repository": "Absolute Power",
+      "installGroup": "20 Power",
+      "required": false,
+      "files": [
+        {
+          "source": "contrib/PluginRelease/Data/SFSE/Plugins/AbsolutePower.dll",
+          "destination": "SFSE/Plugins/AbsolutePower.dll"
+        },
+        {
+          "source": "contrib/PluginRelease/Data/SFSE/Plugins/AbsolutePower.ini",
+          "destination": "SFSE/Plugins/AbsolutePower.ini"
+        }
+      ]
+    },
+    {
+      "id": "head-tracking",
+      "name": "Absolute Head Tracking",
+      "version": "0.2.0-alpha",
+      "repository": "Absolute Head Tracking",
+      "installGroup": "30 Head Tracking",
+      "required": false,
+      "files": [
+        {
+          "source": "contrib/PluginRelease/Data/SFSE/Plugins/AbsoluteHeadTracking.dll",
+          "destination": "SFSE/Plugins/AbsoluteHeadTracking.dll"
+        },
+        {
+          "source": "contrib/PluginRelease/Data/SFSE/Plugins/AbsoluteHeadTracking.ini",
+          "destination": "SFSE/Plugins/AbsoluteHeadTracking.ini"
+        }
+      ]
+    },
+    {
+      "id": "mouse-steering",
+      "name": "AbsoluteZero Mouse Steering",
+      "version": "0.2.0",
+      "repository": "AbsoluteZero-Ship-Control",
+      "installGroup": "40 Mouse Steering",
+      "required": false,
+      "files": [
+        {
+          "source": "contrib/PluginRelease/Data/SFSE/Plugins/AbsoluteZero.dll",
+          "destination": "SFSE/Plugins/AbsoluteZero.dll"
+        },
+        {
+          "source": "contrib/PluginRelease/Data/SFSE/Plugins/AbsoluteZero.ini",
+          "destination": "SFSE/Plugins/AbsoluteZero.ini"
+        }
+      ]
+    }
+  ]
+}

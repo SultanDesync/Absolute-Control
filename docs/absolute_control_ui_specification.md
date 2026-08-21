@@ -497,17 +497,22 @@ Y: Output (0..100%)
 
 ## 5. Absolute Power Screen Redesigns
 
-### Screen 1: Presets Workbench (35-Control Labeled-Choice Envelope)
+### Screen 1: Presets Workbench (Compact Compound Reference)
 - **Profile Selector**: One source/startup-aware populated dropdown is the authoritative selected
   profile. Do not duplicate it with Previous/Next, a selected-preset summary, or a second ambiguous
   preset-name field; label the text field `Rename selected profile`.
-- **Toolbar**: `[ + New Preset ]`, `[ Duplicate ]`, `[ Set Startup ]`, `[ Revert ]`, `[ Delete ]`.
-- **Central Visualizer**: 6×32 Segmented Allocation Matrix with the inline tier/live/preview/capacity
-  legend, per-system G/Y/R request counts, selected-priority editing context, and live power readback.
-- **Precision Sliders**: 18 exact tier sliders grouped by system for precise integer configuration.
-- **Context Actions**: `[ Save Power Changes ]`, `[ Save & Activate ]`, and
-  `[ Activate Saved ]`. `Activate Saved` always uses the last verified backend record, never the
-  local draft. Do not add a second generic Save Draft action inside the page body.
+- **Sections**: `Profile Identity`, `Hardware Bindings`, `Profile Actions`, and `Priority Ordering`.
+  The last header is pruned when all of its Choices are retained on grid rows.
+- **Action Rows**: `[ Create ] [ Duplicate ]` and `[ Delete / Hide ] [ Revert ]`; startup is a
+  profile field, not a toolbar action.
+- **Central Visualizer**: six dynamic 12-pip rows, sized from `maximumSegments` instead of drawing
+  the protocol's 32-slot capacity. Each row includes live/preview state, direct
+  Hollow→Green→Yellow→Red→Hollow cycling, 1/2/3 glyphs, +G/+Y/+R/− quick steps, and its explicitly
+  associated priority Choice.
+- **Persistence**: use the normal host Apply/Cancel footer. Do not add duplicate tier sliders or
+  page-local save buttons. The compact current provider does not expose manual activation; decide
+  that product behavior explicitly before release rather than making selector changes activate as a
+  side effect.
 
 ### Screen 2: Automation / Cheats (Coming Soon)
 

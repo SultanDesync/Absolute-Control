@@ -38,6 +38,8 @@ The submodule remains pristine.
 | `IMenu::Unk19` | 130634 | `0x02553940` |
 | `IMenu::ProcessEvent(UpdateSceneRectEvent)` | 130642 | `0x02554370` |
 | `UI::IsMenuOpen` | 130475 | `0x02544EC0` |
+| `MenuAudioMode::Acquire` | 82727 | `0x012EE410` |
+| `MenuAudioMode::Release` | 82728 | `0x012EE4A0` |
 
 The historical `GameMenuBase::ctor` ID 130577 is not the current constructor. The recovered
 constructor at ID 130615 initializes the current menu fields, including render priority 6 at
@@ -59,15 +61,24 @@ byte `+0x110`. Shipped derived constructors also clear the tail byte at `+0x130`
   scene rect until PauseMenu forced another update. The custom menu now delegates to the exact
   vanilla handler, as well as the mapped `Unk18`, `Unk19`, and `Unk1A` scene/lifecycle slots.
   Delegation alone does not guarantee a repairing event during Hide. Close records its invocation
-  origin: a PauseMenu-origin user Back hides the panel and queues PauseMenu Show, while direct/F2
-  origin returns to gameplay. Closing the restored PauseMenu runs native viewport teardown; this
-  restored 3440x1440 in the current ultrawide regression.
+  origin. A Pause-origin session retains the existing PauseMenu underneath the priority-19 panel;
+  user Back hides only the panel and reveals that same instance, with a recovery Show reserved for
+  an underlay unexpectedly removed by another plugin. An explicitly enabled standalone-hotkey
+  origin returns directly to gameplay.
+  Closing the revealed PauseMenu runs native viewport teardown; the prior close/reopen path
+  restored 3440x1440, while the resident-underlay revision still requires that regression.
 - In observed runs, PauseMenu used priority 11 and CursorMenu priority 20. The research overlay
   uses 19, placing it above PauseMenu while preserving the cursor layer.
 - PauseMenu's observed runtime flags were `0x0800071B`; its constructor initially ORs
   `0x08000713`, with the cursor bit added by the lifecycle path. Absolute Control Panel now requests the full
   `0x0800071B` runtime mask explicitly because its custom registration path does not reliably
   receive PauseMenu's later cursor-bit mutation.
+- Menu pause flags and menu audio mode are independent. Starfield's `MenuAudioHandler` compares
+  open/close event names against a hard-coded set and maps `PauseMenu` to audio mode `2`; it ignores
+  `AbsoluteControlPanelMenu`. The native mode functions maintain a ref-counted list, so the panel
+  takes one mode-2 lease after Show and releases exactly one after Hide, with its destructor as an
+  idempotent fallback. This reasserts the native menu mix for Pause-origin sessions and supplies it
+  for opt-in standalone-hotkey sessions without changing channel volumes globally.
 
 The plugin installs a fail-closed trace only after validating both the rel32 call opcode and its
 expected target. It logs vanilla and research insertions before and after the engine routine; it

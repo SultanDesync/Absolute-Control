@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="http://qconsulting.ca/fo3/ModConfig5.0.xsd">
+  <moduleName>Absolute Suite @BUNDLE_VERSION@</moduleName>
+  <requiredInstallFiles>
+    <folder source="00 Core" destination="" priority="0" />
+  </requiredInstallFiles>
+  <installSteps order="Explicit">
+    <installStep name="Choose Absolute modules">
+      <optionalFileGroups order="Explicit">
+        <group name="Gameplay modules" type="SelectAny">
+          <plugins order="Explicit">
+            <plugin name="AbsoluteHOTAS">
+              <description>Direct HOTAS/HOSAS flight control, ship buttons, profiles, macros, calibration, and live axis tuning. Install for joystick flight setups.</description>
+              <files>
+                <folder source="10 HOTAS" destination="" priority="10" />
+              </files>
+              <typeDescriptor><type name="Optional" /></typeDescriptor>
+            </plugin>
+            <plugin name="Absolute Power">
+              <description>Priority-based ship-power presets and allocation controls. The shipped preset hotkeys use number keys 1-4 during flight until changed or cleared.</description>
+              <files>
+                <folder source="20 Power" destination="" priority="20" />
+              </files>
+              <typeDescriptor><type name="Optional" /></typeDescriptor>
+            </plugin>
+            <plugin name="Absolute Head Tracking">
+              <description>OpenTrack-compatible rotational cockpit head tracking. Requires OpenTrack only when this module is selected and used.</description>
+              <files>
+                <folder source="30 Head Tracking" destination="" priority="30" />
+              </files>
+              <typeDescriptor><type name="Optional" /></typeDescriptor>
+            </plugin>
+            <plugin name="AbsoluteZero Mouse Steering">
+              <description>Idle mouse-centering and optional locked-reticule steering. IMPORTANT: when installed with AbsoluteHOTAS, AbsoluteZero owns pitch and yaw; HOTAS stick bindings cannot control those two axes. HOTAS continues to own roll, strafe, throttle, buttons, and profiles. This module changes mouse-flight behavior immediately with its shipped defaults.</description>
+              <files>
+                <folder source="40 Mouse Steering" destination="" priority="40" />
+              </files>
+              <typeDescriptor><type name="Optional" /></typeDescriptor>
+            </plugin>
+          </plugins>
+        </group>
+      </optionalFileGroups>
+    </installStep>
+  </installSteps>
+</config>

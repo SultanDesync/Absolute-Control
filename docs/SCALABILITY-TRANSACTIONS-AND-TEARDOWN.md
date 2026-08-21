@@ -77,10 +77,12 @@ only treat callback completion as rollback completion; a result-bearing teardown
 SDK-freeze decision.
 
 Back-stack ownership is also host-owned. A clean user Back remembers where the panel was invoked:
-PauseMenu origin returns to PauseMenu only after the displayed panel session completes native Hide;
-direct/F2 origin returns to gameplay. The first queued Show origin is claimed by that session and
-cannot be rewritten by a duplicate overlapping Show. External, watchdog, and fail-closed hides
-never synthesize PauseMenu, so teardown cannot accidentally reopen UI after a fault.
+PauseMenu origin normally reveals the still-resident underlay after the displayed panel completes
+native Hide; if another plugin removed that underlay, the host queues one recovery Show. An opt-in
+standalone-hotkey origin returns to gameplay. The first queued Show origin is claimed by that session and cannot be
+rewritten by a duplicate overlapping Show. External, watchdog, and fail-closed hides never
+synthesize PauseMenu, so teardown cannot accidentally reopen UI after a fault. The panel's native
+audio-mode lease is independent and is released idempotently for every Hide/destruction path.
 
 Input capture and a dirty transaction are distinct. Navigation and Close cannot open a dirty
 decision modal while capture owns input; capture is resolved first. Future asynchronous Apply is

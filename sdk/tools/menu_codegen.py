@@ -17,7 +17,7 @@ ROOT_REQUIRED = {"schemaVersion", "targetAbiVersion", "module", "pages"}
 ROOT_KEYS = ROOT_REQUIRED | {"$schema"}
 MODULE_KEYS = {"id", "title", "description"}
 PAGE_KEYS = {"id", "title", "description", "sections"}
-SECTION_KEYS = {"id", "title", "options"}
+SECTION_KEYS = {"id", "title", "description", "options"}
 COMMON_KEYS = {"id", "type", "label", "description", "flags"}
 TYPE_KEYS = {
     "toggle": COMMON_KEYS,
@@ -25,8 +25,9 @@ TYPE_KEYS = {
     "float": COMMON_KEYS | {"widget", "minimum", "maximum", "step"},
     "action": COMMON_KEYS,
     "inputBinding": COMMON_KEYS | {"capabilities"},
+    "recordCollection": COMMON_KEYS,
 }
-FLAGS = {"readOnly", "requiresRestart", "advanced"}
+FLAGS = {"readOnly", "requiresRestart", "advanced", "layoutInline", "requiresConfirmation"}
 CAPABILITIES = {"keyboard", "mouse", "controller", "modifiers", "clearable"}
 KINDS = {
     "toggle": "Toggle",
@@ -34,6 +35,7 @@ KINDS = {
     "float": "FloatSlider",
     "action": "Action",
     "inputBinding": "InputBinding",
+    "recordCollection": "RecordCollection",
 }
 
 
@@ -96,6 +98,10 @@ def validate_option(raw: Any, path: str, seen_controls: set[str]) -> dict[str, A
         fail(f"{path}.flags", "must contain unique ABI-v1 flag names")
     if option_type == "action" and "readOnly" in flags:
         fail(f"{path}.flags", "readOnly is not meaningful for an action")
+    if "layoutInline" in flags and option_type != "action":
+        fail(f"{path}.flags", "layoutInline is supported only for actions")
+    if "requiresConfirmation" in flags and option_type != "action":
+        fail(f"{path}.flags", "requiresConfirmation is supported only for actions")
     if option_type in {"integer", "float"}:
         if option["widget"] != "slider":
             fail(f"{path}.widget", "ABI v1 supports only slider")
@@ -159,9 +165,12 @@ def validate(data: Any) -> dict[str, Any]:
                 fail(f"{section_path}.id", "duplicate section ID within page")
             seen_sections.add(section_id)
             text_at(section["title"], f"{section_path}.title", 96)
+            text_at(section.get("description", ""),
+                    f"{section_path}.description", 192, empty=True)
             options = array_at(section["options"], f"{section_path}.options", 1, 128)
-            control_count += len(options)
-            total_control_count += len(options)
+            # Every section emits one presentation-only GroupHeader control.
+            control_count += len(options) + 1
+            total_control_count += len(options) + 1
             if control_count > 128:
                 fail(f"{path}.sections", "page exceeds the ABI-v1 limit of 128 controls")
             if total_control_count > 512:
@@ -200,13 +209,18 @@ def cpp_name(value: str) -> str:
     return "_".join(part for part in re.split(r"[^a-zA-Z0-9]+", value) if part)
 
 
-def flag_expression(option: dict[str, Any]) -> str:
+def flag_expression(option: dict[str, Any], structured_layout: bool = True) -> str:
     mapping = {
         "readOnly": "kControlReadOnly",
         "requiresRestart": "kControlRequiresRestart",
         "advanced": "kControlAdvanced",
+        "layoutInline": "kControlLayoutInline",
+        "requiresConfirmation": "kControlRequiresConfirmation",
     }
-    values = [mapping[name] for name in option.get("flags", [])]
+    values = [mapping[name] for name in option.get("flags", [])
+              if structured_layout or name != "layoutInline"]
+    if option["type"] == "recordCollection":
+        values.append("kControlTransientSelection")
     if option["type"] == "inputBinding":
         cap_mapping = {
             "keyboard": "kBindingKeyboard",
@@ -266,6 +280,20 @@ def generate(data: dict[str, Any], source_name: str) -> str:
         "        return value;",
         "    }();",
         "",
+        "    inline bool SupportsPageOpen(const ApiV1* host) noexcept",
+        "    {",
+        "        return host && host->structSize >= kApiV1RequestOpenPageSize &&",
+        "            (host->capabilities & kCapabilityPageOpenRequests) != 0 &&",
+        "            host->requestOpenPage;",
+        "    }",
+        "",
+        "    inline Result RequestOpen(const ApiV1* host, const char* pageId) noexcept",
+        "    {",
+        "        if (!pageId) return Result::InvalidArgument;",
+        "        if (!SupportsPageOpen(host)) return Result::NotFound;",
+        "        return host->requestOpenPage(kModule.moduleId, pageId);",
+        "    }",
+        "",
         "    enum class ControlId : std::uint32_t",
         "    {",
     ]
@@ -280,20 +308,35 @@ def generate(data: dict[str, Any], source_name: str) -> str:
         lines.append(f"        if (id == {cpp_string(option['id'])}) return ControlId::id_{cpp_name(option['id'])};")
     lines += ["        return ControlId::Unknown;", "    }", ""]
     for page in data["pages"]:
-        flattened = [option for section in page["sections"] for option in section["options"]]
-        array_name = "k" + cpp_name(page["id"]).title().replace("_", "") + "Controls"
-        lines.append(f"    inline constexpr std::array<ControlDescriptorV1, {len(flattened)}> {array_name}{{{{")
-        for option in flattened:
-            minimum = option.get("minimum", 0)
-            maximum = option.get("maximum", 0)
-            step = option.get("step", 0)
-            lines.append(
-                f"        Control(ControlKind::{KINDS[option['type']]}, {flag_expression(option)}, "
-                f"{cpp_string(option['id'])}, {cpp_string(option['label'])}, "
-                f"{cpp_string(option.get('description', ''))}, {cpp_number(minimum)}, "
-                f"{cpp_number(maximum)}, {cpp_number(step)}),"
+        base_name = "k" + cpp_name(page["id"]).title().replace("_", "")
+        for structured_layout in (True, False):
+            control_count = sum(
+                len(section["options"]) + (1 if structured_layout else 0)
+                for section in page["sections"]
             )
-        lines += ["    }};", ""]
+            array_name = base_name + ("Controls" if structured_layout
+                                      else "LegacyControls")
+            lines.append(f"    inline constexpr std::array<ControlDescriptorV1, {control_count}> {array_name}{{{{")
+            for section_index, section in enumerate(page["sections"]):
+                if structured_layout:
+                    lines.append(
+                        f"        Control(ControlKind::GroupHeader, kControlNone, "
+                        f"{cpp_string('__section_' + str(section_index))}, "
+                        f"{cpp_string(section['title'])}, "
+                        f"{cpp_string(section.get('description', ''))}),"
+                    )
+                for option in section["options"]:
+                    minimum = option.get("minimum", 0)
+                    maximum = option.get("maximum", 0)
+                    step = option.get("step", 0)
+                    lines.append(
+                        f"        Control(ControlKind::{KINDS[option['type']]}, "
+                        f"{flag_expression(option, structured_layout)}, "
+                        f"{cpp_string(option['id'])}, {cpp_string(option['label'])}, "
+                        f"{cpp_string(option.get('description', ''))}, {cpp_number(minimum)}, "
+                        f"{cpp_number(maximum)}, {cpp_number(step)}),"
+                    )
+            lines += ["    }};", ""]
     lines += [
         "    struct ProviderCallbacks",
         "    {",
@@ -303,27 +346,47 @@ def generate(data: dict[str, Any], source_name: str) -> str:
         "        InvokeActionCallback invokeAction{};",
         "        ApplyCallback apply{};",
         "        CancelCallback cancel{};",
+        "        ReadChoiceOptionsCallback readChoiceOptions{};",
+        "        BeginBindingCaptureCallback beginBindingCapture{};",
+        "        PollBindingCaptureCallback pollBindingCapture{};",
+        "        CancelBindingCaptureCallback cancelBindingCapture{};",
+        "        ReassignBindingCallback reassignBinding{};",
+        "        ReadRecordItemsCallback readRecordItems{};",
         "    };",
         "",
-        f"    inline std::array<PageDescriptorV1, {len(data['pages'])}> MakePages(const ProviderCallbacks& provider) noexcept",
+        f"    inline std::array<PageDescriptorV1, {len(data['pages'])}> MakePages(",
+        "        const ProviderCallbacks& provider,",
+        "        std::uint64_t hostCapabilities) noexcept",
         "    {",
         f"        std::array<PageDescriptorV1, {len(data['pages'])}> pages{{}};",
+        "        const bool structuredLayout =",
+        "            (hostCapabilities & kCapabilityStructuredLayout) != 0;",
     ]
     for index, page in enumerate(data["pages"]):
-        array_name = "k" + cpp_name(page["id"]).title().replace("_", "") + "Controls"
+        base_name = "k" + cpp_name(page["id"]).title().replace("_", "")
+        array_name = base_name + "Controls"
+        legacy_array_name = base_name + "LegacyControls"
         lines += [
             f"        CopyLiteral(pages[{index}].moduleId, {cpp_string(module['id'])});",
             f"        CopyLiteral(pages[{index}].pageId, {cpp_string(page['id'])});",
             f"        CopyLiteral(pages[{index}].displayName, {cpp_string(page['title'])});",
             f"        CopyLiteral(pages[{index}].description, {cpp_string(page.get('description', ''))});",
-            f"        pages[{index}].controlCount = static_cast<std::uint32_t>({array_name}.size());",
-            f"        pages[{index}].controls = {array_name}.data();",
+            f"        pages[{index}].controlCount = static_cast<std::uint32_t>(structuredLayout ?",
+            f"            {array_name}.size() : {legacy_array_name}.size());",
+            f"        pages[{index}].controls = structuredLayout ?",
+            f"            {array_name}.data() : {legacy_array_name}.data();",
             f"        pages[{index}].context = provider.context;",
             f"        pages[{index}].readValue = provider.readValue;",
             f"        pages[{index}].writeDraft = provider.writeDraft;",
             f"        pages[{index}].invokeAction = provider.invokeAction;",
             f"        pages[{index}].apply = provider.apply;",
             f"        pages[{index}].cancel = provider.cancel;",
+            f"        pages[{index}].readChoiceOptions = provider.readChoiceOptions;",
+            f"        pages[{index}].beginBindingCapture = provider.beginBindingCapture;",
+            f"        pages[{index}].pollBindingCapture = provider.pollBindingCapture;",
+            f"        pages[{index}].cancelBindingCapture = provider.cancelBindingCapture;",
+            f"        pages[{index}].reassignBinding = provider.reassignBinding;",
+            f"        pages[{index}].readRecordItems = provider.readRecordItems;",
         ]
     lines += ["        return pages;", "    }", "}", ""]
     return "\n".join(lines)

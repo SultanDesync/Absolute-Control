@@ -7,6 +7,7 @@
 #include <cstring>
 #include <limits>
 #include <ranges>
+#include <span>
 #include <utility>
 
 namespace AbsoluteControlPanelResearch::MenuSession
@@ -19,7 +20,7 @@ namespace AbsoluteControlPanelResearch::MenuSession
         [[nodiscard]] bool ValidKind(AbsoluteControlPanelApi::ControlKind a_kind) noexcept
         {
             return a_kind >= AbsoluteControlPanelApi::ControlKind::Toggle &&
-                   a_kind <= AbsoluteControlPanelApi::ControlKind::TextInput;
+                   a_kind <= AbsoluteControlPanelApi::ControlKind::RecordCollection;
         }
 
         [[nodiscard]] bool ValidValueKind(AbsoluteControlPanelApi::ValueKind a_kind) noexcept
@@ -37,7 +38,10 @@ namespace AbsoluteControlPanelResearch::MenuSession
             case AbsoluteControlPanelApi::ControlKind::FloatSlider: return AbsoluteControlPanelApi::ValueKind::Float;
             case AbsoluteControlPanelApi::ControlKind::ButtonBinding:
             case AbsoluteControlPanelApi::ControlKind::TextInput:
-            case AbsoluteControlPanelApi::ControlKind::Action: return AbsoluteControlPanelApi::ValueKind::String;
+            case AbsoluteControlPanelApi::ControlKind::RecordCollection:
+            case AbsoluteControlPanelApi::ControlKind::Action:
+            case AbsoluteControlPanelApi::ControlKind::GroupHeader:
+                return AbsoluteControlPanelApi::ValueKind::String;
             }
             return AbsoluteControlPanelApi::ValueKind::String;
         }
@@ -58,8 +62,11 @@ namespace AbsoluteControlPanelResearch::MenuSession
         [[nodiscard]] bool ValidDescriptor(const MenuApiHost::Control& a_control) noexcept
         {
             if (!ValidKind(a_control.kind)) return false;
-            if (a_control.kind == AbsoluteControlPanelApi::ControlKind::Toggle || a_control.kind == AbsoluteControlPanelApi::ControlKind::Action ||
-                a_control.kind == AbsoluteControlPanelApi::ControlKind::ButtonBinding) return true;
+            if (a_control.kind == AbsoluteControlPanelApi::ControlKind::Toggle ||
+                a_control.kind == AbsoluteControlPanelApi::ControlKind::Action ||
+                a_control.kind == AbsoluteControlPanelApi::ControlKind::ButtonBinding ||
+                a_control.kind == AbsoluteControlPanelApi::ControlKind::GroupHeader ||
+                a_control.kind == AbsoluteControlPanelApi::ControlKind::RecordCollection) return true;
             if (a_control.kind == AbsoluteControlPanelApi::ControlKind::TextInput) {
                 return std::isfinite(a_control.minimumValue) &&
                        std::isfinite(a_control.maximumValue) &&
@@ -82,7 +89,9 @@ namespace AbsoluteControlPanelResearch::MenuSession
         [[nodiscard]] bool ValidValue(const MenuApiHost::Control& a_control,
             const AbsoluteControlPanelApi::ValueV1& a_value) noexcept
         {
-            if (a_control.kind == AbsoluteControlPanelApi::ControlKind::Action || !ValidDescriptor(a_control) ||
+            if (a_control.kind == AbsoluteControlPanelApi::ControlKind::Action ||
+                a_control.kind == AbsoluteControlPanelApi::ControlKind::GroupHeader ||
+                !ValidDescriptor(a_control) ||
                 !ValidValueKind(a_value.kind) || a_value.kind != ExpectedValueKind(a_control.kind)) return false;
             if (a_value.kind == AbsoluteControlPanelApi::ValueKind::Float && !std::isfinite(a_value.floatValue)) return false;
             if (a_value.kind == AbsoluteControlPanelApi::ValueKind::String && !Terminated(a_value)) return false;
@@ -132,6 +141,106 @@ namespace AbsoluteControlPanelResearch::MenuSession
         error_.assign(a_error.substr(0, kMaximumError));
     }
 
+    void Session::BeginBindingConflict(std::string_view a_moduleId,
+        std::string_view a_pageId, std::string_view a_controlId,
+        std::string_view a_binding, std::string_view a_detail)
+    {
+        ClearCapture();
+        conflictModuleId_ = a_moduleId;
+        conflictPageId_ = a_pageId;
+        conflictControlId_ = a_controlId;
+        conflictBinding_.assign(a_binding.substr(
+            0, AbsoluteControlPanelApi::kStringValueCapacity - 1));
+        conflictDetail_.assign(a_detail.substr(0, kMaximumError));
+        if (conflictDetail_.empty()) {
+            conflictDetail_ = "This binding is already assigned to another profile.";
+        }
+        activeModuleId_ = conflictModuleId_;
+        activePageId_ = conflictPageId_;
+        selectedControlId_ = conflictControlId_;
+        error_.clear();
+    }
+
+    void Session::ClearBindingConflict() noexcept
+    {
+        conflictModuleId_.clear();
+        conflictPageId_.clear();
+        conflictControlId_.clear();
+        conflictBinding_.clear();
+        conflictDetail_.clear();
+    }
+
+    void Session::BeginActionConfirmation(const MenuApiHost::Page& a_page,
+        const MenuApiHost::Control& a_control)
+    {
+        confirmModuleId_ = a_page.moduleId;
+        confirmPageId_ = a_page.pageId;
+        confirmControlId_ = a_control.controlId;
+        confirmLabel_ = a_control.label;
+        confirmDetail_ = a_control.description;
+        activeModuleId_ = a_page.moduleId;
+        activePageId_ = a_page.pageId;
+        selectedControlId_ = a_control.controlId;
+    }
+
+    void Session::ClearActionConfirmation() noexcept
+    {
+        confirmModuleId_.clear();
+        confirmPageId_.clear();
+        confirmControlId_.clear();
+        confirmLabel_.clear();
+        confirmDetail_.clear();
+    }
+
+    void Session::ExecuteAction(const MenuApiHost::Page& a_page,
+        const MenuApiHost::Control& a_control)
+    {
+        const bool mutatesDraft =
+            (a_control.flags & AbsoluteControlPanelApi::kControlMutatesDraft) != 0;
+        const bool appliesDraftBeforeInvoke =
+            (a_control.flags &
+                AbsoluteControlPanelApi::kControlAppliesDraftBeforeInvoke) != 0;
+        if (a_control.kind != AbsoluteControlPanelApi::ControlKind::Action ||
+            (a_control.flags & AbsoluteControlPanelApi::kControlReadOnly) != 0) {
+            SetError("Action unavailable");
+            return;
+        }
+        if (appliesDraftBeforeInvoke && IsDirty()) {
+            if (!a_page.canApply ||
+                MenuApiHost::Apply(a_page) != AbsoluteControlPanelApi::Result::Ok) {
+                SetError("Apply before action failed");
+                return;
+            }
+            transaction_.Reset();
+            dirtyModuleId_.clear();
+            dirtyPageId_.clear();
+        }
+        const bool alreadyAttached = static_cast<bool>(transaction_);
+        if (mutatesDraft &&
+            (!a_page.canApply || !a_page.canCancel ||
+             MenuApiHost::AttachTransaction(a_page, transaction_) !=
+                 AbsoluteControlPanelApi::Result::Ok)) {
+            SetError("Action transaction unavailable");
+            return;
+        }
+        if (MenuApiHost::InvokeAction(a_page, a_control.controlId) !=
+            AbsoluteControlPanelApi::Result::Ok) {
+            if (mutatesDraft && !alreadyAttached) {
+                (void)MenuApiHost::Cancel(a_page);
+                transaction_.Reset();
+            }
+            SetError("Action unavailable");
+            return;
+        }
+        activeModuleId_ = a_page.moduleId;
+        activePageId_ = a_page.pageId;
+        selectedControlId_ = a_control.controlId;
+        if (mutatesDraft) {
+            dirtyModuleId_ = a_page.moduleId;
+            dirtyPageId_ = a_page.pageId;
+        }
+    }
+
     bool Session::IsDirty() const noexcept { return !dirtyPageId_.empty(); }
 
     Session::~Session() noexcept
@@ -147,6 +256,8 @@ namespace AbsoluteControlPanelResearch::MenuSession
             AbandonState();
         }
         ClearCapture();
+        ClearBindingConflict();
+        ClearActionConfirmation();
         ClearDirtyDecision();
         closeRequested_ = false;
     }
@@ -163,6 +274,7 @@ namespace AbsoluteControlPanelResearch::MenuSession
         dirtyModuleId_.clear();
         dirtyPageId_.clear();
         selectedControlId_.clear();
+        selectedGridColumnId_.clear();
         return true;
     }
 
@@ -172,7 +284,9 @@ namespace AbsoluteControlPanelResearch::MenuSession
         dirtyModuleId_.clear();
         dirtyPageId_.clear();
         selectedControlId_.clear();
+        selectedGridColumnId_.clear();
         ClearDirtyDecision();
+        ClearActionConfirmation();
     }
 
     bool Session::IsBindingCaptureActive() const noexcept
@@ -313,6 +427,9 @@ namespace AbsoluteControlPanelResearch::MenuSession
                 control.value.kind = ExpectedValueKind(descriptor.kind);
                 if (!ValidDescriptor(descriptor)) {
                     control.error = "Invalid control descriptor";
+                } else if (descriptor.kind ==
+                    AbsoluteControlPanelApi::ControlKind::GroupHeader) {
+                    control.available = true;
                 } else if (descriptor.kind == AbsoluteControlPanelApi::ControlKind::Action) {
                     control.available = source.canInvokeAction &&
                         (descriptor.flags & AbsoluteControlPanelApi::kControlReadOnly) == 0;
@@ -355,7 +472,51 @@ namespace AbsoluteControlPanelResearch::MenuSession
                         control.choiceOptions.clear();
                     }
                 }
+                if (control.available && descriptor.kind ==
+                        AbsoluteControlPanelApi::ControlKind::RecordCollection) {
+                    const auto recordsResult = MenuApiHost::ReadRecordItems(
+                        source, descriptor.controlId, control.recordItems);
+                    const std::string_view selected{ control.value.stringValue };
+                    const bool selectedExists = selected.empty() ||
+                        std::ranges::any_of(control.recordItems,
+                            [&](const MenuApiHost::RecordItem& item) {
+                                return item.recordId == selected;
+                            });
+                    if (recordsResult != AbsoluteControlPanelApi::Result::Ok ||
+                        !selectedExists) {
+                        control.available = false;
+                        control.error = "Record collection unavailable";
+                        control.recordItems.clear();
+                    }
+                }
                 page.controls.push_back(std::move(control));
+            }
+            if (!source.controls.empty()) {
+                auto composition =
+                    Composition::HostRegistry().Snapshot(source);
+                page.composition = std::move(composition.model);
+                if (page.composition.enhanced) {
+                    for (auto& control : page.controls) {
+                        const auto* placement =
+                            Composition::FindControlPlacement(
+                                page.composition,
+                                control.descriptor.controlId);
+                        if (!placement) continue;
+                        control.semanticVisible =
+                            Composition::IsEffectivelyVisible(
+                                page.composition, *placement);
+                        control.semanticEnabled =
+                            Composition::IsEffectivelyEnabled(
+                                page.composition, *placement);
+                        if (!control.semanticEnabled) {
+                            control.available = false;
+                            if (control.error.empty()) {
+                                control.error =
+                                    "Disabled by current composition state";
+                            }
+                        }
+                    }
+                }
             }
             model.pages.push_back(std::move(page));
         }
@@ -370,6 +531,20 @@ namespace AbsoluteControlPanelResearch::MenuSession
             activeModuleId_.clear();
             activePageId_.clear();
             selectedControlId_.clear();
+            selectedGridColumnId_.clear();
+        }
+        const auto activeSemanticPage = std::ranges::find_if(
+            model.pages, [&](const Page& page) {
+                return page.moduleId == activeModuleId_ &&
+                       page.pageId == activePageId_;
+            });
+        if (activeSemanticPage != model.pages.end() &&
+            activeSemanticPage->composition.enhanced) {
+            const auto order = Composition::SelectableControlOrder(
+                activeSemanticPage->composition);
+            if (std::ranges::find(order, selectedControlId_) == order.end()) {
+                selectedControlId_ = order.empty() ? std::string{} : order.front();
+            }
         }
         auto& liveRegistry = LiveComponents::HostRegistry();
         if (!activeModuleId_.empty() && !activePageId_.empty()) {
@@ -388,9 +563,38 @@ namespace AbsoluteControlPanelResearch::MenuSession
                 for (const auto& publication : publications) {
                     Page::LiveComponent component;
                     component.descriptor = publication.channel;
+                    std::uint32_t retainedAssociations{};
+                    for (std::uint32_t associationIndex = 0;
+                         associationIndex <
+                            component.descriptor.associationCount;
+                         ++associationIndex) {
+                        const auto& association =
+                            component.descriptor.associations[associationIndex];
+                        const auto target = std::ranges::find(
+                            activePage->controls, association.controlId,
+                            [](const Control& control) {
+                                return control.descriptor.controlId;
+                            });
+                        if (target == activePage->controls.end() ||
+                            target->descriptor.kind !=
+                                AbsoluteControlPanelApi::ControlKind::Choice) {
+                            continue;
+                        }
+                        component.descriptor.associations[
+                            retainedAssociations++] = association;
+                    }
+                    component.descriptor.associationCount =
+                        retainedAssociations;
                     component.available = publication.publish != 0;
                     if (component.available) component.frame = publication.frame;
                     else component.error = "Live component is waiting for provider data";
+                    if (component.descriptor.kind ==
+                            AbsoluteControlPanelExperimental::ComponentKind::TelemetryPlot) {
+                        (void)liveRegistry.TelemetryHistory(
+                            activeModuleId_.c_str(), activePageId_.c_str(),
+                            component.descriptor.channelId,
+                            component.telemetryHistory);
+                    }
                     activePage->liveComponents.push_back(std::move(component));
                 }
             }
@@ -435,6 +639,7 @@ namespace AbsoluteControlPanelResearch::MenuSession
         model.activeModuleId = activeModuleId_;
         model.activePageId = activePageId_;
         model.selectedControlId = selectedControlId_;
+        model.selectedGridColumnId = selectedGridColumnId_;
         model.dirty = IsDirty();
         model.dirtyDecisionActive =
             dirtyDecisionKind_ != DirtyDecisionKind::None;
@@ -443,9 +648,14 @@ namespace AbsoluteControlPanelResearch::MenuSession
         model.closeRequested = std::exchange(closeRequested_, false);
         model.bindingCaptureActive = IsBindingCaptureActive();
         model.textCaptureActive = IsTextCaptureActive();
+        model.bindingConflictActive = !conflictControlId_.empty();
+        model.actionConfirmationActive = !confirmControlId_.empty();
         model.captureModuleId = captureModuleId_;
         model.capturePageId = capturePageId_;
         model.captureControlId = captureControlId_;
+        model.bindingConflictDetail = conflictDetail_;
+        model.actionConfirmationLabel = confirmLabel_;
+        model.actionConfirmationDetail = confirmDetail_;
         model.error = error_;
         return model;
     }
@@ -464,6 +674,39 @@ namespace AbsoluteControlPanelResearch::MenuSession
         return BuildSnapshot();
     }
 
+    std::optional<LivePatch> Session::RefreshLivePatch()
+    {
+        if (activeModuleId_.empty() || activePageId_.empty()) {
+            return std::nullopt;
+        }
+        auto& registry = LiveComponents::HostRegistry();
+        if (!registry.HasPageChannels(
+                activeModuleId_.c_str(), activePageId_.c_str()) ||
+            !registry.PollVisiblePage()) {
+            return std::nullopt;
+        }
+
+        LivePatch patch;
+        patch.moduleId = activeModuleId_;
+        patch.pageId = activePageId_;
+        const auto publications = registry.SnapshotPage(
+            activeModuleId_.c_str(), activePageId_.c_str());
+        patch.components.reserve(publications.size());
+        for (const auto& publication : publications) {
+            Page::LiveComponent component;
+            component.descriptor = publication.channel;
+            component.available = publication.publish != 0;
+            if (component.available) {
+                component.frame = publication.frame;
+            } else {
+                component.error =
+                    "Live component is waiting for provider data";
+            }
+            patch.components.push_back(std::move(component));
+        }
+        return patch;
+    }
+
     Model Session::Dispatch(const Command& a_command)
     {
         error_.clear();
@@ -473,6 +716,72 @@ namespace AbsoluteControlPanelResearch::MenuSession
         if (a_command.expectedGeneration != 0 &&
             a_command.expectedGeneration != publishedGeneration_) {
             SetError("Stale menu command"); return BuildSnapshot();
+        }
+        if (!confirmControlId_.empty()) {
+            if (a_command.kind == CommandKind::ResolveActionCancel) {
+                ClearActionConfirmation();
+                return BuildSnapshot();
+            }
+            if (a_command.kind != CommandKind::ResolveActionConfirm) {
+                SetError("Choose Confirm or Cancel first");
+                return BuildSnapshot();
+            }
+            const auto moduleId = confirmModuleId_;
+            const auto pageId = confirmPageId_;
+            const auto controlId = confirmControlId_;
+            ClearActionConfirmation();
+            const auto confirmPage = MenuApiHost::FindPage(moduleId, pageId);
+            if (!confirmPage) {
+                SetError("Action provider is unavailable");
+                return BuildSnapshot();
+            }
+            const auto confirmControl = std::ranges::find(
+                confirmPage->controls, controlId, &MenuApiHost::Control::controlId);
+            if (confirmControl == confirmPage->controls.end() ||
+                (confirmControl->flags &
+                    AbsoluteControlPanelApi::kControlRequiresConfirmation) == 0) {
+                SetError("Action confirmation is stale");
+                return BuildSnapshot();
+            }
+            ExecuteAction(*confirmPage, *confirmControl);
+            return BuildSnapshot();
+        }
+        if (a_command.kind == CommandKind::ResolveActionConfirm ||
+            a_command.kind == CommandKind::ResolveActionCancel) {
+            SetError("No pending action confirmation");
+            return BuildSnapshot();
+        }
+        if (!conflictControlId_.empty()) {
+            if (a_command.kind == CommandKind::ResolveBindingCancel) {
+                ClearBindingConflict();
+                return BuildSnapshot();
+            }
+            if (a_command.kind != CommandKind::ResolveBindingReassign) {
+                SetError("Choose Reassign or Cancel first");
+                return BuildSnapshot();
+            }
+            const auto conflictPage = MenuApiHost::FindPage(
+                conflictModuleId_, conflictPageId_);
+            if (!conflictPage || !conflictPage->canApply ||
+                !conflictPage->canCancel) {
+                SetError("Binding conflict provider is unavailable");
+                return BuildSnapshot();
+            }
+            const auto result = MenuApiHost::ReassignBinding(
+                *conflictPage, conflictControlId_, conflictBinding_, transaction_);
+            if (result != AbsoluteControlPanelApi::Result::Ok) {
+                SetError(result == AbsoluteControlPanelApi::Result::NotFound ?
+                    "Provider does not support binding reassignment" :
+                    "Binding reassignment failed");
+                return BuildSnapshot();
+            }
+            activeModuleId_ = conflictModuleId_;
+            activePageId_ = conflictPageId_;
+            selectedControlId_ = conflictControlId_;
+            dirtyModuleId_ = conflictModuleId_;
+            dirtyPageId_ = conflictPageId_;
+            ClearBindingConflict();
+            return BuildSnapshot();
         }
         const bool resolvesDirtyDecision =
             a_command.kind == CommandKind::ResolveDirtyApply ||
@@ -518,6 +827,31 @@ namespace AbsoluteControlPanelResearch::MenuSession
         }
         if (a_command.kind == CommandKind::SelectPage) {
             activeModuleId_ = page->moduleId; activePageId_ = page->pageId; selectedControlId_.clear();
+            selectedGridColumnId_.clear();
+            return BuildSnapshot();
+        }
+        if (a_command.kind == CommandKind::SelectGridColumn) {
+            AbsoluteControlPanelExperimental::LiveChannelModelV1 channel;
+            if (LiveComponents::HostRegistry().Describe(
+                    page->moduleId.c_str(), page->pageId.c_str(),
+                    a_command.channelId.c_str(), channel) !=
+                    AbsoluteControlPanelExperimental::Result::Ok ||
+                channel.kind != AbsoluteControlPanelExperimental::ComponentKind::
+                    SegmentedAllocationGrid ||
+                std::ranges::none_of(
+                    std::span{channel.segmentedGrid.columns,
+                        channel.segmentedGrid.columnCount},
+                    [&](const auto& column) {
+                        return std::string_view{column.columnId} ==
+                            a_command.columnId;
+                    })) {
+                SetError("Unknown grid row");
+                return BuildSnapshot();
+            }
+            activeModuleId_ = page->moduleId;
+            activePageId_ = page->pageId;
+            selectedControlId_.clear();
+            selectedGridColumnId_ = a_command.columnId;
             return BuildSnapshot();
         }
         if (a_command.kind == CommandKind::Compound) {
@@ -549,6 +883,7 @@ namespace AbsoluteControlPanelResearch::MenuSession
             activeModuleId_ = page->moduleId;
             activePageId_ = page->pageId;
             selectedControlId_ = a_command.controlId;
+            selectedGridColumnId_ = a_command.columnId;
             dirtyModuleId_ = page->moduleId;
             dirtyPageId_ = page->pageId;
             return BuildSnapshot();
@@ -586,26 +921,57 @@ namespace AbsoluteControlPanelResearch::MenuSession
         if (controlIt == page->controls.end()) { SetError("Unknown control"); return BuildSnapshot(); }
         const auto& control = *controlIt;
         if (a_command.kind == CommandKind::SelectControl) {
+            if (control.kind == AbsoluteControlPanelApi::ControlKind::GroupHeader) {
+                SetError("Section headers cannot receive focus");
+                return BuildSnapshot();
+            }
             activeModuleId_ = page->moduleId; activePageId_ = page->pageId; selectedControlId_ = control.controlId;
+            selectedGridColumnId_.clear();
         } else if (a_command.kind == CommandKind::Write) {
-            if ((control.flags & AbsoluteControlPanelApi::kControlReadOnly) != 0 || !ValidValue(control, a_command.value)) {
+            auto writeValue = a_command.value;
+            writeValue.structSize = sizeof(AbsoluteControlPanelApi::ValueV1);
+            if ((control.flags & AbsoluteControlPanelApi::kControlReadOnly) != 0 || !ValidValue(control, writeValue)) {
                 SetError("Invalid control value"); return BuildSnapshot();
             }
-            const bool transientChoice = control.kind ==
-                    AbsoluteControlPanelApi::ControlKind::Choice &&
+            const bool transientSelection =
+                (control.kind == AbsoluteControlPanelApi::ControlKind::Choice ||
+                 control.kind == AbsoluteControlPanelApi::ControlKind::RecordCollection) &&
                 (control.flags &
                     AbsoluteControlPanelApi::kControlTransientChoice) != 0;
-            const auto writeResult = transientChoice ?
-                MenuApiHost::WriteTransientChoice(
-                    *page, control.controlId, a_command.value) :
-                MenuApiHost::WriteDraft(*page, control.controlId,
-                    a_command.value, transaction_);
+            if (control.kind ==
+                    AbsoluteControlPanelApi::ControlKind::RecordCollection) {
+                std::vector<MenuApiHost::RecordItem> records;
+                const auto recordsResult = MenuApiHost::ReadRecordItems(
+                    *page, control.controlId, records);
+                const auto selected = std::ranges::find(
+                    records, std::string_view{ writeValue.stringValue },
+                    &MenuApiHost::RecordItem::recordId);
+                if (recordsResult != AbsoluteControlPanelApi::Result::Ok ||
+                    selected == records.end() ||
+                    (selected->flags &
+                        AbsoluteControlPanelApi::kRecordItemDisabled) != 0) {
+                    SetError("Invalid record selection");
+                    return BuildSnapshot();
+                }
+            }
+            const auto writeResult = transientSelection ?
+                MenuApiHost::WriteTransientChoice(*page, control.controlId, writeValue) :
+                MenuApiHost::WriteDraft(*page, control.controlId, writeValue, transaction_);
             if (writeResult != AbsoluteControlPanelApi::Result::Ok) {
+                if (writeResult == AbsoluteControlPanelApi::Result::Duplicate &&
+                    control.kind == AbsoluteControlPanelApi::ControlKind::InputBinding &&
+                    a_command.value.kind == AbsoluteControlPanelApi::ValueKind::String &&
+                    a_command.value.stringValue[0] != '\0') {
+                    BeginBindingConflict(page->moduleId, page->pageId,
+                        control.controlId, a_command.value.stringValue,
+                        "This binding is already assigned to another profile.");
+                    return BuildSnapshot();
+                }
                 SetError("Write failed"); return BuildSnapshot();
             }
             activeModuleId_ = page->moduleId; activePageId_ = page->pageId;
             selectedControlId_ = control.controlId;
-            if (!transientChoice) {
+            if (!transientSelection) {
                 dirtyModuleId_ = page->moduleId; dirtyPageId_ = page->pageId;
             }
         } else if (a_command.kind == CommandKind::BeginBindingCapture) {
@@ -666,49 +1032,14 @@ namespace AbsoluteControlPanelResearch::MenuSession
             captureBuffer_ = opening.stringValue;
             captureMaximum_ = static_cast<std::size_t>(control.maximumValue);
         } else if (a_command.kind == CommandKind::Invoke) {
-            const bool mutatesDraft =
-                (control.flags & AbsoluteControlPanelApi::kControlMutatesDraft) != 0;
-            const bool appliesDraftBeforeInvoke =
-                (control.flags &
-                    AbsoluteControlPanelApi::kControlAppliesDraftBeforeInvoke) != 0;
             if (control.kind != AbsoluteControlPanelApi::ControlKind::Action ||
                 (control.flags & AbsoluteControlPanelApi::kControlReadOnly) != 0) {
                 SetError("Action unavailable");
+            } else if ((control.flags &
+                    AbsoluteControlPanelApi::kControlRequiresConfirmation) != 0) {
+                BeginActionConfirmation(*page, control);
             } else {
-                if (appliesDraftBeforeInvoke && IsDirty()) {
-                    if (!page->canApply ||
-                        MenuApiHost::Apply(*page) !=
-                            AbsoluteControlPanelApi::Result::Ok) {
-                        SetError("Apply before action failed");
-                        return BuildSnapshot();
-                    }
-                    transaction_.Reset();
-                    dirtyModuleId_.clear();
-                    dirtyPageId_.clear();
-                }
-                const bool alreadyAttached = static_cast<bool>(transaction_);
-                if (mutatesDraft &&
-                    (!page->canApply || !page->canCancel ||
-                     MenuApiHost::AttachTransaction(*page, transaction_) !=
-                         AbsoluteControlPanelApi::Result::Ok)) {
-                    SetError("Action transaction unavailable");
-                    return BuildSnapshot();
-                }
-                if (MenuApiHost::InvokeAction(*page, control.controlId) !=
-                    AbsoluteControlPanelApi::Result::Ok) {
-                    if (mutatesDraft && !alreadyAttached) {
-                        (void)MenuApiHost::Cancel(*page);
-                        transaction_.Reset();
-                    }
-                    SetError("Action unavailable");
-                } else {
-                    activeModuleId_ = page->moduleId; activePageId_ = page->pageId;
-                    selectedControlId_ = control.controlId;
-                    if (mutatesDraft) {
-                        dirtyModuleId_ = page->moduleId;
-                        dirtyPageId_ = page->pageId;
-                    }
-                }
+                ExecuteAction(*page, control);
             }
         } else {
             SetError("Unknown command");
@@ -776,6 +1107,15 @@ namespace AbsoluteControlPanelResearch::MenuSession
         }
         const std::string_view detail = detailTerminated
             ? std::string_view{ capture.detail } : std::string_view{};
+        if (capture.state == State::Error && bindingTerminated &&
+            capture.binding[0] != '\0') {
+            const auto moduleId = captureModuleId_;
+            const auto pageId = capturePageId_;
+            const auto controlId = captureControlId_;
+            BeginBindingConflict(moduleId, pageId, controlId,
+                capture.binding, detail);
+            return BuildSnapshot();
+        }
         if (capture.state == State::Cancelled) {
             return CancelBindingCapture(detail);
         }

@@ -11,7 +11,8 @@ package acp.ui
 
         public function send(model:Object, current:Object, command:String,
             control:Object, booleanValue:Boolean, integerValue:Number,
-            floatValue:Number, controlIdentity:Boolean = true):void
+            floatValue:Number, controlIdentity:Boolean = true,
+            stringValue:String = ""):void
         {
             if (model == null || bridge == null || bridge.dispatch == null ||
                 (current == null && command != "close")) return;
@@ -31,17 +32,19 @@ package acp.ui
                 pageId = String(control.pageId);
             }
             dispatchFlat(command, moduleId, pageId, controlId, valueKind,
-                booleanValue, integerValue, floatValue, Number(model.generation));
+                booleanValue, integerValue, floatValue, Number(model.generation),
+                stringValue);
         }
 
         public function dispatchFlat(command:String, moduleId:String,
             pageId:String, controlId:String, valueKind:uint,
             booleanValue:Boolean, integerValue:Number, floatValue:Number,
-            expectedGeneration:Number):void
+            expectedGeneration:Number, stringValue:String = ""):void
         {
             if (bridge == null || bridge.dispatch == null) return;
             bridge.dispatch(1, command, moduleId, pageId, controlId, valueKind,
-                booleanValue, integerValue, floatValue, "", expectedGeneration);
+                booleanValue, integerValue, floatValue, stringValue,
+                expectedGeneration);
         }
 
         public function sendCompound(model:Object, current:Object,
@@ -53,6 +56,16 @@ package acp.ui
             bridge.compound(1, String(current.moduleId), String(current.pageId),
                 String(component.channelId), String(component.controlId), columnId,
                 tierId, operationKind, count, Number(model.generation));
+        }
+
+        public function selectGridColumn(model:Object, current:Object,
+            component:Object, columnId:String):void
+        {
+            if (model == null || current == null || component == null ||
+                bridge == null || bridge.dispatch == null) return;
+            bridge.dispatch(1, "selectGridColumn", String(current.moduleId),
+                String(current.pageId), columnId, 3, false, 0, 0,
+                String(component.channelId), Number(model.generation));
         }
     }
 }

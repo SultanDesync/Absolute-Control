@@ -16,6 +16,7 @@
         {
           "id": "tracking",
           "title": "Tracking",
+          "description": "Global sampling and enablement.",
           "options": [
             { "id": "tracking.enabled", "type": "toggle", "label": "Enable tracking", "description": "Apply FreeTrack head pose to the camera." },
             { "id": "tracking.poll_rate", "type": "integer", "widget": "slider", "label": "Poll rate", "description": "Target samples per second.", "minimum": 30, "maximum": 240, "step": 10, "flags": ["advanced"] }
@@ -68,6 +69,7 @@
         {
           "id": "recenter",
           "title": "Recenter",
+          "description": "Capture or invoke the provider-owned recenter action.",
           "options": [
             { "id": "bindings.recenter", "type": "inputBinding", "label": "Recenter view", "description": "Record a keyboard key or modifier chord.", "capabilities": { "keyboard": true, "modifiers": true, "clearable": true } },
             { "id": "bindings.recenter_now", "type": "action", "label": "Recenter now", "description": "Invoke the provider-owned recenter action." }

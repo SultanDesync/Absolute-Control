@@ -7,7 +7,7 @@ param(
     [uint32]$OpenDelayMilliseconds = 15000,
     [uint32]$ArmTimeoutMilliseconds = 180000,
     [uint32]$VisibleMilliseconds = 12000,
-    [uint32]$OpenHotkey = 0x71,
+    [uint32]$OpenHotkey = 0,
     [uint32]$MenuFlags = 0x0800071B,
     [bool]$EnablePauseMenuEntry = $false,
     [string[]]$AdditionalPluginFiles = @(),

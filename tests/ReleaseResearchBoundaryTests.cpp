@@ -57,6 +57,7 @@ int main()
         build, "local release_sources = {", "local research_only_sources = {");
     CHECK(!releaseSources.empty());
     CHECK(releaseSources.find("src/NativeMenuProbe.cpp") != std::string::npos);
+    CHECK(releaseSources.find("src/ControlPanelModule.cpp") != std::string::npos);
     CHECK(releaseSources.find("src/ui/ControlPanelMenu.cpp") != std::string::npos);
     CHECK(releaseSources.find("src/scaleform/ScaleformMenuBridge.cpp") != std::string::npos);
     CHECK(releaseSources.find("src/input/PlatformInputServices.cpp") != std::string::npos);
@@ -69,7 +70,7 @@ int main()
     const auto researchSources = Between(
         build, "local research_only_sources = {",
         "local function add_control_panel_core_sources");
-    CHECK(researchSources.find("ResearchModule.cpp") != std::string::npos);
+    CHECK(researchSources.find("ResearchModule.cpp") == std::string::npos);
     CHECK(researchSources.find("ResearchInputCapture.cpp") != std::string::npos);
     CHECK(researchSources.find("LiveComponentsRegistry.cpp") == std::string::npos);
     CHECK(researchSources.find("src/research/ResearchSupport.cpp") != std::string::npos);
@@ -93,10 +94,9 @@ int main()
     CHECK(researchTarget.find("\"-ArtifactRole\", \"research-dev\"") !=
         std::string::npos);
 
-    const auto includeBoundary = Between(native,
-        "#if defined(ACP_ENABLE_RESEARCH_TOOLS)\n#include \"ResearchModule.h\"",
-        "#endif");
-    CHECK(includeBoundary.find("ResearchModule.h") != std::string::npos);
+    CHECK(native.find("ResearchModule.h") == std::string::npos);
+    CHECK(native.find("ResearchModule::Register") == std::string::npos);
+    CHECK(native.find("ControlPanelModule::Register") != std::string::npos);
 
     CHECK(researchSupport.find("class ForeignMenuMemberVisitor") != std::string::npos);
     CHECK(researchSupport.find("ProbeForeignMenuRoot") != std::string::npos);
@@ -120,11 +120,11 @@ int main()
 
     const auto ready = native.find("MenuApiHost::MarkRuntimeReady();");
     const auto retainedFactory = native.rfind("ControlPanelMenu::Register", ready);
-    const auto researchRegistration = native.find(
-        "ResearchModule::Register();", ready);
+    const auto controlRegistration = native.find(
+        "ControlPanelModule::Register(", ready);
     CHECK(ready != std::string::npos);
     CHECK(retainedFactory != std::string::npos && retainedFactory < ready);
-    CHECK(researchRegistration != std::string::npos && ready < researchRegistration);
+    CHECK(controlRegistration != std::string::npos && ready < controlRegistration);
     CHECK(native.find(
         "if (!config.enableRegistration) {\n            MenuApiHost::MarkRuntimeRejected();") !=
         std::string::npos);
