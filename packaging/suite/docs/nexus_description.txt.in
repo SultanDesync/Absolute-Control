@@ -62,11 +62,9 @@ The bundle contains the same standalone DLLs and mod-owned default INIs supplied
 
 Absolute Control is a modular in-game menu host, not only a launcher for the Absolute Suite. Its native SDK allows SFSE plugins to register their own pages, settings, input capture, live telemetry, and optional suite services inside the shared [color=#ffaa00][b]MOD OPTIONS[/b][/color] interface without creating a hard dependency between gameplay modules.
 
-Mod authors interested in giving an existing or new plugin a native integrated configuration menu are invited to build against the SDK, review the reference integrations, or get in touch through the project repository.
+Mod authors interested in giving an existing or new plugin a native integrated configuration menu can message the author to apply for SDK beta access and integration support.
 
-[b]Developer-preview status:[/b] The host and current module integrations are runtime-proven, but the public SDK is not yet frozen or packaged as a stable developer release. Contracts may evolve as outside integrations expose new requirements.
-
-[center][url=https://github.com/SultanDesync/Absolute-Control#sdk-development][color=#00ff88][b]SDK Overview[/b][/color][/url] · [url=https://github.com/SultanDesync/Absolute-Control/blob/checkpoint/modular-suite-ui/docs/SDK-STATUS.md]SDK Status[/url][/center]
+[b]The public SDK release is coming soon.[/b]
 
 [line]
 
