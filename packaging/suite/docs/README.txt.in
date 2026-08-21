@@ -76,7 +76,10 @@ MODULE SELECTION NOTES
   flight. Change or clear them if they conflict with another setup.
 - Absolute Head Tracking requires OpenTrack with FreeTrack 2.0 Enhanced output.
 - AbsoluteZero Mouse Steering is enabled by default and changes mouse-flight
-  centering immediately. Select it deliberately.
+  centering immediately. When installed with AbsoluteHOTAS, AbsoluteZero owns
+  pitch and yaw, so HOTAS stick bindings cannot control those two axes. HOTAS
+  continues to control roll, strafe, throttle, buttons, and profiles. Select
+  this combination only when you want mouse pitch/yaw steering.
 
 
 QUICK START

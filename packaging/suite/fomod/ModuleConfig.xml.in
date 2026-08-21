@@ -32,7 +32,7 @@
               <typeDescriptor><type name="Optional" /></typeDescriptor>
             </plugin>
             <plugin name="AbsoluteZero Mouse Steering">
-              <description>Idle mouse-centering and optional locked-reticule steering. This module changes mouse-flight behavior immediately with its shipped defaults.</description>
+              <description>Idle mouse-centering and optional locked-reticule steering. IMPORTANT: when installed with AbsoluteHOTAS, AbsoluteZero owns pitch and yaw; HOTAS stick bindings cannot control those two axes. HOTAS continues to own roll, strafe, throttle, buttons, and profiles. This module changes mouse-flight behavior immediately with its shipped defaults.</description>
               <files>
                 <folder source="40 Mouse Steering" destination="" priority="40" />
               </files>

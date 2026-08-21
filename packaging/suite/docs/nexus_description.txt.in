@@ -54,7 +54,7 @@ Each standalone page remains the authoritative source for that module's full des
 
 The bundle contains the same standalone DLLs and mod-owned default INIs supplied by the individual projects. It never includes or overwrites custom INIs, HOTAS profiles, logs, PDBs, or research builds.
 
-[b]Selection warnings:[/b] Absolute Power ships preset shortcuts on number keys 1-4 until changed or cleared. AbsoluteZero is enabled by default and changes mouse-flight centering immediately. Select those modules deliberately.
+[b]Selection warnings:[/b] Absolute Power ships preset shortcuts on number keys 1-4 until changed or cleared. AbsoluteZero is enabled by default and changes mouse-flight centering immediately. When AbsoluteZero and AbsoluteHOTAS are installed together, AbsoluteZero owns pitch and yaw, so a HOTAS stick cannot control those two axes; HOTAS continues to control roll, strafe, throttle, buttons, and profiles. Select that combination only when you want mouse pitch/yaw steering.
 
 [line]
 
