@@ -79,6 +79,11 @@ namespace AbsoluteControlPanelResearch::ControlPanelModule
 
         const std::array kSettingsControls{
             Control(Api::ControlKind::GroupHeader, Api::kControlNone,
+                "about-absolute", "Why Absolute?",
+                "Absolute began with absolute throttle control: each physical throttle "
+                "position maps directly to commanded thrust. That input scheme gave this "
+                "project, and the wider suite it became, its name."),
+            Control(Api::ControlKind::GroupHeader, Api::kControlNone,
                 "menu-behavior", "Menu behavior",
                 "Host-owned presentation and activation preferences."),
             Control(Api::ControlKind::Choice, Api::kControlNone,
@@ -509,7 +514,7 @@ namespace AbsoluteControlPanelResearch::ControlPanelModule
             Copy(pages[0].pageId, kSettingsPageId);
             Copy(pages[0].displayName, "Menu");
             Copy(pages[0].description,
-                "Ordering and safe activation settings owned by Absolute Control.");
+                "The origin of the Absolute suite plus host-owned menu settings.");
             pages[0].controls = kSettingsControls.data();
             pages[0].controlCount =
                 static_cast<std::uint32_t>(kSettingsControls.size());

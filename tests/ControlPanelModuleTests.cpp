@@ -99,7 +99,11 @@ int main()
     assert(catalog.modules[2].moduleId == "absolute.control");
 
     const auto settings = MenuApiHost::FindPage("absolute.control", "menu");
-    assert(settings && settings->controls.size() == 4);
+    assert(settings && settings->controls.size() == 5);
+    assert(settings->controls[0].controlId == "about-absolute");
+    assert(settings->controls[0].label == "Why Absolute?");
+    assert(settings->controls[0].description.find("absolute throttle control") !=
+           std::string::npos);
     MenuApiHost::Transaction transaction;
     Api::ValueV1 value;
     value.kind = Api::ValueKind::Boolean;
