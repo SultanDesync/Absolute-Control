@@ -3,7 +3,7 @@
   "sdk": {
     "id": "absolute-control-sdk",
     "name": "Absolute Control Integration SDK",
-    "version": "0.1.0-beta.2",
+    "version": "0.1.0-beta.3",
     "channel": "private-beta",
     "publicRelease": "coming-soon"
   },
@@ -16,6 +16,7 @@
     { "source": "sdk/VERSION", "destination": "sdk/VERSION" },
     { "source": "sdk/README.md", "destination": "sdk/README.md" },
     { "source": "sdk/INTERFACE-GALLERY.md", "destination": "sdk/INTERFACE-GALLERY.md" },
+    { "source": "sdk/DOGFOOD-ABSOLUTE-POWER.md", "destination": "sdk/DOGFOOD-ABSOLUTE-POWER.md" },
     { "source": "sdk/assets/interface-examples/pause-menu-entry.png", "destination": "sdk/assets/interface-examples/pause-menu-entry.png" },
     { "source": "sdk/assets/interface-examples/shared-module-shell.png", "destination": "sdk/assets/interface-examples/shared-module-shell.png" },
     { "source": "sdk/assets/interface-examples/live-throttle-composition.png", "destination": "sdk/assets/interface-examples/live-throttle-composition.png" },
@@ -27,6 +28,7 @@
     { "source": "sdk/menu-definition.schema.json", "destination": "sdk/menu-definition.schema.json" },
     { "source": "sdk/tools/menu_codegen.py", "destination": "sdk/tools/menu_codegen.py" },
     { "source": "sdk/examples/absolute-head-tracking.menu.json", "destination": "sdk/examples/absolute-head-tracking.menu.json" },
+    { "source": "sdk/examples/ABSOLUTE-HEAD-TRACKING.md", "destination": "sdk/examples/ABSOLUTE-HEAD-TRACKING.md" },
     { "source": "sdk/examples/generated/AbsoluteHeadTrackingMenu.generated.h", "destination": "sdk/examples/generated/AbsoluteHeadTrackingMenu.generated.h" },
     { "source": "sdk/tests/test_menu_codegen.py", "destination": "sdk/tests/test_menu_codegen.py" },
     { "source": "sdk/tests/compile/GeneratedMenuCompile.cpp", "destination": "sdk/tests/compile/GeneratedMenuCompile.cpp" },

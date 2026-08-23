@@ -1,6 +1,6 @@
 # Absolute Control Integration SDK
 
-> **Status:** `0.1.0-beta.2` coordinated private beta. The public SDK release is coming soon.
+> **Status:** `0.1.0-beta.3` coordinated private beta. The public SDK release is coming soon.
 > Mod authors can message the Absolute Control author through Nexus Mods to apply. Use
 > [`CURRENT-STATE.md`](../docs/CURRENT-STATE.md) and
 > [`SDK-STATUS.md`](../docs/SDK-STATUS.md) to distinguish implemented ABI-v1 behavior from the
@@ -37,6 +37,12 @@ parts belong to the host, which remain provider-owned, and what fallback an inte
 
 The screenshots demonstrate capability rather than fixed geometry. SDK consumers describe
 semantics and supply bounded state; Absolute Control owns layout, focus, visual style, and rendering.
+
+For concrete first-party integration boundaries, see the
+[Absolute Head Tracking example](examples/ABSOLUTE-HEAD-TRACKING.md) and the
+[Absolute Power dogfood record](DOGFOOD-ABSOLUTE-POWER.md). They show how providers retain gameplay,
+configuration, persistence, fallback, and optional-service ownership while registering with the
+shared host.
 
 ## Generate descriptors
 

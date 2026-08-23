@@ -1,5 +1,15 @@
 # SDK change notes
 
+## 0.1.0-beta.3 — first-party integration guidance
+
+- Added the Absolute Head Tracking named example, documenting generated ABI-v1 descriptors,
+  dynamic discovery, provider-owned flight-control capture, and host-absent fallback behavior.
+- Added the Absolute Power dogfood record, including the verified ownership boundary and the
+  integration friction that remains before the experimental interfaces can freeze.
+- Included both guides in the exact SDK package manifest and linked them from the SDK overview.
+- Retained the `0.1.0-beta.1` host and header baseline. This release changes no ABI, capability bit,
+  schema rule, generator output, or integration requirement.
+
 ## 0.1.0-beta.2 — interface documentation refresh
 
 - Added a five-capture interface gallery showing native Pause Menu entry, the shared module shell,
