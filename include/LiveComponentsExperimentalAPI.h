@@ -24,6 +24,7 @@ namespace AbsoluteControlPanelExperimental
     inline constexpr std::size_t kMaximumGridTiers = 4;
     inline constexpr std::size_t kMaximumGridControlAssociations =
         kMaximumGridColumns;
+    inline constexpr std::size_t kMaximumHeadPoseAxes = 3;
 
     enum class Result : std::uint32_t
     {
@@ -43,7 +44,9 @@ namespace AbsoluteControlPanelExperimental
     {
         RangeMeter,
         TelemetryPlot,
-        SegmentedAllocationGrid
+        SegmentedAllocationGrid,
+        RadialResponse,
+        HeadPose
     };
 
     enum class RangeBandSemantic : std::uint32_t
@@ -172,6 +175,60 @@ namespace AbsoluteControlPanelExperimental
         GridTierDescriptorV1 tiers[kMaximumGridTiers]{};
     };
 
+    // Interactive two-axis response lab. The host owns demo capture and runs
+    // the same bounded, discrete exponential response described by these
+    // ordinary page controls; the provider continues to own every draft.
+    struct RadialResponseDescriptorV1
+    {
+        std::uint32_t structSize{ sizeof(RadialResponseDescriptorV1) };
+        double maximumRadius{ 200.0 };
+        char enabledControlId[kIdentifierCapacity]{};
+        char radiusControlId[kIdentifierCapacity]{};
+        char idleMillisecondsControlId[kIdentifierCapacity]{};
+        char decayRateControlId[kIdentifierCapacity]{};
+        char pollRateControlId[kIdentifierCapacity]{};
+    };
+
+    enum class HeadPoseView : std::uint32_t
+    {
+        Top,
+        Profile,
+        ArtificialHorizon
+    };
+
+    // One host-rendered angular instrument. Control IDs reference ordinary
+    // same-page sliders, so pointer tuning and keyboard/controller fallback use
+    // the provider's existing draft and Apply/Cancel transaction.
+    struct HeadPoseAxisDescriptorV1
+    {
+        std::uint32_t structSize{ sizeof(HeadPoseAxisDescriptorV1) };
+        HeadPoseView view{ HeadPoseView::Top };
+        char axisId[kIdentifierCapacity]{};
+        char label[kLabelCapacity]{};
+        char sensitivityControlId[kIdentifierCapacity]{};
+        char minimumControlId[kIdentifierCapacity]{};
+        char centerControlId[kIdentifierCapacity]{};
+        char maximumControlId[kIdentifierCapacity]{};
+        char enabledControlId[kIdentifierCapacity]{};
+        char invertedControlId[kIdentifierCapacity]{};
+    };
+
+    // Bounded yaw/pitch/roll calibration surface. Absolute Control owns the
+    // wireframe head, asymmetric arc, artificial horizon, colors, and layout;
+    // the provider supplies only semantic axis metadata and copied live state.
+    struct HeadPoseDescriptorV1
+    {
+        std::uint32_t structSize{ sizeof(HeadPoseDescriptorV1) };
+        std::uint32_t axisCount{};
+        HeadPoseAxisDescriptorV1 axes[kMaximumHeadPoseAxes]{};
+        // Optional same-page Action control used to capture the current
+        // physical tracker pose as neutral. Empty means no manual action.
+        char recenterControlId[kIdentifierCapacity]{};
+        // Optional shared same-page slider defining the mapped angular region
+        // around center in which tracker motion produces no output change.
+        char deadzoneControlId[kIdentifierCapacity]{};
+    };
+
     enum SegmentedGridFlags : std::uint32_t
     {
         kSegmentedGridNone = 0,
@@ -208,12 +265,16 @@ namespace AbsoluteControlPanelExperimental
         kLiveCapabilityNone = 0,
         kLiveCapabilityGridControlAssociations = 1ULL << 0,
         kLiveCapabilityPresentationFlags = 1ULL << 1,
-        kLiveCapabilityDynamicRangeFrames = 1ULL << 2
+        kLiveCapabilityDynamicRangeFrames = 1ULL << 2,
+        kLiveCapabilityRadialResponse = 1ULL << 3,
+        kLiveCapabilityHeadPose = 1ULL << 4
     };
     inline constexpr std::uint64_t kLiveCapabilities =
         kLiveCapabilityGridControlAssociations |
         kLiveCapabilityPresentationFlags |
-        kLiveCapabilityDynamicRangeFrames;
+        kLiveCapabilityDynamicRangeFrames |
+        kLiveCapabilityRadialResponse |
+        kLiveCapabilityHeadPose;
 
     struct RangeMeterFrameV1
     {
@@ -255,6 +316,29 @@ namespace AbsoluteControlPanelExperimental
         GridColumnFrameV1 columns[kMaximumGridColumns]{};
     };
 
+    struct RadialResponseFrameV1
+    {
+        std::uint32_t structSize{ sizeof(RadialResponseFrameV1) };
+        std::uint32_t available{};
+        double liveX{};
+        double liveY{};
+    };
+
+    struct HeadPoseAxisFrameV1
+    {
+        std::uint32_t structSize{ sizeof(HeadPoseAxisFrameV1) };
+        std::uint32_t available{};
+        double trackerDegrees{};
+        double outputDegrees{};
+    };
+
+    struct HeadPoseFrameV1
+    {
+        std::uint32_t structSize{ sizeof(HeadPoseFrameV1) };
+        std::uint32_t axisCount{};
+        HeadPoseAxisFrameV1 axes[kMaximumHeadPoseAxes]{};
+    };
+
     struct LiveFrameV1
     {
         std::uint32_t structSize{ sizeof(LiveFrameV1) };
@@ -279,10 +363,24 @@ namespace AbsoluteControlPanelExperimental
             RangeBandV1 bands[kMaximumRangeBands]{};
             RangeMarkerV1 markers[kMaximumRangeMarkers]{};
         } dynamicRange{};
+        // Additive C3 tail used only by RadialResponse channels.
+        RadialResponseFrameV1 radialResponse{};
+        // Additive head-pose calibration tail. Older full-size frames end at
+        // radialResponse and remain valid through the explicit size constants.
+        HeadPoseFrameV1 headPose{};
     };
 
     inline constexpr std::uint32_t kLiveFrameV1BaseSize =
         static_cast<std::uint32_t>(offsetof(LiveFrameV1, dynamicRange));
+    inline constexpr std::uint32_t kLiveFrameV1DynamicRangeSize =
+        static_cast<std::uint32_t>(offsetof(LiveFrameV1, dynamicRange) +
+            sizeof(LiveFrameV1::DynamicRangeV1));
+    inline constexpr std::uint32_t kLiveFrameV1RadialResponseSize =
+        static_cast<std::uint32_t>(offsetof(LiveFrameV1, radialResponse) +
+            sizeof(RadialResponseFrameV1));
+    inline constexpr std::uint32_t kLiveFrameV1HeadPoseSize =
+        static_cast<std::uint32_t>(offsetof(LiveFrameV1, headPose) +
+            sizeof(HeadPoseFrameV1));
 
     enum class CompoundOperationKind : std::uint32_t
     {
@@ -346,6 +444,11 @@ namespace AbsoluteControlPanelExperimental
         std::uint32_t associationCount{};
         GridControlAssociationV1
             associations[kMaximumGridControlAssociations]{};
+        // Additive C3 tail. Older descriptors end after associations.
+        RadialResponseDescriptorV1 radialResponse{};
+        // Additive head-pose calibration tail. Providers must feature-detect
+        // kLiveCapabilityHeadPose and publish this exact descriptor prefix.
+        HeadPoseDescriptorV1 headPose{};
     };
 
     inline constexpr std::uint32_t kLiveChannelDescriptorV1BaseSize =
@@ -353,6 +456,16 @@ namespace AbsoluteControlPanelExperimental
     inline constexpr std::uint32_t kLiveChannelDescriptorV1FlagsSize =
         static_cast<std::uint32_t>(offsetof(LiveChannelDescriptorV1, flags) +
             sizeof(std::uint32_t));
+    inline constexpr std::uint32_t kLiveChannelDescriptorV1AssociationsSize =
+        static_cast<std::uint32_t>(offsetof(LiveChannelDescriptorV1, associations) +
+            sizeof(GridControlAssociationV1) *
+                kMaximumGridControlAssociations);
+    inline constexpr std::uint32_t kLiveChannelDescriptorV1RadialResponseSize =
+        static_cast<std::uint32_t>(offsetof(LiveChannelDescriptorV1, radialResponse) +
+            sizeof(RadialResponseDescriptorV1));
+    inline constexpr std::uint32_t kLiveChannelDescriptorV1HeadPoseSize =
+        static_cast<std::uint32_t>(offsetof(LiveChannelDescriptorV1, headPose) +
+            sizeof(HeadPoseDescriptorV1));
 
     // Pointer-free copy intended for renderer/model publication. Provider
     // context and callbacks never enter this type or the ActionScript graph.
@@ -372,6 +485,8 @@ namespace AbsoluteControlPanelExperimental
         std::uint32_t associationCount{};
         GridControlAssociationV1
             associations[kMaximumGridControlAssociations]{};
+        RadialResponseDescriptorV1 radialResponse{};
+        HeadPoseDescriptorV1 headPose{};
     };
 
     struct ExperimentalApiV1
@@ -392,6 +507,10 @@ namespace AbsoluteControlPanelExperimental
     static_assert(std::is_standard_layout_v<LiveFrameV1> && std::is_trivially_copyable_v<LiveFrameV1>);
     static_assert(std::is_standard_layout_v<GridControlAssociationV1> &&
         std::is_trivially_copyable_v<GridControlAssociationV1>);
+    static_assert(std::is_standard_layout_v<HeadPoseDescriptorV1> &&
+        std::is_trivially_copyable_v<HeadPoseDescriptorV1>);
+    static_assert(std::is_standard_layout_v<HeadPoseFrameV1> &&
+        std::is_trivially_copyable_v<HeadPoseFrameV1>);
     static_assert(std::is_standard_layout_v<LiveChannelDescriptorV1> && std::is_trivially_copyable_v<LiveChannelDescriptorV1>);
     static_assert(std::is_standard_layout_v<LiveChannelModelV1> && std::is_trivially_copyable_v<LiveChannelModelV1>);
     static_assert(std::is_standard_layout_v<CompoundOperationV1> && std::is_trivially_copyable_v<CompoundOperationV1>);

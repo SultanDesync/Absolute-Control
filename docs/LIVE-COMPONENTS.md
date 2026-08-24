@@ -1,7 +1,8 @@
 # Live and compound components
 
 > **Status:** Product-integrated ABI candidate. The registry, MenuSession transaction lane, native
-> bridge, and Scaleform renderer consume range meters, telemetry plots, and segmented grids. The
+> bridge, and Scaleform renderer consume range meters, telemetry plots, segmented grids, and
+> radial response labs. The
 > export retains its experimental name until ABI freeze and in-game performance/accessibility
 > acceptance.
 
@@ -58,6 +59,51 @@ The additive descriptor `flags` tail also carries renderer-owned presentation hi
 component remains fixed above the scrolling control region. A secondary component may start
 collapsed and is disclosed by the host without adding a provider setting. Collapsed diagnostics
 continue to receive only their latest bounded sample; they do not force a full page redraw.
+
+### Radial response lab
+
+A radial response lab is a bounded two-axis tuning surface for systems whose behavior depends on
+distance from a center point. Its descriptor names ordinary provider controls for enablement,
+activation radius, idle delay, exponential decay rate, and polling rate. The host never owns a
+second configuration draft.
+
+The demo runs automatically while its page is visible. Relative mouse movement displaces the
+reticle inside the outer envelope; inactivity then evaluates the provider's current activation
+radius, idle delay, poll rate, and the same discrete `exp(-rate * dt)` response without ending the
+demo. Movement outside the activation ring leaves the reticle parked, making the radius boundary
+immediately visible. An explicit Start/Stop Demo button lets the user opt out without consuming
+ordinary menu clicks. The three primary tuning sliders are mirrored beside the graph and route
+through the ordinary typed, coalesced draft-write lane.
+
+`kLiveCapabilityRadialResponse` and full descriptor/frame size checks gate the additive C3 tail.
+Older live providers keep their original descriptor and dynamic-range sizes; the host continues
+to accept both without interpreting former tail padding.
+
+### Head-pose calibration
+
+The additive `HeadPose` surface is a bounded three-axis angular instrument for head tracking and
+other camera-pose providers. Each semantic axis chooses a host view—top, profile, or artificial
+horizon—and references ordinary same-page sensitivity, minimum, center, and maximum controls. The
+axis descriptors also name their enable and inversion toggles; the surface may name one same-page
+recenter action and one shared deadzone slider. The live callback copies only raw tracker degrees,
+shaped output degrees, and availability.
+
+The host renders sparse pilot-helmet line symbols, blue negative arc, green positive arc,
+yellow live marker, zero and configured-center ticks, raw/output text, compact sliders, enable and
+inversion toggles, an optional manual recenter button, and a shared center-aligned deadzone slider
+below the graphs. The dim inner semicircle is the deadzone scale; its centered red fraction grows
+linearly from zero to the slider's declared maximum. A red probe follows sensitivity-scaled/inverted
+tracker motion inside that fraction until the gate is exceeded, when the yellow outer marker takes
+over as mapped camera output. Color is reinforced by labels and numerical values.
+These embedded controls issue the same typed drafts or provider action as their
+ordinary counterparts. A capable host suppresses the redundant flat rows while retaining those
+controls in its transaction and keyboard/controller focus model; an older host renders the ordinary
+rows as the deterministic fallback. No provider geometry, palette, ActionScript, SWF, or drawing
+callback crosses the ABI.
+
+`kLiveCapabilityHeadPose`, `kLiveChannelDescriptorV1HeadPoseSize`, and
+`kLiveFrameV1HeadPoseSize` exact-gate the new tails. The preceding radial-response size constants
+preserve compatibility with providers compiled against the former full structures.
 
 ### Segmented allocation grid
 

@@ -1,12 +1,12 @@
 # Absolute Control Integration SDK
 
-> **Status:** `0.1.0-beta.3` coordinated private beta. The public SDK release is coming soon.
+> **Status:** `0.2.0-beta.1` coordinated private beta. The public SDK release is coming soon.
 > Mod authors can message the Absolute Control author through Nexus Mods to apply. Use
 > [`CURRENT-STATE.md`](../docs/CURRENT-STATE.md) and
 > [`SDK-STATUS.md`](../docs/SDK-STATUS.md) to distinguish implemented ABI-v1 behavior from the
 > target menu language.
 
-This beta targets the Absolute Control host shipped in **Absolute Suite 0.2.0-beta.1**. It packages
+This beta targets the Absolute Control host shipped in **Absolute Suite 0.3.0-beta.1**. It packages
 the current ABI-v1 configuration header, the separately negotiated experimental live and C2
 composition headers, the menu-definition generator, examples, tests, and integration guidance.
 The SDK package version and each API's ABI version are independent.
@@ -133,6 +133,21 @@ Hosts may also advertise `kLiveCapabilityPresentationFlags` and
 `kLiveCapabilityDynamicRangeFrames`. The former allows pinned tuning meters and host-owned
 collapsed secondary diagnostics. The latter allows a full-size `LiveFrameV1` to replace static
 range bands and markers from the provider's current draft.
+
+`kLiveCapabilityRadialResponse` advertises the additive `RadialResponse` kind. Providers name the
+same-page enable, radius, idle-delay, decay-rate, and polling controls; the host owns the
+click-capture/release simulation and routes its adjacent sliders through those existing controls.
+
+`kLiveCapabilityHeadPose` advertises the additive `HeadPose` kind. A provider publishes up to three
+semantic angular instruments, references same-page enable/invert/sensitivity/minimum/center/maximum
+controls, may reference one same-page recenter action and shared deadzone slider, and copies raw
+plus shaped output degrees.
+The host renders sparse profile/top pilot-helmet lines, an artificial horizon, asymmetric
+negative/positive arcs, a yellow mapped-output marker, and an inner deadzone semicircle whose red
+fraction is proportional to the shared slider's declared range. The center-aligned deadzone slider
+sits below the graphs as part of the complete direct-control editor. The controls remain in the normal
+transaction and focus model even when the capable host suppresses their redundant flat rows; older
+hosts retain the ordinary-control fallback.
 
 See [CHANGELOG.md](CHANGELOG.md) for additive capability and migration notes.
 

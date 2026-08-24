@@ -1,5 +1,18 @@
 # SDK change notes
 
+## 0.2.0-beta.1 — host-rendered head-pose calibration
+
+- Added the size- and capability-gated `HeadPose` live component. Providers publish at most three
+  angular axes, their ordinary enable/invert/sensitivity/minimum/center/maximum control IDs, an
+  optional recenter action, a shared deadzone slider, and copied raw/output telemetry. The host owns
+  the sparse pilot-helmet profile/top views, artificial horizon, asymmetric arcs, proportionally
+  sized red inner deadzone gate, yellow mapped-output marker, and complete direct-control editor while
+  retaining keyboard/controller focus and older-host fallback through the ordinary controls.
+- Preserved the previous full RadialResponse descriptor and frame sizes with explicit prefix
+  constants before appending the HeadPose tails.
+- Kept provider assets inert by design: this addition does not permit subscriber ActionScript,
+  arbitrary SWFs, native drawing callbacks, or executable renderers.
+
 ## 0.1.0-beta.3 — first-party integration guidance
 
 - Added the Absolute Head Tracking named example, documenting generated ABI-v1 descriptors,

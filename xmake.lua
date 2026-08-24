@@ -1,6 +1,6 @@
 set_xmakever("3.0.0")
 
-local product_version = "0.2.0-dev"
+local product_version = "0.3.0-beta.1"
 
 set_project("AbsoluteControlPanel")
 set_version(product_version)

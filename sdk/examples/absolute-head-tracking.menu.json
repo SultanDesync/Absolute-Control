@@ -36,7 +36,9 @@
             { "id": "yaw.enabled", "type": "toggle", "label": "Enable yaw" },
             { "id": "yaw.inverted", "type": "toggle", "label": "Invert yaw" },
             { "id": "yaw.sensitivity", "type": "float", "widget": "slider", "label": "Yaw sensitivity", "minimum": 0.05, "maximum": 10.0, "step": 0.05 },
-            { "id": "yaw.maximum", "type": "float", "widget": "slider", "label": "Maximum yaw", "minimum": 1.0, "maximum": 180.0, "step": 1.0 }
+            { "id": "yaw.minimum", "type": "float", "widget": "slider", "label": "Left limit", "minimum": -180.0, "maximum": 180.0, "step": 1.0 },
+            { "id": "yaw.center", "type": "float", "widget": "slider", "label": "Yaw neutral angle", "minimum": -180.0, "maximum": 180.0, "step": 1.0 },
+            { "id": "yaw.maximum", "type": "float", "widget": "slider", "label": "Right limit", "minimum": -180.0, "maximum": 180.0, "step": 1.0 }
           ]
         },
         {
@@ -46,7 +48,9 @@
             { "id": "pitch.enabled", "type": "toggle", "label": "Enable pitch" },
             { "id": "pitch.inverted", "type": "toggle", "label": "Invert pitch", "description": "Convert FreeTrack pitch to Starfield camera coordinates." },
             { "id": "pitch.sensitivity", "type": "float", "widget": "slider", "label": "Pitch sensitivity", "minimum": 0.05, "maximum": 10.0, "step": 0.05 },
-            { "id": "pitch.maximum", "type": "float", "widget": "slider", "label": "Maximum pitch", "minimum": 1.0, "maximum": 180.0, "step": 1.0 }
+            { "id": "pitch.minimum", "type": "float", "widget": "slider", "label": "Down limit", "minimum": -180.0, "maximum": 180.0, "step": 1.0 },
+            { "id": "pitch.center", "type": "float", "widget": "slider", "label": "Pitch neutral angle", "minimum": -180.0, "maximum": 180.0, "step": 1.0 },
+            { "id": "pitch.maximum", "type": "float", "widget": "slider", "label": "Up limit", "minimum": -180.0, "maximum": 180.0, "step": 1.0 }
           ]
         },
         {
@@ -56,7 +60,9 @@
             { "id": "roll.enabled", "type": "toggle", "label": "Enable roll" },
             { "id": "roll.inverted", "type": "toggle", "label": "Invert roll" },
             { "id": "roll.sensitivity", "type": "float", "widget": "slider", "label": "Roll sensitivity", "minimum": 0.05, "maximum": 10.0, "step": 0.05 },
-            { "id": "roll.maximum", "type": "float", "widget": "slider", "label": "Maximum roll", "minimum": 1.0, "maximum": 180.0, "step": 1.0 }
+            { "id": "roll.minimum", "type": "float", "widget": "slider", "label": "Left-bank limit", "minimum": -180.0, "maximum": 180.0, "step": 1.0 },
+            { "id": "roll.center", "type": "float", "widget": "slider", "label": "Level offset", "minimum": -180.0, "maximum": 180.0, "step": 1.0 },
+            { "id": "roll.maximum", "type": "float", "widget": "slider", "label": "Right-bank limit", "minimum": -180.0, "maximum": 180.0, "step": 1.0 }
           ]
         }
       ]

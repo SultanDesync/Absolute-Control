@@ -1,6 +1,6 @@
 # SDK status and release checklist
 
-> **Status:** `0.1.0-beta.3` coordinated private beta. The public SDK and experimental APIs are not
+> **Status:** `0.2.0-beta.1` coordinated private beta. The public SDK and experimental APIs are not
 > frozen. Beta applicants contact the author so integrations and deployment baselines remain
 > reviewable.
 
@@ -10,9 +10,8 @@ remains ABI version 1 with append-only size/capability gates. Live components an
 composition remain separately negotiated experimental APIs. This index records what must be true
 before a public SDK tag is published.
 
-The beta baseline is the Absolute Control artifact in Absolute Suite `0.2.0-beta.1` (commit
-`9c2f42929563372c433bc222710fced64721036c`, plugin SHA-256
-`2F9CE08733D7AE8A683A5356E01A12237D9D88FC92AE08EA307B8497176E8383`).
+The current beta baseline is the Absolute Control artifact in Absolute Suite `0.3.0-beta.1`.
+Exact plugin and interface hashes are recorded in that release's `AbsoluteSuite.manifest.json`.
 
 ## Authoritative development sources
 

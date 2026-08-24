@@ -99,6 +99,7 @@ package
 
         private function onEnterFrame(event:Event):void
         {
+            shell.tickRadialDemo(selection.page());
             // Slider motion is sampled at the SWF frame rate: at most one provider
             // write and model rebuild is requested per visible UI frame, always for
             // the latest pointer position observed during that frame.
@@ -171,6 +172,13 @@ package
                 send("selectControl", target.payload, false, 0, 0);
                 return true;
             }
+            if (kind == "clearBinding") {
+                selection.focusRegion = PanelLayout.FOCUS_CONTROLS;
+                selection.selectedRow = int(target.index);
+                syncFocus();
+                ControlWidgets.clearBinding(target.payload, send);
+                return true;
+            }
             if (kind == "choice" || kind == "recordCollection") {
                 selection.focusRegion = PanelLayout.FOCUS_CONTROLS;
                 selection.selectedRow = int(target.index);
@@ -218,11 +226,16 @@ package
         public function handlePointerMove(stageX:Number, stageY:Number):Boolean
         {
             if (model == null) return false;
+            var radialHandled:Boolean = false;
+            if (shell.radialDemoActive) {
+                if (inputMode != "mouse") inputMode = "mouse";
+                radialHandled = shell.moveRadialDemo(stageX, stageY);
+            }
             if (pointer.isDraggingSlider) {
                 if (inputMode != "mouse") inputMode = "mouse";
                 sliderWrites.prepare(model, selection.page());
-                return pointer.moveSlider(
-                    stageX, stageY, selection.page(), sliderWrites.queue);
+                return pointer.moveSlider(stageX, stageY, selection.page(),
+                    sliderWrites.queue) || radialHandled;
             }
             var hover:Object = pointer.hit(stageX, stageY);
             if (hover != null && String(hover.kind) == "activate" &&
@@ -232,7 +245,7 @@ package
                 return true;
             }
             shell.hideTooltip();
-            return hover != null;
+            return hover != null || radialHandled;
         }
 
         public function handlePointerUp(stageX:Number, stageY:Number):Boolean
@@ -333,6 +346,13 @@ package
                 if (handled) redraw();
             } else if (event.keyCode == Keyboard.ESCAPE || event.keyCode == Keyboard.TAB) {
                 sendPage("close");
+            }
+            else if ((event.keyCode == Keyboard.BACKSPACE ||
+                event.keyCode == Keyboard.DELETE) && current != null &&
+                current.controls.length > 0 &&
+                selection.focusRegion == PanelLayout.FOCUS_CONTROLS &&
+                ControlWidgets.clearBinding(
+                    current.controls[selection.selectedRow], send)) {
             }
             else if (selection.focusRegion == PanelLayout.FOCUS_GRID &&
                 (event.keyCode == Keyboard.A || event.keyCode == Keyboard.LEFT ||

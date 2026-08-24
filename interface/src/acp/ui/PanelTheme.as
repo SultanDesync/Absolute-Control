@@ -29,6 +29,7 @@ package acp.ui
         public static const TIER_GREEN:uint = 0x10B981;
         public static const TIER_YELLOW:uint = 0xFBBF24;
         public static const TIER_RED:uint = 0xF87171;
+        public static const AXIS_NEGATIVE:uint = 0x5B78FF;
         public static const PIP_HOLLOW:uint = 0x17303D;
         public static const RANGE_IDLE:uint = 0x526875;
         public static const RANGE_ZERO:uint = 0x82B7D1;

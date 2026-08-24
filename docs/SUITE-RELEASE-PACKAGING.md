@@ -30,8 +30,8 @@ Build every component's release target from a clean committed tree first. Then, 
 Absolute-Control repository:
 
 ```powershell
-.\tools\release\New-SuiteRelease.ps1 -BundleVersion 0.2.0-beta.1
-.\tools\release\Test-SuiteRelease.ps1 -ReleaseDirectory .\releases\v0.2.0-beta.1
+.\tools\release\New-SuiteRelease.ps1 -BundleVersion 0.3.0-beta.1
+.\tools\release\Test-SuiteRelease.ps1 -ReleaseDirectory .\releases\v0.3.0-beta.1
 ```
 
 The packager fails when a repository is dirty, when a DLL/SWF predates its source commit, when an

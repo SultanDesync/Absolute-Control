@@ -713,7 +713,8 @@ namespace AbsoluteControlPanelResearch::Scaleform
                     const auto& range = descriptor.rangeMeter;
                     const bool hasDynamic =
                         component.frame.structSize >=
-                            sizeof(AbsoluteControlPanelExperimental::LiveFrameV1) &&
+                            AbsoluteControlPanelExperimental::
+                                kLiveFrameV1DynamicRangeSize &&
                         component.frame.dynamicRange.present != 0;
                     const auto bandCount = hasDynamic ?
                         component.frame.dynamicRange.bandCount : range.bandCount;
@@ -826,6 +827,79 @@ namespace AbsoluteControlPanelResearch::Scaleform
                         target.SetMember("bands", bands) &&
                         target.SetMember("markers", markers) &&
                         target.SetMember("samples", samples);
+                }
+
+                if (descriptor.kind == AbsoluteControlPanelExperimental::
+                        ComponentKind::RadialResponse) {
+                    const auto& radial = descriptor.radialResponse;
+                    const auto& frame = component.frame.radialResponse;
+                    return target.SetMember("maximumRadius",
+                               RE::Scaleform::GFx::Value(radial.maximumRadius)) &&
+                        SetString(target, "enabledControlId",
+                            radial.enabledControlId) &&
+                        SetString(target, "radiusControlId",
+                            radial.radiusControlId) &&
+                        SetString(target, "idleMillisecondsControlId",
+                            radial.idleMillisecondsControlId) &&
+                        SetString(target, "decayRateControlId",
+                            radial.decayRateControlId) &&
+                        SetString(target, "pollRateControlId",
+                            radial.pollRateControlId) &&
+                        target.SetMember("liveAvailable",
+                            RE::Scaleform::GFx::Value(component.available &&
+                                frame.available != 0)) &&
+                        target.SetMember("liveX",
+                            RE::Scaleform::GFx::Value(frame.liveX)) &&
+                        target.SetMember("liveY",
+                            RE::Scaleform::GFx::Value(frame.liveY));
+                }
+
+                if (descriptor.kind == AbsoluteControlPanelExperimental::
+                        ComponentKind::HeadPose) {
+                    const auto& pose = descriptor.headPose;
+                    const auto& frame = component.frame.headPose;
+                    RE::Scaleform::GFx::Value axes;
+                    root->CreateArray(&axes);
+                    ok = axes.IsArray();
+                    for (std::uint32_t index = 0;
+                         ok && index < pose.axisCount; ++index) {
+                        RE::Scaleform::GFx::Value axis;
+                        root->CreateObject(&axis);
+                        const auto& source = pose.axes[index];
+                        const auto& state = frame.axes[index];
+                        ok = axis.IsObject() &&
+                            SetString(axis, "axisId", source.axisId) &&
+                            SetString(axis, "label", source.label) &&
+                            axis.SetMember("view", RE::Scaleform::GFx::Value(
+                                static_cast<std::uint32_t>(source.view))) &&
+                            SetString(axis, "sensitivityControlId",
+                                source.sensitivityControlId) &&
+                            SetString(axis, "minimumControlId",
+                                source.minimumControlId) &&
+                            SetString(axis, "centerControlId",
+                                source.centerControlId) &&
+                            SetString(axis, "maximumControlId",
+                                source.maximumControlId) &&
+                            SetString(axis, "enabledControlId",
+                                source.enabledControlId) &&
+                            SetString(axis, "invertedControlId",
+                                source.invertedControlId) &&
+                            axis.SetMember("liveAvailable",
+                                RE::Scaleform::GFx::Value(component.available &&
+                                    state.available != 0)) &&
+                            axis.SetMember("trackerDegrees",
+                                RE::Scaleform::GFx::Value(
+                                    state.trackerDegrees)) &&
+                            axis.SetMember("outputDegrees",
+                                RE::Scaleform::GFx::Value(
+                                    state.outputDegrees)) &&
+                            axes.PushBack(axis);
+                    }
+                    return ok && SetString(target, "recenterControlId",
+                               pose.recenterControlId) &&
+                        SetString(target, "deadzoneControlId",
+                            pose.deadzoneControlId) &&
+                        target.SetMember("axes", axes);
                 }
 
                 if (descriptor.kind != AbsoluteControlPanelExperimental::

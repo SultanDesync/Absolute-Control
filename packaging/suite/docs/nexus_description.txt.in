@@ -8,10 +8,10 @@
 [center][size=5][color=#ffcc00][b]Included ecosystem[/b][/color][/size][/center]
 
 [list]
-[*][b][color=#00ff88]Absolute Control:[/color][/b] Required native suite menu, shared input capture, live presentation, and registry diagnostics.[/*]
-[*][b][color=#00ff88]AbsoluteHOTAS:[/color][/b] Optional DirectInput HOTAS/HOSAS flight control, ship buttons, tuning, profiles, macros, and calibration.[/*]
+[*][b][color=#00ff88]Absolute Control:[/color][/b] Required native suite menu, shared input capture, live Head Pose/radial presentation, and registry diagnostics.[/*]
+[*][b][color=#00ff88]AbsoluteHOTAS:[/color][/b] Optional DirectInput HOTAS/HOSAS flight control, ship buttons, tuning, profiles, macros, calibration, and centered analog-aim deadzone.[/*]
 [*][b][color=#00ff88]Absolute Power:[/color][/b] Optional priority-based ship-power presets and allocation controls.[/*]
-[*][b][color=#00ff88]Absolute Head Tracking:[/color][/b] Optional OpenTrack-compatible rotational cockpit tracking.[/*]
+[*][b][color=#00ff88]Absolute Head Tracking:[/color][/b] Optional rotational cockpit tracking with asymmetric axes, live calibration, keyboard/mouse/joystick manual look, recenter, and cone-limited ballistic free aim.[/*]
 [*][b][color=#00ff88]AbsoluteZero Mouse Steering:[/color][/b] Optional idle centering and locked-reticule mouse steering.[/*]
 [/list]
 

@@ -48,7 +48,14 @@ namespace AbsoluteControlPanelResearch::LiveComponents
 
         [[nodiscard]] bool IsComponentKind(ComponentKind kind) noexcept
         {
-            return kind >= ComponentKind::RangeMeter && kind <= ComponentKind::SegmentedAllocationGrid;
+            return kind >= ComponentKind::RangeMeter &&
+                   kind <= ComponentKind::HeadPose;
+        }
+
+        [[nodiscard]] bool IsHeadPoseView(HeadPoseView view) noexcept
+        {
+            return view >= HeadPoseView::Top &&
+                   view <= HeadPoseView::ArtificialHorizon;
         }
 
         [[nodiscard]] bool IsBandSemantic(RangeBandSemantic semantic) noexcept
@@ -163,10 +170,53 @@ namespace AbsoluteControlPanelResearch::LiveComponents
                    !HasDuplicateId(descriptor.tiers, descriptor.tierCount, &GridTierDescriptorV1::tierId);
         }
 
+        [[nodiscard]] bool ValidateRadial(
+            const RadialResponseDescriptorV1& descriptor) noexcept
+        {
+            return descriptor.structSize >= sizeof(RadialResponseDescriptorV1) &&
+                   std::isfinite(descriptor.maximumRadius) &&
+                   descriptor.maximumRadius > 0.0 &&
+                   IsIdentifier(descriptor.enabledControlId) &&
+                   IsIdentifier(descriptor.radiusControlId) &&
+                   IsIdentifier(descriptor.idleMillisecondsControlId) &&
+                   IsIdentifier(descriptor.decayRateControlId) &&
+                   IsIdentifier(descriptor.pollRateControlId);
+        }
+
+        [[nodiscard]] bool ValidateHeadPose(
+            const HeadPoseDescriptorV1& descriptor) noexcept
+        {
+            if (descriptor.structSize < sizeof(HeadPoseDescriptorV1) ||
+                descriptor.axisCount == 0 ||
+                descriptor.axisCount > kMaximumHeadPoseAxes) return false;
+            if (descriptor.recenterControlId[0] != '\0' &&
+                !IsIdentifier(descriptor.recenterControlId)) return false;
+            if (descriptor.deadzoneControlId[0] != '\0' &&
+                !IsIdentifier(descriptor.deadzoneControlId)) return false;
+            for (std::size_t index = 0; index < descriptor.axisCount; ++index) {
+                const auto& axis = descriptor.axes[index];
+                if (axis.structSize < sizeof(HeadPoseAxisDescriptorV1) ||
+                    !IsHeadPoseView(axis.view) || !IsIdentifier(axis.axisId) ||
+                    !IsLabel(axis.label) ||
+                    !IsIdentifier(axis.sensitivityControlId) ||
+                    !IsIdentifier(axis.minimumControlId) ||
+                    !IsIdentifier(axis.centerControlId) ||
+                    !IsIdentifier(axis.maximumControlId) ||
+                    !IsIdentifier(axis.enabledControlId) ||
+                    !IsIdentifier(axis.invertedControlId)) return false;
+                for (std::size_t prior = 0; prior < index; ++prior) {
+                    if (View(descriptor.axes[prior].axisId) ==
+                        View(axis.axisId)) return false;
+                }
+            }
+            return true;
+        }
+
         [[nodiscard]] bool ValidateAssociations(
             const LiveChannelDescriptorV1& descriptor) noexcept
         {
-            if (descriptor.structSize < sizeof(LiveChannelDescriptorV1)) return true;
+            if (descriptor.structSize <
+                kLiveChannelDescriptorV1AssociationsSize) return true;
             if (descriptor.associationCount > kMaximumGridControlAssociations ||
                 (descriptor.kind != ComponentKind::SegmentedAllocationGrid &&
                     descriptor.associationCount != 0)) return false;
@@ -221,6 +271,14 @@ namespace AbsoluteControlPanelResearch::LiveComponents
                 validComponent = ValidatePlot(descriptor.telemetryPlot); break;
             case ComponentKind::SegmentedAllocationGrid:
                 validComponent = ValidateGrid(descriptor.segmentedGrid); break;
+            case ComponentKind::RadialResponse:
+                validComponent = descriptor.structSize >=
+                        kLiveChannelDescriptorV1RadialResponseSize &&
+                    ValidateRadial(descriptor.radialResponse); break;
+            case ComponentKind::HeadPose:
+                validComponent = descriptor.structSize >=
+                        kLiveChannelDescriptorV1HeadPoseSize &&
+                    ValidateHeadPose(descriptor.headPose); break;
             }
             return validComponent && ValidateAssociations(descriptor);
         }
@@ -236,7 +294,8 @@ namespace AbsoluteControlPanelResearch::LiveComponents
             model.flags = descriptor.structSize >=
                     kLiveChannelDescriptorV1FlagsSize ?
                 descriptor.flags : kSegmentedGridNone;
-            if (descriptor.structSize >= sizeof(LiveChannelDescriptorV1)) {
+            if (descriptor.structSize >=
+                kLiveChannelDescriptorV1AssociationsSize) {
                 model.associationCount = descriptor.associationCount;
                 std::copy_n(descriptor.associations,
                     descriptor.associationCount, model.associations);
@@ -245,6 +304,8 @@ namespace AbsoluteControlPanelResearch::LiveComponents
             case ComponentKind::RangeMeter: model.rangeMeter = descriptor.rangeMeter; break;
             case ComponentKind::TelemetryPlot: model.telemetryPlot = descriptor.telemetryPlot; break;
             case ComponentKind::SegmentedAllocationGrid: model.segmentedGrid = descriptor.segmentedGrid; break;
+            case ComponentKind::RadialResponse: model.radialResponse = descriptor.radialResponse; break;
+            case ComponentKind::HeadPose: model.headPose = descriptor.headPose; break;
             }
             return model;
         }
@@ -288,7 +349,8 @@ namespace AbsoluteControlPanelResearch::LiveComponents
                        std::isfinite(frame.rangeMeter.liveValue) &&
                        (!frame.rangeMeter.available || (frame.rangeMeter.liveValue >= descriptor.rangeMeter.minimumValue &&
                            frame.rangeMeter.liveValue <= descriptor.rangeMeter.maximumValue));
-                if (!validBase || frame.structSize < sizeof(LiveFrameV1)) {
+                if (!validBase || frame.structSize <
+                    kLiveFrameV1DynamicRangeSize) {
                     return validBase;
                 }
                 const auto& dynamic = frame.dynamicRange;
@@ -313,6 +375,32 @@ namespace AbsoluteControlPanelResearch::LiveComponents
                 return true;
             case ComponentKind::SegmentedAllocationGrid:
                 return ValidateGridFrame(frame.segmentedGrid, descriptor.segmentedGrid);
+            case ComponentKind::RadialResponse:
+                return frame.structSize >= kLiveFrameV1RadialResponseSize &&
+                    frame.radialResponse.structSize >=
+                        sizeof(RadialResponseFrameV1) &&
+                    frame.radialResponse.available <= 1 &&
+                    std::isfinite(frame.radialResponse.liveX) &&
+                    std::isfinite(frame.radialResponse.liveY) &&
+                    (!frame.radialResponse.available ||
+                        std::hypot(frame.radialResponse.liveX,
+                            frame.radialResponse.liveY) <=
+                            descriptor.radialResponse.maximumRadius);
+            case ComponentKind::HeadPose:
+                if (frame.structSize < kLiveFrameV1HeadPoseSize ||
+                    frame.headPose.structSize < sizeof(HeadPoseFrameV1) ||
+                    frame.headPose.axisCount != descriptor.headPose.axisCount) {
+                    return false;
+                }
+                for (std::size_t index = 0;
+                     index < frame.headPose.axisCount; ++index) {
+                    const auto& axis = frame.headPose.axes[index];
+                    if (axis.structSize < sizeof(HeadPoseAxisFrameV1) ||
+                        axis.available > 1 ||
+                        !std::isfinite(axis.trackerDegrees) ||
+                        !std::isfinite(axis.outputDegrees)) return false;
+                }
+                return true;
             }
             return false;
         }
@@ -407,7 +495,8 @@ namespace AbsoluteControlPanelResearch::LiveComponents
         if (descriptor.structSize < kLiveChannelDescriptorV1FlagsSize) {
             normalized.flags = kSegmentedGridNone;
         }
-        if (descriptor.structSize < sizeof(LiveChannelDescriptorV1)) {
+        if (descriptor.structSize <
+            kLiveChannelDescriptorV1AssociationsSize) {
             normalized.associationCount = 0;
             std::fill(std::begin(normalized.associations),
                 std::end(normalized.associations), GridControlAssociationV1{});

@@ -2,6 +2,7 @@ package acp.ui
 {
     import flash.display.MovieClip;
     import flash.display.Sprite;
+    import flash.utils.getTimer;
 
     public final class MenuShellRenderer
     {
@@ -37,11 +38,16 @@ package acp.ui
         private var recordFirstVisible:int = 0;
         private var livePlacements:Array = [];
         private var expandedLive:Object = {};
+        private var radialStates:Object = {};
+        private var activeRadialKey:String = "";
+        private var activeSelectionState:MenuSelectionState;
         private static const LIVE_DASHBOARD_MAX_HEIGHT:Number = 520;
         private static const LIVE_COMPONENT_LIMIT:int = 6;
         private static const RANGE_CARD_HEIGHT:Number = 86;
         private static const PINNED_RANGE_CARD_HEIGHT:Number = 132;
         private static const PLOT_CARD_HEIGHT:Number = 166;
+        private static const RADIAL_CARD_HEIGHT:Number = 430;
+        private static const HEAD_POSE_CARD_HEIGHT:Number = 500;
         private static const LIVE_DISCLOSURE_HEIGHT:Number = 36;
         private static const LIVE_PINNED:uint = 1 << 8;
         private static const LIVE_SECONDARY:uint = 1 << 9;
@@ -104,6 +110,8 @@ package acp.ui
                 footerLayer == null || overlayLayer == null ||
                 tooltipLayer == null) return;
 
+            activeSelectionState = state;
+
             clearLayer(rowLayer, true);
             clearLayer(liveLayer, true);
             clearLayer(liveHitLayer, true);
@@ -118,6 +126,13 @@ package acp.ui
             hits.resetHits();
 
             var current:Object = state.page();
+            if (activeRadialKey.length > 0 && current != null) {
+                var activePagePrefix:String = String(current.moduleId) + "\n" +
+                    String(current.pageId) + "\n";
+                if (activeRadialKey.indexOf(activePagePrefix) != 0) {
+                    activeRadialKey = "";
+                }
+            }
             gridFocusActive = state.focusRegion == PanelLayout.FOCUS_GRID;
             selectedGridColumnId = model == null ? "" :
                 String(model.selectedGridColumnId);
@@ -167,6 +182,13 @@ package acp.ui
                 var physicalRow:Array = controlRows[layoutIndex];
                 var firstControlIndex:int = int(physicalRow[0]);
                 var firstControl:Object = current.controls[firstControlIndex];
+                if (headPoseOwnsControl(current,
+                    String(firstControl.controlId))) {
+                    lastVisibleControl =
+                        int(physicalRow[physicalRow.length - 1]);
+                    ++renderedRows;
+                    continue;
+                }
                 var actualRowHeight:Number = semantic ?
                     semanticRenderer.rowHeight(current, firstControl) : rowHeight;
                 if (renderedRows > 0 &&
@@ -227,9 +249,12 @@ package acp.ui
                 lastVisibleControl - state.firstVisibleRow + 1);
             drawScrollBar(current, state, pinnedHeight + gridHeight + anchorHeight,
                 Math.max(1, renderedRows), controlRows, firstLayoutRow, rowHeight);
-            drawHelp(current, state);
+            drawHelp(current, state, inputMode);
             drawFooter(model, state, inputMode);
-            if (Boolean(model.actionConfirmationActive)) {
+            if (Boolean(model.bindingCaptureActive)) {
+                closeChoice();
+                drawBindingCapture(model, current, inputMode);
+            } else if (Boolean(model.actionConfirmationActive)) {
                 closeChoice();
                 ActionConfirmationDialog.draw(
                     overlayLayer, hits, model, inputMode == "controller" ?
@@ -251,6 +276,76 @@ package acp.ui
                 if (recordCollectionIsOpen) drawRecordCollectionPopup(current);
                 else drawChoicePopup(current, state, gridHeight);
             }
+        }
+
+        private function drawBindingCapture(model:Object, current:Object,
+            inputMode:String):void
+        {
+            var control:Object = null;
+            if (current != null && current.controls != null &&
+                String(current.moduleId) == String(model.captureModuleId) &&
+                String(current.pageId) == String(model.capturePageId)) {
+                for (var index:int = 0; index < current.controls.length; ++index) {
+                    if (String(current.controls[index].controlId) ==
+                        String(model.captureControlId)) {
+                        control = current.controls[index];
+                        break;
+                    }
+                }
+            }
+
+            var blocker:Sprite = new Sprite();
+            blocker.graphics.beginFill(PanelTheme.BACKGROUND, 0.76);
+            blocker.graphics.drawRect(0, 0, PanelLayout.STAGE_WIDTH,
+                PanelLayout.STAGE_HEIGHT);
+            blocker.graphics.endFill();
+            overlayLayer.addChild(blocker);
+
+            var width:Number = 900;
+            var height:Number = 330;
+            var dialog:Sprite = new Sprite();
+            dialog.x = (PanelLayout.STAGE_WIDTH - width) / 2;
+            dialog.y = (PanelLayout.STAGE_HEIGHT - height) / 2;
+            dialog.graphics.lineStyle(3, PanelTheme.GOLD);
+            dialog.graphics.beginFill(PanelTheme.PANEL, 1.0);
+            dialog.graphics.drawRoundRect(0, 0, width, height, 10, 10);
+            dialog.graphics.endFill();
+            overlayLayer.addChild(dialog);
+
+            VectorTextRenderer.addText(dialog, "RECORDING BINDING", 36, 26, 18,
+                PanelTheme.GOLD, true, width - 72, 28);
+            VectorTextRenderer.addText(dialog,
+                control == null ? "WAITING FOR INPUT" :
+                    VectorTextRenderer.fit(String(control.label), 64),
+                36, 72, 28, PanelTheme.TEXT, true, width - 72, 42);
+
+            var flags:uint = control == null ? 0 : uint(control.flags);
+            var keyboard:Boolean = (flags & 256) != 0;
+            var mouse:Boolean = (flags & 512) != 0;
+            var controller:Boolean = (flags & 1024) != 0;
+            var prompt:String = controller && !keyboard && !mouse ?
+                "RECORD THE NEW DIRECTINPUT CONTROL" :
+                (keyboard && !mouse && !controller ? "PRESS A KEY OR KEY CHORD" :
+                    "PRESS OR MOVE THE NEW INPUT");
+            VectorTextRenderer.addText(dialog, prompt, 36, 132, 19,
+                PanelTheme.CYAN, true, width - 72, 30);
+            if (control != null && String(control.description).length > 0) {
+                VectorTextRenderer.addText(dialog, String(control.description),
+                    36, 170, 15, PanelTheme.MUTED_TEXT, false,
+                    width - 72, 54, true);
+            }
+            VectorTextRenderer.addText(dialog,
+                "INPUT CAPTURE IS ACTIVE. NAVIGATION IS PAUSED UNTIL AN INPUT IS RECORDED.",
+                36, 238, 15, PanelTheme.MUTED_TEXT, false, width - 72, 24);
+            var clearable:Boolean = control != null &&
+                (uint(control.flags) & 4096) != 0;
+            var captureActions:String = clearable &&
+                inputMode != "controller" ?
+                "BACKSPACE  CLEAR BINDING    ESC  CANCEL CAPTURE" :
+                ((inputMode == "controller" ? "B" : "ESC") +
+                    "  CANCEL CAPTURE");
+            VectorTextRenderer.addText(dialog, captureActions,
+                36, 286, 15, PanelTheme.DIM_TEXT, true, width - 72, 22);
         }
 
         public function openChoice(current:Object, control:Object):void
@@ -680,19 +775,21 @@ package acp.ui
             for (var countIndex:int = 0;
                  countIndex < ordered.length; ++countIndex) {
                 var candidateKind:uint = uint(ordered[countIndex].kind);
-                if (candidateKind == 0 || candidateKind == 1) ++eligible;
+                if (candidateKind == 0 || candidateKind == 1 ||
+                    candidateKind == 3 || candidateKind == 4) ++eligible;
             }
             for (var index:int = 0; index < ordered.length &&
                  rendered < LIVE_COMPONENT_LIMIT; ++index) {
                 var component:Object = ordered[index];
                 var kind:uint = uint(component.kind);
-                if (kind != 0 && kind != 1) continue;
+                if (kind != 0 && kind != 1 && kind != 3 && kind != 4) continue;
                 var presentation:uint = uint(component.interactionFlags);
                 var pinned:Boolean = (presentation & LIVE_PINNED) != 0;
                 var collapsed:Boolean =
                     (presentation & LIVE_COLLAPSED) != 0;
                 var expanded:Boolean = isLiveExpanded(current, component);
-                if (kind == 1 && rangeColumn != 0) {
+                if ((kind == 1 || kind == 3 || kind == 4) &&
+                    rangeColumn != 0) {
                     y += RANGE_CARD_HEIGHT + 6;
                     rangeColumn = 0;
                 }
@@ -710,7 +807,9 @@ package acp.ui
                 }
                 var height:Number = kind == 0 ?
                     (pinned ? PINNED_RANGE_CARD_HEIGHT : RANGE_CARD_HEIGHT) :
-                    PLOT_CARD_HEIGHT;
+                    (kind == 3 ? RADIAL_CARD_HEIGHT :
+                        (kind == 4 ? HEAD_POSE_CARD_HEIGHT :
+                            PLOT_CARD_HEIGHT));
                 if (y + height > topOffset + LIVE_DASHBOARD_MAX_HEIGHT) break;
                 if (kind == 0) {
                     if (pinned) {
@@ -727,10 +826,20 @@ package acp.ui
                             y += RANGE_CARD_HEIGHT + 6;
                         }
                     }
-                } else {
+                } else if (kind == 1) {
                     drawTelemetryPlot(component, 0, y,
                         PanelLayout.CONTROL_ROW_WIDTH - 8, PLOT_CARD_HEIGHT);
                     y += PLOT_CARD_HEIGHT + 6;
+                } else if (kind == 3) {
+                    drawRadialResponse(component, current, 0, y,
+                        PanelLayout.CONTROL_ROW_WIDTH - 8,
+                        RADIAL_CARD_HEIGHT);
+                    y += RADIAL_CARD_HEIGHT + 6;
+                } else {
+                    drawHeadPose(component, current, 0, y,
+                        PanelLayout.CONTROL_ROW_WIDTH - 8,
+                        HEAD_POSE_CARD_HEIGHT);
+                    y += HEAD_POSE_CARD_HEIGHT + 6;
                 }
                 ++rendered;
             }
@@ -819,9 +928,953 @@ package acp.ui
                     drawTelemetryPlot(component, Number(placement.x),
                         Number(placement.y), Number(placement.width),
                         Number(placement.height), false);
+                } else if (uint(placement.kind) == 3) {
+                    drawRadialResponse(component, current,
+                        Number(placement.x), Number(placement.y),
+                        Number(placement.width), Number(placement.height),
+                        false);
+                } else if (uint(placement.kind) == 4) {
+                    drawHeadPose(component, current,
+                        Number(placement.x), Number(placement.y),
+                        Number(placement.width), Number(placement.height),
+                        false);
                 }
             }
             return true;
+        }
+
+        private function drawHeadPose(component:Object, current:Object,
+            x:Number, y:Number, width:Number, height:Number,
+            record:Boolean = true):void
+        {
+            if (record) livePlacements.push({
+                "channelId":String(component.channelId), "kind":4,
+                "x":x, "y":y, "width":width, "height":height
+            });
+            var card:Sprite = new Sprite();
+            card.x = x;
+            card.y = y;
+            card.graphics.lineStyle(1, PanelTheme.ROW_BORDER);
+            card.graphics.beginFill(PanelTheme.ROW_EVEN);
+            card.graphics.drawRoundRect(0, 0, width, height, 8, 8);
+            card.graphics.endFill();
+            liveLayer.addChild(card);
+
+            VectorTextRenderer.addText(card,
+                String(component.title).toUpperCase(), 18, 10, 17,
+                PanelTheme.TEXT, true, 430, 24);
+            VectorTextRenderer.addText(card,
+                "BLUE  NEGATIVE", 520, 12, 12,
+                PanelTheme.AXIS_NEGATIVE, true, 145, 18);
+            VectorTextRenderer.addText(card,
+                "GREEN  POSITIVE", 680, 12, 12,
+                PanelTheme.TIER_GREEN, true, 155, 18);
+            VectorTextRenderer.addText(card,
+                "YELLOW  LIVE", 850, 12, 12,
+                PanelTheme.TIER_YELLOW, true, 130, 18);
+            var deadzoneControl:Object = liveControlById(current,
+                String(component.deadzoneControlId));
+            var recenterControl:Object = liveControlById(current,
+                String(component.recenterControlId));
+            drawHeadPoseAction(card, current, recenterControl,
+                "RECENTER", width - 270, 6, 150);
+            VectorTextRenderer.addText(card, liveStatus(component),
+                width - 100, 12, 13,
+                Boolean(component.available) ? PanelTheme.CYAN :
+                    PanelTheme.WARNING, true, 82, 18);
+
+            var axes:Array = component.axes == null ? [] : component.axes;
+            var count:int = Math.min(3, axes.length);
+            if (count == 0) {
+                VectorTextRenderer.addText(card, "WAITING FOR HEAD POSE DATA",
+                    20, 68, 15, PanelTheme.WARNING, true,
+                    width - 40, 24);
+                return;
+            }
+            var gap:Number = 8;
+            var panelWidth:Number = (width - 20 - gap * (count - 1)) / count;
+            for (var index:int = 0; index < count; ++index) {
+                var panel:Sprite = new Sprite();
+                panel.x = 10 + index * (panelWidth + gap);
+                panel.y = 42;
+                panel.graphics.lineStyle(1, PanelTheme.BORDER);
+                panel.graphics.beginFill(PanelTheme.BUTTON_FILL, 0.7);
+                panel.graphics.drawRoundRect(0, 0, panelWidth,
+                    height - 112, 7, 7);
+                panel.graphics.endFill();
+                card.addChild(panel);
+                drawHeadPoseAxis(panel, current, axes[index],
+                    deadzoneControl, panelWidth, height - 112);
+            }
+            drawHeadPoseSharedTuning(card, current, deadzoneControl,
+                "DEADZONE", (width - 560) * 0.5, height - 61, 560);
+        }
+
+        private function drawHeadPoseSharedTuning(target:Sprite,
+            current:Object, control:Object, label:String, x:Number,
+            y:Number, width:Number):void
+        {
+            if (control == null) return;
+            var focused:Boolean = headPoseControlFocused(current, control);
+            var group:Sprite = new Sprite();
+            group.x = x;
+            group.y = y;
+            VectorTextRenderer.addText(group, label, 0, 0, 11,
+                focused ? PanelTheme.GOLD : PanelTheme.TIER_RED,
+                true, width, 16);
+            var widget:Sprite = new Sprite();
+            widget.x = 0;
+            widget.y = 18;
+            if (focused) {
+                widget.graphics.lineStyle(1, PanelTheme.GOLD, 0.9);
+                widget.graphics.drawRoundRect(-7, -4, width + 14, 41,
+                    5, 5);
+            }
+            var hit:Sprite = ControlWidgets.drawCompactSliderOnly(
+                widget, control, width);
+            group.addChild(widget);
+            target.addChild(group);
+            hits.register(hit, "slider", control,
+                findControlIndex(current, control));
+        }
+
+        private function drawHeadPoseAction(target:Sprite, current:Object,
+            control:Object, label:String, x:Number, y:Number,
+            width:Number):void
+        {
+            if (control == null) return;
+            var enabled:Boolean = Boolean(control.available) &&
+                (uint(control.flags) & 1) == 0;
+            var focused:Boolean = headPoseControlFocused(current, control);
+            var button:Sprite = new Sprite();
+            button.x = x;
+            button.y = y;
+            button.buttonMode = enabled;
+            button.graphics.lineStyle(1, focused ? PanelTheme.GOLD :
+                (enabled ? PanelTheme.CYAN : PanelTheme.DISABLED_WIDGET));
+            button.graphics.beginFill(focused ? PanelTheme.SELECTED_FILL :
+                PanelTheme.BUTTON_FILL, 0.95);
+            button.graphics.drawRoundRect(0, 0, width, 30, 5, 5);
+            button.graphics.endFill();
+            VectorTextRenderer.addText(button, label, 12, 6, 13,
+                enabled ? PanelTheme.TEXT : PanelTheme.DISABLED_TEXT,
+                true, width - 24, 18);
+            target.addChild(button);
+            hits.register(button, enabled ? "activate" : "disabled",
+                control, findControlIndex(current, control));
+        }
+
+        private function drawHeadPoseAxis(panel:Sprite, current:Object,
+            axis:Object, deadzoneControl:Object, width:Number,
+            height:Number):void
+        {
+            var available:Boolean = Boolean(axis.liveAvailable);
+            var label:String = String(axis.label).toUpperCase();
+            var output:Number = Number(axis.outputDegrees);
+            var tracker:Number = Number(axis.trackerDegrees);
+            var enabledControl:Object = liveControlById(current,
+                String(axis.enabledControlId));
+            var invertedControl:Object = liveControlById(current,
+                String(axis.invertedControlId));
+            var active:Boolean = enabledControl == null ||
+                Boolean(enabledControl.booleanValue);
+            var sensitivityControl:Object = liveControlById(current,
+                String(axis.sensitivityControlId));
+            var sensitivity:Number = numericLiveValue(sensitivityControl, 1);
+            var deadzone:Number = Math.max(0,
+                numericLiveValue(deadzoneControl, 0));
+            var direction:Number = invertedControl != null &&
+                Boolean(invertedControl.booleanValue) ? -1 : 1;
+            var gatedInput:Number = tracker * sensitivity * direction;
+            var insideDeadzone:Boolean = deadzone > 0 &&
+                Math.abs(gatedInput) <= deadzone;
+            VectorTextRenderer.addText(panel, label, 12, 8, 15,
+                available && active ? PanelTheme.TEXT :
+                    PanelTheme.DISABLED_TEXT,
+                true, width - 24, 20);
+            VectorTextRenderer.addText(panel,
+                !active ? "AXIS DISABLED" : (available ?
+                    (insideDeadzone ?
+                        ("DEADZONE  " + signedDegrees(gatedInput) +
+                        " / " + deadzone.toFixed(1) + " DEG") :
+                        ("MAPPED  " + signedDegrees(output) +
+                        "    RAW  " + signedDegrees(tracker))) :
+                    "NO LIVE SIGNAL"), 12, 29, 12,
+                available && active ? (insideDeadzone ?
+                    PanelTheme.TIER_RED : PanelTheme.TIER_YELLOW) :
+                    PanelTheme.WARNING, true, width - 24, 18);
+
+            var minimumControl:Object = liveControlById(current,
+                String(axis.minimumControlId));
+            var centerControl:Object = liveControlById(current,
+                String(axis.centerControlId));
+            var maximumControl:Object = liveControlById(current,
+                String(axis.maximumControlId));
+            var minimum:Number = numericLiveValue(minimumControl, -90);
+            var center:Number = numericLiveValue(centerControl, 0);
+            var maximum:Number = numericLiveValue(maximumControl, 90);
+            var view:uint = uint(axis.view);
+            var graphX:Number = 108;
+            var graphY:Number = 215;
+            var radius:Number = 82;
+            var wireColor:uint = available && active ? PanelTheme.CYAN :
+                PanelTheme.DISABLED_WIDGET;
+
+            panel.graphics.lineStyle(1, PanelTheme.BORDER, 0.65);
+            panel.graphics.drawCircle(graphX, graphY, radius + 10);
+            drawPoseDatum(panel, graphX, graphY, radius, view, wireColor);
+            drawPoseArc(panel, graphX, graphY, radius + 9,
+                poseScreenAngle(view, minimum),
+                poseScreenAngle(view, center),
+                PanelTheme.AXIS_NEGATIVE, 3);
+            drawPoseArc(panel, graphX, graphY, radius + 9,
+                poseScreenAngle(view, center),
+                poseScreenAngle(view, maximum),
+                PanelTheme.TIER_GREEN, 3);
+            drawPoseTick(panel, graphX, graphY, radius + 9,
+                poseScreenAngle(view, 0), PanelTheme.DIM_TEXT, 7);
+            drawPoseTick(panel, graphX, graphY, radius + 9,
+                poseScreenAngle(view, center), PanelTheme.TEXT, 10);
+            if (deadzoneControl != null) {
+                drawDeadzoneGauge(panel, graphX, graphY, radius - 18,
+                    deadzoneGaugeCenterAngle(view), gatedInput, deadzone,
+                    Math.max(0.0001, Number(deadzoneControl.maximum)),
+                    available && active, insideDeadzone);
+            }
+
+            if (view == 0) {
+                drawTopHead(panel, graphX, graphY, wireColor);
+            } else if (view == 1) {
+                drawProfileHead(panel, graphX, graphY, wireColor);
+            } else {
+                drawArtificialHorizon(panel, graphX, graphY, radius - 14,
+                    poseScreenAngle(view, output), wireColor);
+            }
+            if (available && active && !insideDeadzone) {
+                drawPoseLiveVector(panel, graphX, graphY, radius + 1,
+                    poseScreenAngle(view, output),
+                    PanelTheme.TIER_YELLOW);
+                drawPoseLiveMarker(panel, graphX, graphY, radius + 9,
+                    poseScreenAngle(view, output),
+                    PanelTheme.TIER_YELLOW, 1.0);
+            }
+
+            var tuneX:Number = 216;
+            var tuneWidth:Number = Math.max(174, width - tuneX - 12);
+            drawHeadPoseToggle(panel, current, enabledControl,
+                "ENABLE", tuneX, 58, 104);
+            drawHeadPoseToggle(panel, current, invertedControl,
+                "INVERT", tuneX + 116, 58, 104);
+            drawHeadPoseTuning(panel, current, sensitivityControl,
+                "SENSITIVITY", tuneX, 108, tuneWidth);
+            drawHeadPoseTuning(panel, current, minimumControl,
+                view == 1 ? "DOWN LIMIT" :
+                    (view == 2 ? "LEFT BANK" : "LEFT LIMIT"),
+                tuneX, 174, tuneWidth);
+            drawHeadPoseTuning(panel, current, centerControl,
+                view == 2 ? "LEVEL / CENTER" : "NEUTRAL / CENTER",
+                tuneX, 240, tuneWidth);
+            drawHeadPoseTuning(panel, current, maximumControl,
+                view == 1 ? "UP LIMIT" :
+                    (view == 2 ? "RIGHT BANK" : "RIGHT LIMIT"),
+                tuneX, 306, tuneWidth);
+        }
+
+        private function drawHeadPoseToggle(panel:Sprite, current:Object,
+            control:Object, label:String, x:Number, y:Number,
+            availableWidth:Number):void
+        {
+            var focused:Boolean = headPoseControlFocused(current, control);
+            VectorTextRenderer.addText(panel, label, x, y, 11,
+                focused ? PanelTheme.GOLD : (control == null ?
+                    PanelTheme.DISABLED_TEXT : PanelTheme.MUTED_TEXT),
+                true, availableWidth, 16);
+            if (control == null) return;
+            var widget:Sprite = new Sprite();
+            widget.x = x;
+            widget.y = y + 18;
+            if (focused) {
+                widget.graphics.lineStyle(1, PanelTheme.GOLD, 0.9);
+                widget.graphics.drawRoundRect(-6, -5, 110, 36, 5, 5);
+            }
+            var hit:Sprite = ControlWidgets.drawCompactToggleOnly(
+                widget, control);
+            panel.addChild(widget);
+            hits.register(hit, "activate", control,
+                findControlIndex(current, control));
+        }
+
+        private function drawHeadPoseTuning(panel:Sprite, current:Object,
+            control:Object, label:String, x:Number, y:Number,
+            availableWidth:Number):void
+        {
+            var focused:Boolean = headPoseControlFocused(current, control);
+            VectorTextRenderer.addText(panel, label, x, y, 11,
+                focused ? PanelTheme.GOLD : (control == null ?
+                    PanelTheme.DISABLED_TEXT : PanelTheme.MUTED_TEXT),
+                true, availableWidth, 16);
+            if (control == null) return;
+            var widget:Sprite = new Sprite();
+            widget.x = x;
+            widget.y = y + 18;
+            if (focused) {
+                widget.graphics.lineStyle(1, PanelTheme.GOLD, 0.9);
+                widget.graphics.drawRoundRect(-7, -4,
+                    availableWidth + 14, 41, 5, 5);
+            }
+            var hit:Sprite = ControlWidgets.drawCompactSliderOnly(
+                widget, control, availableWidth);
+            panel.addChild(widget);
+            hits.register(hit, "slider", control,
+                findControlIndex(current, control));
+        }
+
+        private function headPoseControlFocused(current:Object,
+            control:Object):Boolean
+        {
+            if (activeSelectionState == null || control == null ||
+                activeSelectionState.focusRegion !=
+                    PanelLayout.FOCUS_CONTROLS) return false;
+            return activeSelectionState.selectedRow ==
+                findControlIndex(current, control);
+        }
+
+        private function headPoseOwnsControl(current:Object,
+            controlId:String):Boolean
+        {
+            if (current == null || current.liveComponents == null ||
+                controlId.length == 0) return false;
+            for each (var component:Object in current.liveComponents) {
+                if (uint(component.kind) != 4) continue;
+                if (controlId == String(component.recenterControlId))
+                    return true;
+                if (controlId == String(component.deadzoneControlId))
+                    return true;
+                if (component.axes == null) continue;
+                for each (var axis:Object in component.axes) {
+                    if (controlId == String(axis.enabledControlId) ||
+                        controlId == String(axis.invertedControlId) ||
+                        controlId == String(axis.sensitivityControlId) ||
+                        controlId == String(axis.minimumControlId) ||
+                        controlId == String(axis.centerControlId) ||
+                        controlId == String(axis.maximumControlId)) return true;
+                }
+            }
+            return false;
+        }
+
+        private function poseScreenAngle(view:uint, degrees:Number):Number
+        {
+            if (view == 1) return 90 - degrees;
+            return -degrees;
+        }
+
+        private function deadzoneGaugeCenterAngle(view:uint):Number
+        {
+            // Pitch zero is the right-hand eye-level datum. Yaw and roll use
+            // the upward forward/level datum.
+            return view == 1 ? 90 : 0;
+        }
+
+        private function drawPoseDatum(target:Sprite, centerX:Number,
+            centerY:Number, radius:Number, view:uint, color:uint):void
+        {
+            target.graphics.lineStyle(1, color, 0.32);
+            if (view == 1) {
+                target.graphics.moveTo(centerX - radius, centerY);
+                target.graphics.lineTo(centerX - 14, centerY);
+                target.graphics.moveTo(centerX + 14, centerY);
+                target.graphics.lineTo(centerX + radius, centerY);
+                VectorTextRenderer.addText(target, "EYE LEVEL",
+                    centerX + radius - 64, centerY - 18, 9,
+                    PanelTheme.DIM_TEXT, true, 62, 13);
+            } else {
+                target.graphics.moveTo(centerX, centerY - radius);
+                target.graphics.lineTo(centerX, centerY - 17);
+                target.graphics.moveTo(centerX, centerY + 17);
+                target.graphics.lineTo(centerX, centerY + radius);
+                target.graphics.moveTo(centerX - radius, centerY);
+                target.graphics.lineTo(centerX - 17, centerY);
+                target.graphics.moveTo(centerX + 17, centerY);
+                target.graphics.lineTo(centerX + radius, centerY);
+            }
+        }
+
+        private function drawPoseArc(target:Sprite, centerX:Number,
+            centerY:Number, radius:Number, startDegrees:Number,
+            endDegrees:Number, color:uint, thickness:Number):void
+        {
+            var span:Number = endDegrees - startDegrees;
+            var steps:int = Math.max(1, Math.ceil(Math.abs(span) / 4));
+            target.graphics.lineStyle(thickness, color, 0.95);
+            for (var index:int = 0; index <= steps; ++index) {
+                var degrees:Number = startDegrees + span * index / steps;
+                var radians:Number = (degrees - 90) * Math.PI / 180;
+                var pointX:Number = centerX + Math.cos(radians) * radius;
+                var pointY:Number = centerY + Math.sin(radians) * radius;
+                if (index == 0) target.graphics.moveTo(pointX, pointY);
+                else target.graphics.lineTo(pointX, pointY);
+            }
+        }
+
+        private function drawPoseTick(target:Sprite, centerX:Number,
+            centerY:Number, radius:Number, degrees:Number, color:uint,
+            length:Number):void
+        {
+            var radians:Number = (degrees - 90) * Math.PI / 180;
+            target.graphics.lineStyle(2, color, 1.0);
+            target.graphics.moveTo(centerX + Math.cos(radians) *
+                (radius - length), centerY + Math.sin(radians) *
+                (radius - length));
+            target.graphics.lineTo(centerX + Math.cos(radians) *
+                (radius + length), centerY + Math.sin(radians) *
+                (radius + length));
+        }
+
+        private function drawPoseLiveMarker(target:Sprite, centerX:Number,
+            centerY:Number, radius:Number, degrees:Number, color:uint,
+            alpha:Number):void
+        {
+            var radians:Number = (degrees - 90) * Math.PI / 180;
+            var markerX:Number = centerX + Math.cos(radians) * radius;
+            var markerY:Number = centerY + Math.sin(radians) * radius;
+            target.graphics.lineStyle(2, color, alpha);
+            target.graphics.beginFill(color, 0.3 * alpha);
+            target.graphics.drawCircle(markerX, markerY, 7);
+            target.graphics.endFill();
+        }
+
+        private function drawPoseLiveVector(target:Sprite, centerX:Number,
+            centerY:Number, radius:Number, degrees:Number, color:uint):void
+        {
+            var radians:Number = (degrees - 90) * Math.PI / 180;
+            target.graphics.lineStyle(2, color, 0.82);
+            target.graphics.moveTo(centerX, centerY);
+            target.graphics.lineTo(centerX + Math.cos(radians) * radius,
+                centerY + Math.sin(radians) * radius);
+        }
+
+        private function drawDeadzoneGauge(target:Sprite, centerX:Number,
+            centerY:Number, radius:Number, centerAngle:Number,
+            input:Number, deadzone:Number, maximumDeadzone:Number,
+            available:Boolean, inside:Boolean):void
+        {
+            drawPoseArc(target, centerX, centerY, radius,
+                centerAngle - 90, centerAngle + 90, PanelTheme.BORDER, 1);
+            drawPoseTick(target, centerX, centerY, radius, centerAngle,
+                PanelTheme.DIM_TEXT, 4);
+            if (deadzone <= 0) return;
+            var settingFraction:Number = Math.max(0, Math.min(1,
+                deadzone / maximumDeadzone));
+            var halfSpan:Number = 90 * settingFraction;
+            drawPoseArc(target, centerX, centerY, radius,
+                centerAngle - halfSpan, centerAngle + halfSpan,
+                PanelTheme.TIER_RED, 3);
+            drawPoseTick(target, centerX, centerY, radius,
+                centerAngle - halfSpan,
+                PanelTheme.TIER_RED, 5);
+            drawPoseTick(target, centerX, centerY, radius,
+                centerAngle + halfSpan,
+                PanelTheme.TIER_RED, 5);
+            if (!available) return;
+            var fraction:Number = Math.max(-1,
+                Math.min(1, input / Math.max(0.0001, deadzone)));
+            var gaugeAngle:Number = centerAngle + fraction * halfSpan;
+            drawPoseLiveMarker(target, centerX, centerY, radius,
+                gaugeAngle, PanelTheme.TIER_RED, inside ? 1.0 : 0.42);
+        }
+
+        private function drawTopHead(target:Sprite, centerX:Number,
+            centerY:Number, color:uint):void
+        {
+            var head:Sprite = new Sprite();
+            head.x = centerX;
+            head.y = centerY;
+            // Minimal overhead pilot helmet: one readable shell, visor and
+            // centerline rather than an anatomical mesh.
+            head.graphics.lineStyle(2, color, 0.78);
+            head.graphics.moveTo(0, -49);
+            head.graphics.curveTo(-27, -44, -36, -22);
+            head.graphics.curveTo(-43, 3, -31, 28);
+            head.graphics.curveTo(-18, 40, 0, 43);
+            head.graphics.curveTo(18, 40, 31, 28);
+            head.graphics.curveTo(43, 3, 36, -22);
+            head.graphics.curveTo(27, -44, 0, -49);
+
+            head.graphics.lineStyle(1, color, 0.52);
+            head.graphics.moveTo(-29, -25);
+            head.graphics.curveTo(0, -11, 29, -25);
+            head.graphics.moveTo(-32, -12);
+            head.graphics.curveTo(-16, 3, 0, 5);
+            head.graphics.curveTo(16, 3, 32, -12);
+            head.graphics.moveTo(0, -44);
+            head.graphics.lineTo(0, 35);
+            head.graphics.moveTo(-24, 31);
+            head.graphics.curveTo(0, 20, 24, 31);
+
+            // Earcups and short neck opening keep the symbol recognisably a
+            // pilot without adding facial clutter.
+            head.graphics.lineStyle(2, color, 0.68);
+            head.graphics.drawRoundRect(-43, -2, 9, 23, 4, 4);
+            head.graphics.drawRoundRect(34, -2, 9, 23, 4, 4);
+            head.graphics.lineStyle(1, color, 0.48);
+            head.graphics.moveTo(-13, 39);
+            head.graphics.lineTo(-10, 50);
+            head.graphics.moveTo(13, 39);
+            head.graphics.lineTo(10, 50);
+            head.graphics.moveTo(-10, 50);
+            head.graphics.curveTo(0, 46, 10, 50);
+            head.graphics.drawCircle(0, 0, 4);
+            target.addChild(head);
+        }
+
+        private function drawProfileHead(target:Sprite, centerX:Number,
+            centerY:Number, color:uint):void
+        {
+            var head:Sprite = new Sprite();
+            head.x = centerX;
+            head.y = centerY;
+            // Clean side-profile flight helmet shell.
+            head.graphics.lineStyle(2, color, 0.80);
+            head.graphics.moveTo(-13, 43);
+            head.graphics.lineTo(-11, 29);
+            head.graphics.curveTo(-38, 16, -38, -13);
+            head.graphics.curveTo(-33, -40, -6, -47);
+            head.graphics.curveTo(18, -44, 26, -25);
+            head.graphics.lineTo(29, -15);
+            head.graphics.lineTo(43, -4);
+            head.graphics.lineTo(34, 2);
+            head.graphics.lineTo(36, 8);
+            head.graphics.lineTo(31, 12);
+            head.graphics.curveTo(28, 24, 12, 30);
+            head.graphics.lineTo(9, 43);
+
+            // Visor sweep and restrained face plane.
+            head.graphics.lineStyle(1, color, 0.54);
+            head.graphics.moveTo(18, -31);
+            head.graphics.curveTo(31, -18, 31, 5);
+            head.graphics.moveTo(7, -17);
+            head.graphics.lineTo(21, -16);
+            head.graphics.lineTo(27, -12);
+            head.graphics.moveTo(26, 7);
+            head.graphics.lineTo(32, 8);
+            head.graphics.moveTo(-7, 9);
+            head.graphics.lineTo(15, 27);
+
+            // Earcup, chin strap and neck opening.
+            head.graphics.lineStyle(2, color, 0.68);
+            head.graphics.drawCircle(-8, 1, 11);
+            head.graphics.lineStyle(1, color, 0.48);
+            head.graphics.drawCircle(-8, 1, 6);
+            head.graphics.moveTo(-2, 10);
+            head.graphics.lineTo(19, 24);
+            head.graphics.moveTo(-13, 43);
+            head.graphics.lineTo(-24, 53);
+            head.graphics.moveTo(9, 43);
+            head.graphics.lineTo(20, 53);
+            head.graphics.moveTo(-24, 53);
+            head.graphics.curveTo(-2, 47, 20, 53);
+            head.graphics.drawCircle(0, 0, 4);
+            target.addChild(head);
+        }
+
+        private function drawArtificialHorizon(target:Sprite,
+            centerX:Number, centerY:Number, radius:Number, degrees:Number,
+            color:uint):void
+        {
+            var horizon:Sprite = new Sprite();
+            horizon.x = centerX;
+            horizon.y = centerY;
+            horizon.rotation = -degrees;
+            horizon.graphics.lineStyle(2, color, 0.72);
+            horizon.graphics.moveTo(-radius, 0);
+            horizon.graphics.lineTo(-24, 0);
+            horizon.graphics.moveTo(24, 0);
+            horizon.graphics.lineTo(radius, 0);
+            horizon.graphics.lineStyle(1, color, 0.35);
+            horizon.graphics.moveTo(-radius + 14, -17);
+            horizon.graphics.lineTo(radius - 14, -17);
+            horizon.graphics.moveTo(-radius + 14, 17);
+            horizon.graphics.lineTo(radius - 14, 17);
+            target.addChild(horizon);
+            target.graphics.lineStyle(2, PanelTheme.TEXT, 0.9);
+            target.graphics.moveTo(centerX - 24, centerY);
+            target.graphics.lineTo(centerX - 7, centerY);
+            target.graphics.lineTo(centerX, centerY + 7);
+            target.graphics.lineTo(centerX + 7, centerY);
+            target.graphics.lineTo(centerX + 24, centerY);
+        }
+
+        private function signedDegrees(value:Number):String
+        {
+            return (value >= 0 ? "+" : "") + value.toFixed(1) + " DEG";
+        }
+
+        private function liveControlById(current:Object,
+            controlId:String):Object
+        {
+            if (current == null || current.controls == null) return null;
+            for each (var control:Object in current.controls) {
+                if (String(control.controlId) == controlId) return control;
+            }
+            return null;
+        }
+
+        private function numericLiveValue(control:Object,
+            fallback:Number):Number
+        {
+            if (control == null) return fallback;
+            return uint(control.kind) == 1 || uint(control.kind) == 3 ?
+                Number(control.integerValue) : Number(control.floatValue);
+        }
+
+        private function drawRadialResponse(component:Object, current:Object,
+            x:Number, y:Number, width:Number, height:Number,
+            record:Boolean = true):void
+        {
+            if (record) livePlacements.push({
+                "channelId":String(component.channelId), "kind":3,
+                "x":x, "y":y, "width":width, "height":height
+            });
+            var key:String = liveKey(String(current.moduleId),
+                String(current.pageId), String(component.channelId));
+            var state:Object = radialStates[key];
+            if (state == null) {
+                state = {
+                    "x":Number(component.liveX),
+                    "y":Number(component.liveY),
+                    "captured":true,
+                    "stoppedByUser":false,
+                    "lastMotionMs":getTimer(),
+                    "lastTickMs":getTimer(),
+                    "pollCarryMs":0,
+                    "pointerReady":false,
+                    "lastPointerX":0,
+                    "lastPointerY":0
+                };
+                radialStates[key] = state;
+            }
+            if (Boolean(state.captured)) {
+                if (activeRadialKey != key) {
+                    state.pointerReady = false;
+                    state.lastMotionMs = getTimer();
+                    state.lastTickMs = state.lastMotionMs;
+                    state.pollCarryMs = 0;
+                }
+                activeRadialKey = key;
+            }
+
+            var card:Sprite = new Sprite();
+            card.x = x;
+            card.y = y;
+            card.graphics.lineStyle(1, PanelTheme.ROW_BORDER);
+            card.graphics.beginFill(PanelTheme.ROW_EVEN);
+            card.graphics.drawRoundRect(0, 0, width, height, 8, 8);
+            card.graphics.endFill();
+            liveLayer.addChild(card);
+
+            VectorTextRenderer.addText(card,
+                String(component.title).toUpperCase(), 18, 12, 17,
+                PanelTheme.TEXT, true, width - 150, 24);
+            VectorTextRenderer.addText(card, "LIVE TUNING LAB", width - 170,
+                13, 13, PanelTheme.CYAN, true, 150, 20);
+
+            var maximum:Number = Math.max(1, Number(component.maximumRadius));
+            var radiusControl:Object = liveControlById(current,
+                String(component.radiusControlId));
+            var idleControl:Object = liveControlById(current,
+                String(component.idleMillisecondsControlId));
+            var decayControl:Object = liveControlById(current,
+                String(component.decayRateControlId));
+            var enabledControl:Object = liveControlById(current,
+                String(component.enabledControlId));
+            var pollControl:Object = liveControlById(current,
+                String(component.pollRateControlId));
+            var activationRadius:Number = Math.max(0, Math.min(maximum,
+                numericLiveValue(radiusControl, maximum)));
+
+            var graphX:Number = 214;
+            var graphY:Number = 230;
+            var outer:Number = 166;
+            card.graphics.lineStyle(3, PanelTheme.TEXT, 0.9);
+            card.graphics.drawCircle(graphX, graphY, outer);
+            card.graphics.lineStyle(2, PanelTheme.CYAN, 0.78);
+            card.graphics.drawCircle(graphX, graphY,
+                outer * activationRadius / maximum);
+            card.graphics.lineStyle(1, PanelTheme.BORDER, 0.8);
+            card.graphics.moveTo(graphX - outer, graphY);
+            card.graphics.lineTo(graphX + outer, graphY);
+            card.graphics.moveTo(graphX, graphY - outer);
+            card.graphics.lineTo(graphX, graphY + outer);
+
+            VectorTextRenderer.addText(card, "FLIGHT ENVELOPE", 122, 48, 12,
+                PanelTheme.DIM_TEXT, true, 190, 18);
+            VectorTextRenderer.addText(card,
+                "CYAN  ACTIVATION ZONE", 116, 403, 12,
+                PanelTheme.CYAN, true, 230, 18);
+
+            var graphHit:Sprite = new Sprite();
+            graphHit.graphics.beginFill(0xFFFFFF, 0.0);
+            graphHit.graphics.drawCircle(graphX, graphY, outer);
+            graphHit.graphics.endFill();
+            graphHit.mouseEnabled = false;
+            card.addChild(graphHit);
+
+            var reticle:Sprite = new Sprite();
+            reticle.mouseEnabled = false;
+            reticle.graphics.lineStyle(2, PanelTheme.TEXT);
+            reticle.graphics.drawCircle(0, 0, 15);
+            reticle.graphics.drawCircle(0, 0, 25);
+            reticle.graphics.moveTo(-42, 0);
+            reticle.graphics.lineTo(-25, 0);
+            reticle.graphics.moveTo(25, 0);
+            reticle.graphics.lineTo(42, 0);
+            reticle.graphics.moveTo(0, -42);
+            reticle.graphics.lineTo(0, -25);
+            reticle.graphics.moveTo(0, 25);
+            reticle.graphics.lineTo(0, 42);
+            card.addChild(reticle);
+
+            var status:Sprite = VectorTextRenderer.addText(card, "", 474, 55,
+                14, PanelTheme.GOLD, true, width - 650, 22);
+            var demoButton:Sprite = new Sprite();
+            demoButton.x = width - 154;
+            demoButton.y = 48;
+            demoButton.graphics.lineStyle(1, PanelTheme.CYAN);
+            demoButton.graphics.beginFill(PanelTheme.BUTTON_FILL);
+            demoButton.graphics.drawRoundRect(0, 0, 132, 32, 5, 5);
+            demoButton.graphics.endFill();
+            demoButton.buttonMode = true;
+            VectorTextRenderer.addText(demoButton,
+                Boolean(state.captured) ? "STOP DEMO" : "START DEMO",
+                10, 7, 13, PanelTheme.CYAN, true, 112, 18);
+            card.addChild(demoButton);
+            hits.register(demoButton, "radialDemoToggle",
+                {"key":key, "component":component}, 0);
+            state.reticle = reticle;
+            state.status = status;
+            state.graph = graphHit;
+            state.graphX = graphX;
+            state.graphY = graphY;
+            state.outer = outer;
+            state.maximum = maximum;
+            state.component = component;
+            state.current = current;
+
+            VectorTextRenderer.addText(card,
+                "LIVE WHILE THIS PAGE IS OPEN. MOUSE MOTION DRIVES THE RETICLE; WHEN IDLE, TUNED CENTERING RUNS.",
+                474, 80, 13, PanelTheme.MUTED_TEXT, false,
+                width - 500, 36);
+            drawRadialTuning(card, current, radiusControl, "ACTIVATION RADIUS",
+                "Changes the cyan zone that permits a return.", 474, 126);
+            drawRadialTuning(card, current, idleControl, "IDLE DELAY",
+                "Changes the pause after release before motion begins.", 474, 214);
+            drawRadialTuning(card, current, decayControl, "CENTERING RATE",
+                "Changes the exponential return speed.", 474, 302);
+            VectorTextRenderer.addText(card,
+                "Preview uses the same exp(-rate x dt) step at " +
+                    int(numericLiveValue(pollControl, 120)) + " Hz.",
+                474, 392, 12, PanelTheme.DIM_TEXT, false,
+                width - 500, 18);
+            state.enabled = enabledControl == null ||
+                Boolean(enabledControl.booleanValue);
+            updateRadialView(state);
+        }
+
+        private function drawRadialTuning(card:Sprite, current:Object,
+            control:Object, label:String, detail:String,
+            x:Number, y:Number):void
+        {
+            if (control == null) return;
+            VectorTextRenderer.addText(card, label, x, y, 13,
+                PanelTheme.TEXT, true, 220, 18);
+            VectorTextRenderer.addText(card, detail, x + 230, y, 12,
+                PanelTheme.DIM_TEXT, false, 610, 18);
+            var widget:Sprite = new Sprite();
+            widget.x = x;
+            widget.y = y + 25;
+            var hit:Sprite = ControlWidgets.drawSliderOnly(widget, control);
+            var available:Number = Math.max(520,
+                card.width - x - 22);
+            widget.scaleX = Math.min(1, available / 748);
+            card.addChild(widget);
+            hits.register(hit, "slider", control,
+                findControlIndex(current, control));
+        }
+
+        public function get radialDemoActive():Boolean
+        {
+            if (activeRadialKey.length == 0) return false;
+            var state:Object = radialStates[activeRadialKey];
+            return state != null && Boolean(state.captured) &&
+                state.graph != null && state.graph.parent != null;
+        }
+
+        public function toggleRadialDemo(payload:Object,
+            stageX:Number, stageY:Number):void
+        {
+            if (payload == null) return;
+            var key:String = String(payload.key);
+            var state:Object = radialStates[key];
+            if (state == null) return;
+            if (Boolean(state.captured)) {
+                releaseRadialDemo();
+                return;
+            }
+            if (activeRadialKey.length > 0 &&
+                activeRadialKey != key) releaseRadialDemo();
+            activeRadialKey = key;
+            state.captured = true;
+            state.stoppedByUser = false;
+            state.pointerReady = true;
+            state.lastPointerX = stageX;
+            state.lastPointerY = stageY;
+            state.lastMotionMs = getTimer();
+            state.lastTickMs = state.lastMotionMs;
+            state.pollCarryMs = 0;
+            updateRadialView(state);
+        }
+
+        public function moveRadialDemo(stageX:Number,
+            stageY:Number):Boolean
+        {
+            if (!radialDemoActive) return false;
+            var state:Object = radialStates[activeRadialKey];
+            if (!Boolean(state.pointerReady)) {
+                state.pointerReady = true;
+                state.lastPointerX = stageX;
+                state.lastPointerY = stageY;
+                return true;
+            }
+            var deltaX:Number = stageX - Number(state.lastPointerX);
+            var deltaY:Number = stageY - Number(state.lastPointerY);
+            state.lastPointerX = stageX;
+            state.lastPointerY = stageY;
+            if (Math.abs(deltaX) < 0.01 && Math.abs(deltaY) < 0.01) return true;
+
+            var dx:Number = Number(state.x) + deltaX /
+                Number(state.outer) * Number(state.maximum);
+            var dy:Number = Number(state.y) + deltaY /
+                Number(state.outer) * Number(state.maximum);
+            var distance:Number = Math.sqrt(dx * dx + dy * dy);
+            var maximum:Number = Number(state.maximum);
+            if (distance > maximum) {
+                dx *= maximum / distance;
+                dy *= maximum / distance;
+            }
+            state.x = dx;
+            state.y = dy;
+            state.lastMotionMs = getTimer();
+            state.pollCarryMs = 0;
+            updateRadialView(state);
+            return true;
+        }
+
+        public function releaseRadialDemo():Boolean
+        {
+            if (!radialDemoActive) return false;
+            var state:Object = radialStates[activeRadialKey];
+            state.captured = false;
+            state.stoppedByUser = true;
+            state.pointerReady = false;
+            state.lastTickMs = getTimer();
+            state.pollCarryMs = 0;
+            activeRadialKey = "";
+            updateRadialView(state);
+            return true;
+        }
+
+        public function tickRadialDemo(current:Object):void
+        {
+            if (current == null || current.liveComponents == null) return;
+            var now:int = getTimer();
+            for each (var component:Object in current.liveComponents) {
+                if (uint(component.kind) != 3) continue;
+                var key:String = liveKey(String(current.moduleId),
+                    String(current.pageId), String(component.channelId));
+                var state:Object = radialStates[key];
+                if (state == null || state.reticle == null ||
+                    state.reticle.parent == null || !Boolean(state.captured)) {
+                    continue;
+                }
+                var radius:Number = numericLiveValue(liveControlById(current,
+                    String(component.radiusControlId)), Number(component.maximumRadius));
+                var idle:Number = numericLiveValue(liveControlById(current,
+                    String(component.idleMillisecondsControlId)), 80);
+                var rate:Number = numericLiveValue(liveControlById(current,
+                    String(component.decayRateControlId)), 12);
+                var poll:Number = Math.max(30, numericLiveValue(liveControlById(
+                    current, String(component.pollRateControlId)), 120));
+                var enabled:Object = liveControlById(current,
+                    String(component.enabledControlId));
+                state.enabled = enabled == null || Boolean(enabled.booleanValue);
+                var dt:Number = Math.max(0, Math.min(100,
+                    now - int(state.lastTickMs)));
+                state.lastTickMs = now;
+                var distance:Number = Math.sqrt(Number(state.x) * Number(state.x) +
+                    Number(state.y) * Number(state.y));
+                if (Boolean(state.enabled) && distance <= radius &&
+                    distance > 0.1 && now - int(state.lastMotionMs) >= idle) {
+                    var stepMs:Number = 1000 / poll;
+                    state.pollCarryMs = Number(state.pollCarryMs) + dt;
+                    var steps:int = 0;
+                    while (Number(state.pollCarryMs) >= stepMs && steps++ < 16) {
+                        var factor:Number = Math.exp(-rate * stepMs / 1000);
+                        state.x = Number(state.x) * factor;
+                        state.y = Number(state.y) * factor;
+                        state.pollCarryMs = Number(state.pollCarryMs) - stepMs;
+                    }
+                    if (Math.abs(Number(state.x)) < 0.1) state.x = 0;
+                    if (Math.abs(Number(state.y)) < 0.1) state.y = 0;
+                }
+                updateRadialView(state);
+            }
+        }
+
+        private function updateRadialView(state:Object):void
+        {
+            if (state == null || state.reticle == null ||
+                state.reticle.parent == null) return;
+            state.reticle.x = Number(state.graphX) + Number(state.x) /
+                Number(state.maximum) * Number(state.outer);
+            state.reticle.y = Number(state.graphY) + Number(state.y) /
+                Number(state.maximum) * Number(state.outer);
+            var message:String;
+            var color:uint = PanelTheme.GOLD;
+            var distance:Number = Math.sqrt(Number(state.x) * Number(state.x) +
+                Number(state.y) * Number(state.y));
+            if (!Boolean(state.captured)) {
+                message = "DEMO STOPPED";
+            } else if (!Boolean(state.enabled)) {
+                message = "CENTERING DISABLED";
+                color = PanelTheme.WARNING;
+            } else {
+                var current:Object = state.current;
+                var component:Object = state.component;
+                var radius:Number = numericLiveValue(liveControlById(current,
+                    String(component.radiusControlId)), Number(state.maximum));
+                var idle:Number = numericLiveValue(liveControlById(current,
+                    String(component.idleMillisecondsControlId)), 80);
+                var elapsed:Number = getTimer() - int(state.lastMotionMs);
+                if (distance > radius) {
+                    message = "PARKED OUTSIDE ACTIVATION ZONE  -  " +
+                        distance.toFixed(1) + " / " + radius.toFixed(1) +
+                        "  -  STOP DEMO TO PAUSE";
+                    color = PanelTheme.WARNING;
+                } else if (distance <= 0.1) {
+                    message = "CENTERED  -  MOVE MOUSE";
+                    color = PanelTheme.CYAN;
+                } else if (elapsed < idle) {
+                    message = "IDLE DELAY  -  " + int(idle - elapsed) +
+                        " MS";
+                } else {
+                    message = "CENTERING  -  DISPLACEMENT " +
+                        distance.toFixed(1);
+                    color = PanelTheme.CYAN;
+                }
+            }
+            VectorTextRenderer.drawText(state.status as Sprite, message, 14,
+                color, true, 850, 22);
         }
 
         private function liveStatus(component:Object, range:Boolean = false):String
@@ -1705,7 +2758,8 @@ package acp.ui
             rowLayer.addChild(row);
         }
 
-        private function drawHelp(current:Object, state:MenuSelectionState):void
+        private function drawHelp(current:Object, state:MenuSelectionState,
+            inputMode:String):void
         {
             helpLayer.graphics.clear();
             helpLayer.graphics.lineStyle(1, PanelTheme.BORDER);
@@ -1715,26 +2769,33 @@ package acp.ui
             helpLayer.graphics.endFill();
             var description:String = String(current.description);
             if (current.controls != null && current.controls.length > 0) {
-                description = String(current.controls[state.selectedRow].description);
+                var selectedControl:Object = current.controls[state.selectedRow];
+                description = String(selectedControl.description);
                 var semanticDetail:String = semanticRenderer.detailForControl(
-                    current, current.controls[state.selectedRow]);
+                    current, selectedControl);
                 if (semanticDetail.length > 0) {
                     description += "  " + semanticDetail;
                 }
-                if (uint(current.controls[state.selectedRow].kind) == 5 &&
-                    String(current.controls[state.selectedRow].stringValue).length > 0) {
-                    description += "  ASSIGNED: " +
-                        String(current.controls[state.selectedRow].stringValue);
+                if (uint(selectedControl.kind) == 5 &&
+                    (uint(selectedControl.flags) & 4096) != 0) {
+                    description += inputMode == "controller" ?
+                        "  X UNBINDS." : (inputMode == "keyboard" ?
+                            "  DELETE OR BACKSPACE UNBINDS." :
+                            "  USE CLEAR TO UNBIND.");
                 }
-                if (uint(current.controls[state.selectedRow].kind) == 8 &&
-                    current.controls[state.selectedRow].recordItems != null) {
+                if (uint(selectedControl.kind) == 5 &&
+                    String(selectedControl.stringValue).length > 0) {
+                    description += "  ASSIGNED: " +
+                        String(selectedControl.stringValue);
+                }
+                if (uint(selectedControl.kind) == 8 &&
+                    selectedControl.recordItems != null) {
                     var selectedRecordId:String =
-                        String(current.controls[state.selectedRow].stringValue);
+                        String(selectedControl.stringValue);
                     for (var recordIndex:int = 0; recordIndex <
-                        current.controls[state.selectedRow].recordItems.length;
+                        selectedControl.recordItems.length;
                         ++recordIndex) {
-                        var record:Object = current.controls[state.selectedRow]
-                            .recordItems[recordIndex];
+                        var record:Object = selectedControl.recordItems[recordIndex];
                         if (String(record.recordId) == selectedRecordId) {
                             description = String(record.summary) + "  " +
                                 String(record.detail);

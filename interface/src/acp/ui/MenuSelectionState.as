@@ -131,6 +131,13 @@ package acp.ui
                     current, selectedRow, -1);
                 selectedRow = Math.max(0, replacement);
             }
+            if (hasHeadPoseSurface(current)) {
+                // The Head Pose card presents all of its provider controls in
+                // one fixed instrument. Keep the virtual control viewport at
+                // zero while keyboard/controller focus moves through them.
+                firstVisibleRow = 0;
+                return;
+            }
             var visibleRows:int = current.liveComponents != null &&
                 current.liveComponents.length > 0 ? 5 : PanelLayout.VISIBLE_ROWS;
             var rows:Array = controlRows(current);
@@ -156,6 +163,15 @@ package acp.ui
             firstLayout = Math.max(0, Math.min(firstLayout,
                 Math.max(0, rows.length - visibleRows)));
             firstVisibleRow = int(rows[firstLayout][0]);
+        }
+
+        private function hasHeadPoseSurface(current:Object):Boolean
+        {
+            if (current == null || current.liveComponents == null) return false;
+            for each (var component:Object in current.liveComponents) {
+                if (uint(component.kind) == 4) return true;
+            }
+            return false;
         }
 
         public function moveControl(direction:int):Object

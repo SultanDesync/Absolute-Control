@@ -26,6 +26,8 @@ namespace AbsoluteControlPanelResearch::MenuInputRouter
     inline constexpr std::int32_t kNextPage = 'R';
     inline constexpr std::int32_t kApply = 'F';
     inline constexpr std::int32_t kCancel = 'X';
+    inline constexpr std::int32_t kBackspace = 0x08;
+    inline constexpr std::int32_t kDelete = 0x2E;
 
     enum class FocusRegion : std::uint32_t
     {

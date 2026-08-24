@@ -132,6 +132,7 @@ int main()
     CHECK(native.find("\"handlePointerMove\"") != std::string::npos);
     CHECK(native.find("\"handlePointerUp\"") != std::string::npos);
     CHECK(native.find("movePending") != std::string::npos);
+    CHECK(native.find("else if (moved &&") != std::string::npos);
     CHECK(native.find("kMouseWheelUpIdCode = 0x800") != std::string::npos);
     CHECK(native.find("kMouseWheelDownIdCode = 0x900") != std::string::npos);
     CHECK(native.find("\"handlePointerWheel\", &handled") != std::string::npos);
@@ -227,6 +228,20 @@ int main()
     CHECK(native.find("ComponentKind::RangeMeter") != std::string::npos);
     CHECK(native.find("SetString(target, \"valueFormat\"") != std::string::npos);
     CHECK(native.find("ComponentKind::TelemetryPlot") != std::string::npos);
+    CHECK(native.find("ComponentKind::RadialResponse") != std::string::npos);
+    CHECK(native.find("SetString(target, \"radiusControlId\"") !=
+        std::string::npos);
+    CHECK(native.find("ComponentKind::HeadPose") != std::string::npos);
+    CHECK(native.find("SetString(axis, \"sensitivityControlId\"") !=
+        std::string::npos);
+    CHECK(native.find("SetString(axis, \"invertedControlId\"") !=
+        std::string::npos);
+    CHECK(native.find("SetString(axis, \"enabledControlId\"") !=
+        std::string::npos);
+    CHECK(native.find("SetString(target, \"recenterControlId\"") !=
+        std::string::npos);
+    CHECK(native.find("SetString(target, \"deadzoneControlId\"") !=
+        std::string::npos);
     CHECK(native.find("component.telemetryHistory.samples[") != std::string::npos);
     CHECK(native.find("target.SetMember(\"samples\", samples)") != std::string::npos);
     CHECK(native.find("descriptor.associations[associationIndex]") !=
@@ -241,6 +256,36 @@ int main()
     CHECK(shell.find("drawSegmentedGrid") != std::string::npos);
     CHECK(shell.find("drawRangeMeter") != std::string::npos);
     CHECK(shell.find("drawTelemetryPlot") != std::string::npos);
+    CHECK(shell.find("drawRadialResponse") != std::string::npos);
+    CHECK(shell.find("drawHeadPose") != std::string::npos);
+    CHECK(shell.find("drawProfileHead") != std::string::npos);
+    CHECK(shell.find("drawArtificialHorizon") != std::string::npos);
+    CHECK(shell.find("drawHeadPoseAction") != std::string::npos);
+    CHECK(shell.find("drawHeadPoseSharedTuning") != std::string::npos);
+    CHECK(shell.find("drawDeadzoneGauge") != std::string::npos);
+    CHECK(shell.find("insideDeadzone") != std::string::npos);
+    CHECK(shell.find("deadzone / maximumDeadzone") != std::string::npos);
+    CHECK(shell.find("var halfSpan:Number = 90 * settingFraction") !=
+        std::string::npos);
+    CHECK(shell.find("deadzoneGaugeCenterAngle") != std::string::npos);
+    CHECK(shell.find("return view == 1 ? 90 : 0") != std::string::npos);
+    CHECK(shell.find("headPoseOwnsControl") != std::string::npos);
+    CHECK(shell.find("poseScreenAngle") != std::string::npos);
+    CHECK(shell.find("activeSelectionState") != std::string::npos);
+    CHECK(selection.find("hasHeadPoseSurface") != std::string::npos);
+    CHECK(widgets.find("drawCompactSliderOnly") != std::string::npos);
+    CHECK(widgets.find("drawCompactToggleOnly") != std::string::npos);
+    CHECK(shell.find("PanelTheme.AXIS_NEGATIVE") != std::string::npos);
+    CHECK(shell.find("MOUSE MOTION DRIVES THE RETICLE") !=
+        std::string::npos);
+    CHECK(shell.find("stageX - Number(state.lastPointerX)") !=
+        std::string::npos);
+    CHECK(shell.find("now - int(state.lastMotionMs) >= idle") !=
+        std::string::npos);
+    CHECK(shell.find("Math.exp(-rate * stepMs / 1000)") !=
+        std::string::npos);
+    CHECK(liveSurfaceInput.find("kind == \"radialDemoToggle\"") !=
+        std::string::npos);
     CHECK(shell.find("LIVE_COMPONENT_LIMIT:int = 6") != std::string::npos);
     CHECK(shell.find("roleColor(uint(band.visualRole))") != std::string::npos);
     CHECK(shell.find("function rangeBandColor") != std::string::npos);
@@ -299,6 +344,14 @@ int main()
     CHECK(widgets.find("registerHit(sliderHit, \"slider\"") !=
         std::string::npos);
     CHECK(widgets.find("registerHit(widget, \"choice\"") != std::string::npos);
+    CHECK(widgets.find("registerHit(bindingHits.clear, \"clearBinding\"") !=
+        std::string::npos);
+    CHECK(widgets.find("public static function clearBinding") !=
+        std::string::npos);
+    CHECK(actionScriptRoot.find("kind == \"clearBinding\"") !=
+        std::string::npos);
+    CHECK(actionScriptRoot.find("Keyboard.BACKSPACE") != std::string::npos &&
+        actionScriptRoot.find("Keyboard.DELETE") != std::string::npos);
     CHECK(widgets.find("\"RUN\"") == std::string::npos);
     CHECK(widgets.find("Boolean(control.available) &&\n"
                        "                (uint(control.flags) & 1) == 0") !=
@@ -393,7 +446,17 @@ int main()
     CHECK(native.find("IsCapturedModifierDown") != std::string::npos);
     CHECK(native.find("keyboard:0x{:02X};ctrl={};alt={};shift={}") != std::string::npos);
     CHECK(actionScript.find("beginBindingCapture") != std::string::npos);
-    CHECK(actionScript.find("PRESS KEY OR CHORD") != std::string::npos);
+    CHECK(actionScript.find("RECORDING INPUT...") != std::string::npos);
+    CHECK(shell.find("RECORDING BINDING") != std::string::npos);
+    CHECK(shell.find("RECORD THE NEW DIRECTINPUT CONTROL") !=
+        std::string::npos);
+    CHECK(shell.find("String(control.description)") != std::string::npos);
+    CHECK(shell.find("INPUT CAPTURE IS ACTIVE. NAVIGATION IS PAUSED") !=
+        std::string::npos);
+    CHECK(shell.find("CANCEL CAPTURE") != std::string::npos);
+    CHECK(shell.find("CLEAR BINDING") != std::string::npos);
+    CHECK(shell.find("DELETE OR BACKSPACE UNBINDS") != std::string::npos);
+    CHECK(native.find("XINPUT_GAMEPAD_X") != std::string::npos);
     CHECK(actionScript.find("0xFF00FF") == std::string::npos);
     CHECK(actionScript.find("ABSOLUTE CONTROL\"") != std::string::npos);
     CHECK(shell.find("VectorTextRenderer") != std::string::npos);

@@ -311,6 +311,15 @@ an unusable action:
 The provider selects descriptors only after size- and capability-checking the host.
 Host absence or rejection never disables provider gameplay.
 
+### Future inert provider assets
+
+Provider visual identity may later use a separate, bounded asset-pack capability. Such a contract
+may register static pictograms or vector symbols with stable IDs and mandatory text alternatives;
+semantic nodes could reference those IDs while the host retains sizing, tinting, placement, focus,
+and input behavior. It must not admit provider ActionScript, arbitrary SWFs, native drawing
+callbacks, executable renderers, or asset-driven hit regions. Custom behavior continues to require
+a reviewed semantic component and copied bounded frames.
+
 ## Reference vertical slices
 
 ### Flight Axes: composition foundation
@@ -417,10 +426,10 @@ height in scrolling, and suppresses the old page-top dashboard when live slots
 are present. C2 accepts at most one direct `LiveSlot` child per Card or Section,
 matching the renderer's bounded embedded-component contract.
 
-AbsoluteHOTAS publishes a 91-node Flight Axes tree containing the legacy summary,
-six-axis jump bar, Thrust/Rotation/6-DOF/Fallback sections, nine cards, all 45
-existing controls, and six per-axis live plots. Twenty-nine associations connect
-bindings and tuning controls to the input/output series they explain. Card state
+AbsoluteHOTAS publishes an 83-node Flight Axes tree containing the legacy summary,
+six-axis jump bar, Thrust/Rotation/6-DOF/Fallback sections, nine cards, all 43
+page controls, and six per-axis live plots. Ten associations connect tuning
+controls to the live markers they edit. Card state
 reports the bound source, required/unbound severity, aggregate readiness, reverse
 strategy, digital fallback coverage, and unapplied-draft state. The ordinary
 flat page remains the deterministic older-host or failed-live-registration

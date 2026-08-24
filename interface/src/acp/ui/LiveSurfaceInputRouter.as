@@ -25,6 +25,11 @@ package acp.ui
             if (kind == "liveDisclosure") {
                 shell.toggleLiveDisclosure(target.payload); redraw(); return true;
             }
+            if (kind == "radialDemoToggle") {
+                shell.toggleRadialDemo(target.payload, stageX, stageY);
+                redraw();
+                return true;
+            }
             if (kind == "slider") {
                 var current:Object = selection.page();
                 selection.focusRegion = PanelLayout.FOCUS_CONTROLS;

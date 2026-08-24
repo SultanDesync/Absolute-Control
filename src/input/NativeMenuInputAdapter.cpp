@@ -60,6 +60,9 @@ namespace AbsoluteControlPanelResearch::Input
                 Route{REX::W32::XINPUT_GAMEPAD_B,
                     SFSE::InputMap::kGamepadButtonOffset_B,
                     MenuInputRouter::kEscape},
+                Route{REX::W32::XINPUT_GAMEPAD_X,
+                    SFSE::InputMap::kGamepadButtonOffset_X,
+                    MenuInputRouter::kDelete},
             };
             const auto route = std::ranges::find_if(
                 routes, [&](const Route& candidate) {

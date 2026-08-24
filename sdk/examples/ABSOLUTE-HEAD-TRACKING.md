@@ -22,6 +22,11 @@ than menu-host responsibilities.
 - Provider callbacks for reads, draft writes, Apply, Cancel, and actions.
 - Deterministic generation with a checked-in header and CI drift detection.
 - A provider that remains functional when Absolute Control is absent or incompatible.
+- Optional `HeadPose` telemetry with profile/top wireframes, an artificial horizon, asymmetric
+  limits, configurable center, direct enable/invert/tuning controls, and manual recenter routed
+  through the ordinary Axes-page transaction. A shared center-aligned deadzone slider below the
+  graphs drives a proportionally sized red inner gate before the yellow mapped-output indicator
+  takes over.
 
 Generate and verify the descriptors with:
 
@@ -39,6 +44,14 @@ plugins have loaded. It validates the ABI version, structure size, module identi
 and every function pointer it needs before registering the generated module and pages. A missing,
 not-ready, or incompatible host leaves the head-tracking runtime operational and its fallback menu
 available.
+
+When the separately queried live API advertises `kLiveCapabilityHeadPose`, the provider registers
+one `head-pose` channel on the Axes page. The descriptor references the existing yaw, pitch, and roll
+enable/invert/sensitivity/minimum/center/maximum controls plus the provider-owned recenter action;
+it also references the shared deadzone slider. Its wait-free callback copies only prepared
+raw/output degrees. Missing capability, rejected
+registration, stale telemetry, or an older host leaves all ordinary controls and head-tracking
+behavior intact.
 
 Physical flight-control bindings add one provider-owned layer that the declarative ABI-v1 generator
 does not yet emit:

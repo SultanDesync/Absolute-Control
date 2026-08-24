@@ -7,11 +7,11 @@ Head Tracking, AbsoluteZero, and third-party providers built against the SDK.
 ## Requirement listing
 
 - **Name:** Absolute Control — Standalone Menu Host
-- **Version:** 0.2.0-beta.1
-- **Archive:** `Absolute-Control-v0.2.0-beta.1-Standalone.zip`
+- **Version:** 0.3.0-beta.1
+- **Archive:** `Absolute-Control-v0.3.0-beta.1-Standalone.zip`
 - **Summary:** Shared Pause Menu configuration host for modular Absolute providers. Contains no
   gameplay module.
-- **SHA-256:** `3FC27A210AC5ABD7DD41020A0B5861924F4DEA5FECAC7CDCF1FBA23E0416F4A0`
+- **SHA-256:** `5CD253DF9FB1F57E9197DBD889D23CAABECAFA5A2B7A366CF976A9134AC010FC`
 
 For the Absolute Power Nexus requirement entry, use:
 
@@ -39,7 +39,6 @@ are the same host and would cause one mod-manager entry to overwrite the other.
 
 ## Provenance
 
-The payload is byte-for-byte identical to the required `00 Core` component of Absolute Suite
-0.2.0-beta.1, which was assembled from validated Absolute Control commit
-`9c2f42929563372c433bc222710fced64721036c`.
-
+This standalone host is identical to the `00 Core` component in Absolute Suite
+0.3.0-beta.1. It contains the additive radial-response and head-pose surfaces,
+plus visible clearing for provider bindings.

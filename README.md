@@ -5,9 +5,10 @@ Independent modules register settings, actions, bindings, profiles, live telemet
 inside one consistent **MOD OPTIONS** interface while retaining ownership of their own configuration
 and gameplay behavior.
 
-The current release line is Absolute Suite `0.2.0-beta.1`, a guided all-in-one installer containing
-Absolute Control plus optional HOTAS, Power, Head Tracking, and mouse-steering modules. A matching
-standalone Absolute Control archive is also available for users who install gameplay modules from
+The current all-in-one line is Absolute Suite `0.3.0-beta.1`, a guided installer containing
+Absolute Control plus optional HOTAS, Power, Head Tracking, and mouse-steering modules. The
+standalone menu host at `0.3.0-beta.1` adds host-rendered head-pose calibration, a radial response
+lab, and discoverable binding clearing. Use the standalone archive when gameplay modules come from
 their individual Nexus pages.
 
 ## Why “Absolute”?
@@ -20,11 +21,11 @@ That input scheme gave AbsoluteHOTAS—and eventually the wider modular ecosyste
 
 - **Absolute Control** — required native menu host, shared input capture, telemetry presentation,
   module registry, and suite diagnostics.
-- **AbsoluteHOTAS 5.0.1** — DirectInput HOTAS/HOSAS flight control, ship buttons, throttle tuning,
+- **AbsoluteHOTAS 5.2.0** — DirectInput HOTAS/HOSAS flight control, ship buttons, throttle tuning,
   profiles, layers, macros, and calibration.
-- **Absolute Power 0.2.0-alpha** — priority-based ship-power presets and allocation controls.
-- **Absolute Head Tracking 0.2.0-alpha** — OpenTrack-compatible rotational cockpit tracking.
-- **AbsoluteZero 0.2.0** — mouse alignment and optional locked-reticule steering.
+- **Absolute Power 0.3.0-alpha** — priority-based ship-power presets and allocation controls.
+- **Absolute Head Tracking 1.0.0-beta.1** — OpenTrack-compatible rotational cockpit tracking.
+- **AbsoluteZero 1.3.0** — mouse alignment and optional locked-reticule steering.
 
 Every gameplay module remains independently installable and continues to function when Absolute
 Control is absent or incompatible.
@@ -51,7 +52,9 @@ Absolute Control host currently does.
 5. Choose a module from the left sidebar and configure its pages.
 
 Absolute Control provides common navigation, Apply/Cancel, dirty-close dialogs, binding capture,
-help text, and live presentation. The selected module still validates and persists every change.
+help text, and live presentation. Binding capture displays a centered recording panel naming the
+active control, explaining the accepted input, pausing navigation, and showing how to cancel. The
+selected module still validates and persists every change.
 
 Do not enable the standalone host alongside the suite's Absolute Control core. They contain the
 same menu files, and one mod-manager entry would overwrite the other.

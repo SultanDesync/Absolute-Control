@@ -105,6 +105,8 @@ namespace AbsoluteControlPanelResearch::Input
             [taskInterface, a_dispatch](std::stop_token a_stopToken,
                 const std::shared_ptr<Runtime::CallbackGate>& a_gate) {
             bool wasDown = false;
+            bool hasPointerPosition = false;
+            POINT lastPointerPosition{};
             auto movePending = std::make_shared<std::atomic_bool>(false);
             const auto queuePointerPhase =
                 [taskInterface, a_gate, movePending, a_dispatch](PointerPhase a_phase) {
@@ -133,9 +135,21 @@ namespace AbsoluteControlPanelResearch::Input
                 const bool pressed = focused && down && !wasDown;
                 const bool clickPulse = focused && !down &&
                     (buttonState & 0x0001) != 0;
+                POINT pointerPosition{};
+                const bool pointerAvailable = focused &&
+                    ::GetCursorPos(&pointerPosition) != FALSE;
+                const bool moved = pointerAvailable && hasPointerPosition &&
+                    (pointerPosition.x != lastPointerPosition.x ||
+                        pointerPosition.y != lastPointerPosition.y);
+                if (pointerAvailable) {
+                    lastPointerPosition = pointerPosition;
+                    hasPointerPosition = true;
+                } else {
+                    hasPointerPosition = false;
+                }
                 if (pressed || clickPulse) {
                     queuePointerPhase(PointerPhase::Down);
-                } else if (focused && down &&
+                } else if (moved &&
                            !movePending->exchange(true, std::memory_order_acq_rel)) {
                     queuePointerPhase(PointerPhase::Move);
                 }

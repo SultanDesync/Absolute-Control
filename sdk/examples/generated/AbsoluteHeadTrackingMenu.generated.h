@@ -62,14 +62,20 @@ namespace AbsoluteControlPanelGenerated::module_absolute_head_tracking
         id_yaw_enabled,
         id_yaw_inverted,
         id_yaw_sensitivity,
+        id_yaw_minimum,
+        id_yaw_center,
         id_yaw_maximum,
         id_pitch_enabled,
         id_pitch_inverted,
         id_pitch_sensitivity,
+        id_pitch_minimum,
+        id_pitch_center,
         id_pitch_maximum,
         id_roll_enabled,
         id_roll_inverted,
         id_roll_sensitivity,
+        id_roll_minimum,
+        id_roll_center,
         id_roll_maximum,
         id_bindings_recenter,
         id_bindings_recenter_now,
@@ -83,14 +89,20 @@ namespace AbsoluteControlPanelGenerated::module_absolute_head_tracking
         if (id == "yaw.enabled") return ControlId::id_yaw_enabled;
         if (id == "yaw.inverted") return ControlId::id_yaw_inverted;
         if (id == "yaw.sensitivity") return ControlId::id_yaw_sensitivity;
+        if (id == "yaw.minimum") return ControlId::id_yaw_minimum;
+        if (id == "yaw.center") return ControlId::id_yaw_center;
         if (id == "yaw.maximum") return ControlId::id_yaw_maximum;
         if (id == "pitch.enabled") return ControlId::id_pitch_enabled;
         if (id == "pitch.inverted") return ControlId::id_pitch_inverted;
         if (id == "pitch.sensitivity") return ControlId::id_pitch_sensitivity;
+        if (id == "pitch.minimum") return ControlId::id_pitch_minimum;
+        if (id == "pitch.center") return ControlId::id_pitch_center;
         if (id == "pitch.maximum") return ControlId::id_pitch_maximum;
         if (id == "roll.enabled") return ControlId::id_roll_enabled;
         if (id == "roll.inverted") return ControlId::id_roll_inverted;
         if (id == "roll.sensitivity") return ControlId::id_roll_sensitivity;
+        if (id == "roll.minimum") return ControlId::id_roll_minimum;
+        if (id == "roll.center") return ControlId::id_roll_center;
         if (id == "roll.maximum") return ControlId::id_roll_maximum;
         if (id == "bindings.recenter") return ControlId::id_bindings_recenter;
         if (id == "bindings.recenter_now") return ControlId::id_bindings_recenter_now;
@@ -108,37 +120,49 @@ namespace AbsoluteControlPanelGenerated::module_absolute_head_tracking
         Control(ControlKind::IntegerSlider, kControlAdvanced, "tracking.poll_rate", "Poll rate", "Target samples per second.", 30.0, 240.0, 10.0),
     }};
 
-    inline constexpr std::array<ControlDescriptorV1, 15> kAxesControls{{
+    inline constexpr std::array<ControlDescriptorV1, 21> kAxesControls{{
         Control(ControlKind::GroupHeader, kControlNone, "__section_0", "Yaw", ""),
         Control(ControlKind::Toggle, kControlNone, "yaw.enabled", "Enable yaw", "", 0.0, 0.0, 0.0),
         Control(ControlKind::Toggle, kControlNone, "yaw.inverted", "Invert yaw", "", 0.0, 0.0, 0.0),
         Control(ControlKind::FloatSlider, kControlNone, "yaw.sensitivity", "Yaw sensitivity", "", 0.050000000000000003, 10, 0.050000000000000003),
-        Control(ControlKind::FloatSlider, kControlNone, "yaw.maximum", "Maximum yaw", "", 1, 180, 1),
+        Control(ControlKind::FloatSlider, kControlNone, "yaw.minimum", "Left limit", "", -180, 180, 1),
+        Control(ControlKind::FloatSlider, kControlNone, "yaw.center", "Yaw neutral angle", "", -180, 180, 1),
+        Control(ControlKind::FloatSlider, kControlNone, "yaw.maximum", "Right limit", "", -180, 180, 1),
         Control(ControlKind::GroupHeader, kControlNone, "__section_1", "Pitch", ""),
         Control(ControlKind::Toggle, kControlNone, "pitch.enabled", "Enable pitch", "", 0.0, 0.0, 0.0),
         Control(ControlKind::Toggle, kControlNone, "pitch.inverted", "Invert pitch", "Convert FreeTrack pitch to Starfield camera coordinates.", 0.0, 0.0, 0.0),
         Control(ControlKind::FloatSlider, kControlNone, "pitch.sensitivity", "Pitch sensitivity", "", 0.050000000000000003, 10, 0.050000000000000003),
-        Control(ControlKind::FloatSlider, kControlNone, "pitch.maximum", "Maximum pitch", "", 1, 180, 1),
+        Control(ControlKind::FloatSlider, kControlNone, "pitch.minimum", "Down limit", "", -180, 180, 1),
+        Control(ControlKind::FloatSlider, kControlNone, "pitch.center", "Pitch neutral angle", "", -180, 180, 1),
+        Control(ControlKind::FloatSlider, kControlNone, "pitch.maximum", "Up limit", "", -180, 180, 1),
         Control(ControlKind::GroupHeader, kControlNone, "__section_2", "Roll", ""),
         Control(ControlKind::Toggle, kControlNone, "roll.enabled", "Enable roll", "", 0.0, 0.0, 0.0),
         Control(ControlKind::Toggle, kControlNone, "roll.inverted", "Invert roll", "", 0.0, 0.0, 0.0),
         Control(ControlKind::FloatSlider, kControlNone, "roll.sensitivity", "Roll sensitivity", "", 0.050000000000000003, 10, 0.050000000000000003),
-        Control(ControlKind::FloatSlider, kControlNone, "roll.maximum", "Maximum roll", "", 1, 180, 1),
+        Control(ControlKind::FloatSlider, kControlNone, "roll.minimum", "Left-bank limit", "", -180, 180, 1),
+        Control(ControlKind::FloatSlider, kControlNone, "roll.center", "Level offset", "", -180, 180, 1),
+        Control(ControlKind::FloatSlider, kControlNone, "roll.maximum", "Right-bank limit", "", -180, 180, 1),
     }};
 
-    inline constexpr std::array<ControlDescriptorV1, 12> kAxesLegacyControls{{
+    inline constexpr std::array<ControlDescriptorV1, 18> kAxesLegacyControls{{
         Control(ControlKind::Toggle, kControlNone, "yaw.enabled", "Enable yaw", "", 0.0, 0.0, 0.0),
         Control(ControlKind::Toggle, kControlNone, "yaw.inverted", "Invert yaw", "", 0.0, 0.0, 0.0),
         Control(ControlKind::FloatSlider, kControlNone, "yaw.sensitivity", "Yaw sensitivity", "", 0.050000000000000003, 10, 0.050000000000000003),
-        Control(ControlKind::FloatSlider, kControlNone, "yaw.maximum", "Maximum yaw", "", 1, 180, 1),
+        Control(ControlKind::FloatSlider, kControlNone, "yaw.minimum", "Left limit", "", -180, 180, 1),
+        Control(ControlKind::FloatSlider, kControlNone, "yaw.center", "Yaw neutral angle", "", -180, 180, 1),
+        Control(ControlKind::FloatSlider, kControlNone, "yaw.maximum", "Right limit", "", -180, 180, 1),
         Control(ControlKind::Toggle, kControlNone, "pitch.enabled", "Enable pitch", "", 0.0, 0.0, 0.0),
         Control(ControlKind::Toggle, kControlNone, "pitch.inverted", "Invert pitch", "Convert FreeTrack pitch to Starfield camera coordinates.", 0.0, 0.0, 0.0),
         Control(ControlKind::FloatSlider, kControlNone, "pitch.sensitivity", "Pitch sensitivity", "", 0.050000000000000003, 10, 0.050000000000000003),
-        Control(ControlKind::FloatSlider, kControlNone, "pitch.maximum", "Maximum pitch", "", 1, 180, 1),
+        Control(ControlKind::FloatSlider, kControlNone, "pitch.minimum", "Down limit", "", -180, 180, 1),
+        Control(ControlKind::FloatSlider, kControlNone, "pitch.center", "Pitch neutral angle", "", -180, 180, 1),
+        Control(ControlKind::FloatSlider, kControlNone, "pitch.maximum", "Up limit", "", -180, 180, 1),
         Control(ControlKind::Toggle, kControlNone, "roll.enabled", "Enable roll", "", 0.0, 0.0, 0.0),
         Control(ControlKind::Toggle, kControlNone, "roll.inverted", "Invert roll", "", 0.0, 0.0, 0.0),
         Control(ControlKind::FloatSlider, kControlNone, "roll.sensitivity", "Roll sensitivity", "", 0.050000000000000003, 10, 0.050000000000000003),
-        Control(ControlKind::FloatSlider, kControlNone, "roll.maximum", "Maximum roll", "", 1, 180, 1),
+        Control(ControlKind::FloatSlider, kControlNone, "roll.minimum", "Left-bank limit", "", -180, 180, 1),
+        Control(ControlKind::FloatSlider, kControlNone, "roll.center", "Level offset", "", -180, 180, 1),
+        Control(ControlKind::FloatSlider, kControlNone, "roll.maximum", "Right-bank limit", "", -180, 180, 1),
     }};
 
     inline constexpr std::array<ControlDescriptorV1, 3> kBindingsControls{{

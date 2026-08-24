@@ -2,9 +2,12 @@ package acp.ui
 {
     import flash.display.Sprite;
     import flash.geom.Point;
+    import flash.utils.Dictionary;
 
     public final class ControlWidgets
     {
+        private static var compactSliderMetrics:Dictionary =
+            new Dictionary(true);
         public static function draw(row:Sprite, control:Object, capturing:Boolean,
             registerHit:Function):void
         {
@@ -28,8 +31,11 @@ package acp.ui
             } else if (kind == 4) {
                 drawAction(widget, enabled);
             } else if (kind == 5) {
-                drawBinding(widget, control, enabled, capturing);
-                registerHit(widget, "activate", control, 0);
+                var bindingHits:Object = drawBinding(widget, control, enabled,
+                    capturing);
+                registerHit(bindingHits.record, "activate", control, 0);
+                if (bindingHits.clear != null)
+                    registerHit(bindingHits.clear, "clearBinding", control, 0);
             } else if (kind == 8) {
                 drawRecordCollection(widget, control, enabled);
                 registerHit(widget, "recordCollection", control, 0);
@@ -73,14 +79,37 @@ package acp.ui
             }
         }
 
+        public static function canClearBinding(control:Object):Boolean
+        {
+            if (control == null || uint(control.kind) != 5 ||
+                !Boolean(control.available) || (uint(control.flags) & 1) != 0 ||
+                (uint(control.flags) & 4096) == 0) return false;
+            var value:String = String(control.stringValue).toLowerCase();
+            return value.length > 0 && value != "unbound" &&
+                value != "(unbound)" && value != "none";
+        }
+
+        public static function clearBinding(control:Object,
+            dispatch:Function):Boolean
+        {
+            if (!canClearBinding(control)) return false;
+            dispatch("write", control, false, 0, 0, true, "");
+            return true;
+        }
+
         public static function writeSliderFromPointer(view:Sprite, control:Object,
             stageX:Number, stageY:Number, dispatch:Function):void
         {
             if (!Boolean(control.available) || (uint(control.flags) & 1) != 0) return;
             var local:Point = view.globalToLocal(new Point(stageX, stageY));
+            var metrics:Object = compactSliderMetrics[view];
+            var trackX:Number = metrics == null ?
+                PanelLayout.SLIDER_TRACK_X : Number(metrics.trackX);
+            var trackWidth:Number = metrics == null ?
+                PanelLayout.SLIDER_TRACK_WIDTH : Number(metrics.trackWidth);
             var fraction:Number = Math.max(0,
-                Math.min(1, (local.x - PanelLayout.SLIDER_TRACK_X) /
-                    PanelLayout.SLIDER_TRACK_WIDTH));
+                Math.min(1, (local.x - trackX) /
+                    Math.max(1, trackWidth)));
             var minimum:Number = Number(control.minimum);
             var maximum:Number = Number(control.maximum);
             var raw:Number = minimum + fraction * (maximum - minimum);
@@ -128,6 +157,108 @@ package acp.ui
                     "SELECT RECORD";
             }
             return String(control.stringValue);
+        }
+
+        public static function drawSliderOnly(widget:Sprite,
+            control:Object):Sprite
+        {
+            var enabled:Boolean = Boolean(control.available) &&
+                (uint(control.flags) & 1) == 0;
+            return drawSlider(widget, control, enabled);
+        }
+
+        public static function drawCompactSliderOnly(widget:Sprite,
+            control:Object, width:Number):Sprite
+        {
+            var enabled:Boolean = Boolean(control.available) &&
+                (uint(control.flags) & 1) == 0;
+            var minimum:Number = Number(control.minimum);
+            var maximum:Number = Number(control.maximum);
+            var value:Number = uint(control.kind) == 1 ?
+                Number(control.integerValue) : Number(control.floatValue);
+            var fraction:Number = maximum > minimum ? Math.max(0,
+                Math.min(1, (value - minimum) / (maximum - minimum))) : 0;
+            var valueWidth:Number = 62;
+            var railWidth:Number = Math.max(78, width - valueWidth - 14);
+            var valueX:Number = railWidth + 14;
+            var thumbX:Number = fraction * railWidth;
+            var railColor:uint = enabled ? PanelTheme.BORDER :
+                PanelTheme.DISABLED_WIDGET;
+            var controlColor:uint = enabled ? PanelTheme.CYAN :
+                PanelTheme.DISABLED_WIDGET;
+
+            widget.graphics.beginFill(railColor);
+            widget.graphics.drawRoundRect(0, 14, railWidth, 5, 5, 5);
+            widget.graphics.endFill();
+            if (fraction > 0) {
+                widget.graphics.beginFill(controlColor);
+                widget.graphics.drawRoundRect(0, 14,
+                    railWidth * fraction, 5, 5, 5);
+                widget.graphics.endFill();
+            }
+            widget.graphics.lineStyle(2, controlColor);
+            widget.graphics.beginFill(PanelTheme.WIDGET_FILL);
+            widget.graphics.drawCircle(thumbX, 16.5, 8);
+            widget.graphics.endFill();
+            widget.graphics.lineStyle(1, enabled ? PanelTheme.BORDER :
+                PanelTheme.DISABLED_WIDGET);
+            widget.graphics.beginFill(PanelTheme.WIDGET_FILL);
+            widget.graphics.drawRoundRect(valueX, 0, valueWidth, 33, 5, 5);
+            widget.graphics.endFill();
+            VectorTextRenderer.addText(widget,
+                compactDisplayValue(control), valueX + 6, 7, 14,
+                enabled ? PanelTheme.TEXT : PanelTheme.TOGGLE_KNOB_OFF,
+                true, valueWidth - 12, 18);
+
+            var hit:Sprite = new Sprite();
+            hit.graphics.beginFill(0xFFFFFF, 0.0);
+            hit.graphics.drawRect(-10, 0, railWidth + 20, 34);
+            hit.graphics.endFill();
+            hit.buttonMode = enabled;
+            widget.addChild(hit);
+            compactSliderMetrics[hit] = {
+                "trackX":0, "trackWidth":railWidth
+            };
+            return hit;
+        }
+
+        public static function drawCompactToggleOnly(widget:Sprite,
+            control:Object):Sprite
+        {
+            var enabled:Boolean = Boolean(control.available) &&
+                (uint(control.flags) & 1) == 0;
+            var on:Boolean = Boolean(control.booleanValue);
+            widget.graphics.lineStyle(1,
+                enabled ? PanelTheme.CYAN : PanelTheme.DISABLED_WIDGET);
+            widget.graphics.beginFill(on ? PanelTheme.TOGGLE_ON :
+                PanelTheme.TOGGLE_OFF);
+            widget.graphics.drawRoundRect(0, 0, 58, 26, 13, 13);
+            widget.graphics.endFill();
+            widget.graphics.beginFill(on ? PanelTheme.TEXT :
+                PanelTheme.TOGGLE_KNOB_OFF);
+            widget.graphics.drawCircle(on ? 44 : 14, 13, 9);
+            widget.graphics.endFill();
+            VectorTextRenderer.addText(widget, on ? "ON" : "OFF", 68, 4,
+                13, enabled ? PanelTheme.TEXT :
+                    PanelTheme.TOGGLE_KNOB_OFF, true, 34, 18);
+            var hit:Sprite = new Sprite();
+            hit.graphics.beginFill(0xFFFFFF, 0.0);
+            hit.graphics.drawRect(-4, -4, 108, 34);
+            hit.graphics.endFill();
+            hit.buttonMode = enabled;
+            widget.addChild(hit);
+            return hit;
+        }
+
+        private static function compactDisplayValue(control:Object):String
+        {
+            if (uint(control.kind) == 1)
+                return String(int(control.integerValue));
+            var value:Number = Number(control.floatValue);
+            var step:Number = Math.abs(Number(control.step));
+            if (step >= 1) return String(int(Math.round(value)));
+            if (step >= 0.1) return value.toFixed(1);
+            return value.toFixed(2);
         }
 
         private static function drawToggle(widget:Sprite, control:Object, enabled:Boolean):void
@@ -249,17 +380,58 @@ package acp.ui
         }
 
         private static function drawBinding(widget:Sprite, control:Object,
-            enabled:Boolean, capturing:Boolean):void
+            enabled:Boolean, capturing:Boolean):Object
         {
+            var fieldX:Number = 145;
+            var fieldWidth:Number = 478;
+            var clearWidth:Number = 92;
+            var gap:Number = 6;
+            var recordWidth:Number = fieldWidth - clearWidth - gap;
+            var clearX:Number = fieldX + recordWidth + gap;
+            var clearable:Boolean = (uint(control.flags) & 4096) != 0;
+            var clearEnabled:Boolean = !capturing && canClearBinding(control);
+
             widget.graphics.lineStyle(1,
                 enabled ? PanelTheme.CYAN : PanelTheme.DISABLED_WIDGET);
             widget.graphics.beginFill(capturing ? PanelTheme.CAPTURE_FILL : PanelTheme.WIDGET_FILL);
-            widget.graphics.drawRect(145, 0, 478, 34);
+            widget.graphics.drawRect(fieldX, 0,
+                clearable ? recordWidth : fieldWidth, 34);
             widget.graphics.endFill();
             VectorTextRenderer.addText(widget,
-                VectorTextRenderer.fit(capturing ? "PRESS KEY OR CHORD" :
-                    displayValue(control), 38), 160, 6, 16,
+                VectorTextRenderer.fit(capturing ? "RECORDING INPUT..." :
+                    displayValue(control), clearable ? 29 : 38), 160, 6, 16,
                 enabled ? PanelTheme.TEXT : PanelTheme.TOGGLE_KNOB_OFF);
+
+            if (clearable) {
+                widget.graphics.lineStyle(1, clearEnabled ? PanelTheme.GOLD :
+                    PanelTheme.DISABLED_WIDGET);
+                widget.graphics.beginFill(PanelTheme.BUTTON_FILL);
+                widget.graphics.drawRect(clearX, 0, clearWidth, 34);
+                widget.graphics.endFill();
+                VectorTextRenderer.addText(widget, "CLEAR", clearX + 17, 7,
+                    14, clearEnabled ? PanelTheme.GOLD :
+                        PanelTheme.DISABLED_TEXT, true, clearWidth - 24, 18);
+            }
+
+            var recordHit:Sprite = new Sprite();
+            recordHit.graphics.beginFill(0xFFFFFF, 0.0);
+            recordHit.graphics.drawRect(fieldX, 0,
+                clearable ? recordWidth : fieldWidth, 34);
+            recordHit.graphics.endFill();
+            recordHit.buttonMode = enabled;
+            widget.addChild(recordHit);
+
+            var clearHit:Sprite = null;
+            if (clearable) {
+                clearHit = new Sprite();
+                clearHit.graphics.beginFill(0xFFFFFF, 0.0);
+                clearHit.graphics.drawRect(clearX, 0, clearWidth, 34);
+                clearHit.graphics.endFill();
+                clearHit.buttonMode = clearEnabled;
+                widget.addChild(clearHit);
+            }
+            return { "record":recordHit,
+                "clear":clearEnabled ? clearHit : null };
         }
 
         private static function drawTextInput(widget:Sprite, control:Object,

@@ -136,6 +136,60 @@ namespace
         }
     }
 
+    void InitializeRadial(LiveChannelDescriptorV1& descriptor)
+    {
+        auto& radial = descriptor.radialResponse;
+        radial.maximumRadius = 200.0;
+        Copy(radial.enabledControlId, std::size(radial.enabledControlId), "enabled");
+        Copy(radial.radiusControlId, std::size(radial.radiusControlId), "radius");
+        Copy(radial.idleMillisecondsControlId,
+            std::size(radial.idleMillisecondsControlId), "idle-ms");
+        Copy(radial.decayRateControlId,
+            std::size(radial.decayRateControlId), "decay-rate");
+        Copy(radial.pollRateControlId,
+            std::size(radial.pollRateControlId), "poll-rate-hz");
+    }
+
+    void InitializeHeadPose(LiveChannelDescriptorV1& descriptor)
+    {
+        auto& pose = descriptor.headPose;
+        pose.axisCount = 3;
+        Copy(pose.recenterControlId, std::size(pose.recenterControlId),
+            "recenter-now");
+        Copy(pose.deadzoneControlId, std::size(pose.deadzoneControlId),
+            "deadzone");
+        const char* ids[]{ "yaw", "pitch", "roll" };
+        const char* labels[]{ "Yaw / horizontal", "Pitch / vertical",
+            "Roll / horizon" };
+        const HeadPoseView views[]{ HeadPoseView::Top, HeadPoseView::Profile,
+            HeadPoseView::ArtificialHorizon };
+        for (std::size_t index = 0; index < pose.axisCount; ++index) {
+            auto& axis = pose.axes[index];
+            axis.view = views[index];
+            Copy(axis.axisId, std::size(axis.axisId), ids[index]);
+            Copy(axis.label, std::size(axis.label), labels[index]);
+            char control[kIdentifierCapacity]{};
+            sprintf_s(control, "%s-sensitivity", ids[index]);
+            Copy(axis.sensitivityControlId,
+                std::size(axis.sensitivityControlId), control);
+            sprintf_s(control, "%s-minimum", ids[index]);
+            Copy(axis.minimumControlId,
+                std::size(axis.minimumControlId), control);
+            sprintf_s(control, "%s-center", ids[index]);
+            Copy(axis.centerControlId,
+                std::size(axis.centerControlId), control);
+            sprintf_s(control, "%s-maximum", ids[index]);
+            Copy(axis.maximumControlId,
+                std::size(axis.maximumControlId), control);
+            sprintf_s(control, "%s-enabled", ids[index]);
+            Copy(axis.enabledControlId,
+                std::size(axis.enabledControlId), control);
+            sprintf_s(control, "%s-inverted", ids[index]);
+            Copy(axis.invertedControlId,
+                std::size(axis.invertedControlId), control);
+        }
+    }
+
     LiveFrameV1 Frame(ComponentKind kind, std::uint64_t sequence, std::uint64_t timestamp)
     {
         LiveFrameV1 frame;
@@ -172,6 +226,12 @@ int main()
     static_assert(kLiveChannelDescriptorV1FlagsSize ==
         offsetof(LiveChannelDescriptorV1FlagsFixture, flags) +
             sizeof(std::uint32_t));
+    static_assert(kLiveChannelDescriptorV1AssociationsSize ==
+        offsetof(LiveChannelDescriptorV1, radialResponse));
+    static_assert(kLiveChannelDescriptorV1RadialResponseSize ==
+        offsetof(LiveChannelDescriptorV1, headPose));
+    static_assert(kLiveFrameV1RadialResponseSize ==
+        offsetof(LiveFrameV1, headPose));
     CHECK(AbsoluteControlPanel_QueryLiveComponentsExperimental(kAbiVersion + 1) == nullptr);
     const auto* api = AbsoluteControlPanel_QueryLiveComponentsExperimental(kAbiVersion);
     CHECK(api && api->structSize >= sizeof(ExperimentalApiV1) &&
@@ -273,6 +333,9 @@ int main()
     // provider's current draft while the base v1 layout remains accepted.
     rangeProvider.frame.sequence = 3;
     rangeProvider.frame.monotonicTimestampUs = 300;
+    // This is the pre-radial full frame size. Its dynamic-range tail remains
+    // valid after the new radial frame was appended.
+    rangeProvider.frame.structSize = kLiveFrameV1DynamicRangeSize;
     rangeProvider.frame.dynamicRange.present = 1;
     rangeProvider.frame.dynamicRange.bandCount = 1;
     rangeProvider.frame.dynamicRange.markerCount = 1;
@@ -291,6 +354,7 @@ int main()
     CHECK(registry.Poll("test.module", "live", "axis").result ==
         Result::InvalidArgument);
     rangeProvider.frame.dynamicRange = {};
+    rangeProvider.frame.structSize = sizeof(LiveFrameV1);
 
     rangeProvider.frame.sequence = 4;
     rangeProvider.frame.monotonicTimestampUs = 250;
@@ -341,6 +405,88 @@ int main()
     plotProvider.frame.telemetryPlot.values[1] = std::numeric_limits<double>::quiet_NaN();
     CHECK(registry.Poll("test.module", "live", "plot").result == Result::InvalidArgument);
 
+    Provider radialProvider;
+    auto radial = Channel(ComponentKind::RadialResponse, "centering", radialProvider);
+    InitializeRadial(radial);
+    radial.structSize = kLiveChannelDescriptorV1RadialResponseSize;
+    radial.flags = kLivePresentationPinned;
+    static Registry radialRegistry;
+    CHECK(radialRegistry.Register(radial) == Result::Ok);
+    LiveChannelModelV1 radialModel;
+    CHECK(radialRegistry.Describe("test.module", "live", "centering",
+        radialModel) == Result::Ok &&
+        radialModel.radialResponse.maximumRadius == 200.0 &&
+        std::strcmp(radialModel.radialResponse.radiusControlId, "radius") == 0);
+    auto invalidRadial = radial;
+    invalidRadial.structSize = kLiveChannelDescriptorV1AssociationsSize;
+    CHECK(radialRegistry.Register(invalidRadial) == Result::InvalidArgument);
+    invalidRadial = radial;
+    invalidRadial.radialResponse.maximumRadius = 0.0;
+    CHECK(radialRegistry.Register(invalidRadial) == Result::InvalidArgument);
+    radialProvider.frame = Frame(ComponentKind::RadialResponse, 1, 100);
+    radialProvider.frame.structSize = kLiveFrameV1RadialResponseSize;
+    radialProvider.frame.radialResponse.available = 1;
+    radialProvider.frame.radialResponse.liveX = 80.0;
+    radialProvider.frame.radialResponse.liveY = -40.0;
+    CHECK(radialRegistry.SetVisiblePage("test.module", "live") == Result::Ok);
+    radialRegistry.SetMenuActive(true);
+    CHECK(radialRegistry.Poll("test.module", "live", "centering").result ==
+        Result::Ok);
+    radialProvider.frame.sequence = 2;
+    radialProvider.frame.monotonicTimestampUs = 200;
+    radialProvider.frame.radialResponse.liveX = 201.0;
+    radialProvider.frame.radialResponse.liveY = 0.0;
+    CHECK(radialRegistry.Poll("test.module", "live", "centering").result ==
+        Result::InvalidArgument);
+
+    Provider poseProvider;
+    auto pose = Channel(ComponentKind::HeadPose, "head-pose", poseProvider);
+    InitializeHeadPose(pose);
+    static Registry poseRegistry;
+    CHECK(poseRegistry.Register(pose) == Result::Ok);
+    LiveChannelModelV1 poseModel;
+    CHECK(poseRegistry.Describe("test.module", "live", "head-pose",
+        poseModel) == Result::Ok && poseModel.headPose.axisCount == 3 &&
+        poseModel.headPose.axes[1].view == HeadPoseView::Profile &&
+        std::strcmp(poseModel.headPose.axes[2].maximumControlId,
+            "roll-maximum") == 0 &&
+        std::strcmp(poseModel.headPose.recenterControlId,
+            "recenter-now") == 0 &&
+        std::strcmp(poseModel.headPose.deadzoneControlId,
+            "deadzone") == 0);
+    auto invalidPose = pose;
+    invalidPose.structSize = kLiveChannelDescriptorV1RadialResponseSize;
+    CHECK(poseRegistry.Register(invalidPose) == Result::InvalidArgument);
+    invalidPose = pose;
+    Copy(invalidPose.headPose.axes[1].axisId,
+        std::size(invalidPose.headPose.axes[1].axisId), "yaw");
+    CHECK(poseRegistry.Register(invalidPose) == Result::InvalidArgument);
+    invalidPose = pose;
+    invalidPose.headPose.recenterControlId[0] = ' ';
+    CHECK(poseRegistry.Register(invalidPose) == Result::InvalidArgument);
+    invalidPose = pose;
+    invalidPose.headPose.deadzoneControlId[0] = ' ';
+    CHECK(poseRegistry.Register(invalidPose) == Result::InvalidArgument);
+    poseProvider.frame = Frame(ComponentKind::HeadPose, 1, 100);
+    poseProvider.frame.headPose.axisCount = 3;
+    for (std::size_t index = 0; index < 3; ++index) {
+        poseProvider.frame.headPose.axes[index].available = 1;
+        poseProvider.frame.headPose.axes[index].trackerDegrees =
+            static_cast<double>(index * 10);
+        poseProvider.frame.headPose.axes[index].outputDegrees =
+            static_cast<double>(index * -5);
+    }
+    CHECK(poseRegistry.SetVisiblePage("test.module", "live") == Result::Ok);
+    poseRegistry.SetMenuActive(true);
+    CHECK(poseRegistry.Poll("test.module", "live", "head-pose").result ==
+        Result::Ok);
+    poseProvider.frame.sequence = 2;
+    poseProvider.frame.monotonicTimestampUs = 200;
+    poseProvider.frame.headPose.axes[2].outputDegrees =
+        std::numeric_limits<double>::quiet_NaN();
+    CHECK(poseRegistry.Poll("test.module", "live", "head-pose").result ==
+        Result::InvalidArgument);
+
     Provider gridProvider;
     auto grid = Channel(ComponentKind::SegmentedAllocationGrid, "power", gridProvider);
     InitializeGrid(grid);
@@ -363,6 +509,9 @@ int main()
         std::size(grid.associations[1].columnId), "shields");
     Copy(grid.associations[1].controlId,
         std::size(grid.associations[1].controlId), "order-shields");
+    // The complete pre-radial descriptor ended here; its grid associations
+    // remain valid after the radial descriptor tail was appended.
+    grid.structSize = kLiveChannelDescriptorV1AssociationsSize;
     invalidGrid = grid;
     Copy(invalidGrid.associations[1].columnId,
         std::size(invalidGrid.associations[1].columnId), "missing");

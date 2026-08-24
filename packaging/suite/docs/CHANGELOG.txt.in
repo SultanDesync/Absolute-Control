@@ -12,6 +12,11 @@ ALL-IN-ONE INSTALLER
   module is merged into the host.
 - Added clear warnings for Power's shipped 1-4 preset shortcuts and
   AbsoluteZero's immediately active mouse-centering behavior.
+- Added Absolute Control's native Head Pose calibration instruments, radial
+  response rendering, and visible binding clearing.
+- Added Absolute Head Tracking 1.0's asymmetric axes, recenter, manual-look
+  bindings, constrained ballistic aim, and synchronized inner reticle.
+- Added AbsoluteHOTAS 5.2's independent analog-aim deadzone.
 
 
 RELEASE INTEGRITY
@@ -31,7 +36,7 @@ VALIDATION
 - Absolute Control native suites: 12/12 passed
 - AbsoluteHOTAS native suites: 22/22 passed
 - Absolute Power native suites: 9/9 passed
-- Absolute Head Tracking native suites: 8/8 passed
+- Absolute Head Tracking native suites: 10/10 passed
 - FOMOD and suite archive content validation: passed
 
 
@@ -40,5 +45,5 @@ KNOWN BETA BOUNDARIES
 
 - The all-in-one simplifies distribution; it does not change gameplay features
   or replace each module's standalone support boundary.
-- Final public release still requires a clean canonical all-module runtime pass
-  and soak using release rather than research artifacts.
+- This remains a beta across varied hardware and mod stacks; the qualified
+  release artifacts and automated suites are the supported validation baseline.

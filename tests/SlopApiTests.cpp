@@ -521,6 +521,8 @@ int main()
 
     // The game-thread router must be sufficient even when Scaleform keyboard events are absent.
     CHECK(MenuInputRouter::IsMenuKey(MenuInputRouter::kAccept));
+    CHECK(MenuInputRouter::IsMenuKey(MenuInputRouter::kBackspace));
+    CHECK(MenuInputRouter::IsMenuKey(MenuInputRouter::kDelete));
     CHECK(!MenuInputRouter::IsMenuKey('V'));
     auto routed = MenuInputRouter::Route(model, MenuInputRouter::kAccept);
     CHECK(routed.command && routed.command->kind == CommandKind::Write &&
@@ -537,6 +539,17 @@ int main()
     routed = MenuInputRouter::Route(model, MenuInputRouter::kAccept);
     CHECK(routed.command &&
         routed.command->kind == CommandKind::BeginTextCapture);
+    model.selectedControlId = "bind";
+    routed = MenuInputRouter::Route(model, MenuInputRouter::kDelete);
+    CHECK(routed.command && routed.command->kind == CommandKind::Write &&
+        routed.command->controlId == "bind" &&
+        routed.command->value.kind == ValueKind::String &&
+        routed.command->value.stringValue[0] == '\0');
+    routed = MenuInputRouter::Route(model, MenuInputRouter::kBackspace);
+    CHECK(routed.command && routed.command->kind == CommandKind::Write &&
+        routed.command->value.stringValue[0] == '\0');
+    model.selectedControlId = "enabled";
+    CHECK(!MenuInputRouter::Route(model, MenuInputRouter::kDelete).command);
     routed = MenuInputRouter::Route(navigationModel, MenuInputRouter::kNextPage);
     CHECK(routed.command && routed.command->kind == CommandKind::SelectPage &&
         routed.command->moduleId == "test.module" && routed.command->pageId == "bindings");

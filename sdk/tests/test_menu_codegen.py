@@ -27,7 +27,7 @@ class MenuCodegenTests(unittest.TestCase):
         axes = next(page for page in data["pages"] if page["id"] == "axes")
         self.assertEqual(
             sum(len(section["options"]) for section in axes["sections"]),
-            12,
+            18,
         )
 
     def test_generation_is_deterministic_and_checked_in(self):

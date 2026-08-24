@@ -17,7 +17,7 @@ namespace
 int main()
 {
     static_assert(Generated::kModule.structSize == sizeof(ModuleDescriptorV1));
-    static_assert(Generated::kAxesControls.size() == 15);
+    static_assert(Generated::kAxesControls.size() == 21);
     static_assert(Generated::kAxesControls[0].kind == ControlKind::GroupHeader);
     static_assert(Generated::ParseControlId("pitch.inverted") == Generated::ControlId::id_pitch_inverted);
     const Generated::ProviderCallbacks callbacks{ nullptr, Read, Write, Action, Apply, Cancel };
@@ -29,6 +29,6 @@ int main()
     assert(pages[2].reassignBinding == nullptr);
     const auto legacyPages = Generated::MakePages(callbacks, kCapabilityNone);
     assert(legacyPages[1].controls == Generated::kAxesLegacyControls.data());
-    assert(legacyPages[1].controlCount == 12);
+    assert(legacyPages[1].controlCount == 18);
     assert(legacyPages[1].controls[0].kind != ControlKind::GroupHeader);
 }

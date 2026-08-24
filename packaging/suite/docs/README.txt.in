@@ -60,6 +60,8 @@ When updating, keep and back up:
 - AbsoluteHOTAS_Custom.ini
 - AbsoluteHOTAS Profiles directory
 - AbsolutePower_Custom.ini
+- AbsoluteHeadTracking.ini if you changed it; Head Tracking currently uses one
+  packaged configuration file rather than a separate custom override
 - any other user-created module configuration or profiles
 
 Installing a standalone module over the all-in-one is supported when it is a
@@ -75,6 +77,9 @@ MODULE SELECTION NOTES
 - Absolute Power ships optional preset shortcuts on number keys 1-4 during
   flight. Change or clear them if they conflict with another setup.
 - Absolute Head Tracking requires OpenTrack with FreeTrack 2.0 Enhanced output.
+- Absolute Head Tracking 1.0 can also use keyboard, held-modifier mouse, and
+  AbsoluteHOTAS Input Bus joystick look without a tracker. Its Axes landing page
+  includes live asymmetric calibration, deadzone, inversion, and recenter.
 - AbsoluteZero Mouse Steering is enabled by default and changes mouse-flight
   centering immediately. When installed with AbsoluteHOTAS, AbsoluteZero owns
   pitch and yaw, so HOTAS stick bindings cannot control those two axes. HOTAS
@@ -118,6 +123,9 @@ KNOWN BETA BOUNDARIES
 - Power automation remains disabled by default and is not part of the supported
   beta feature promise.
 - Head tracking is rotational only; translation is not implemented.
+- Projectile travel time can make tracers appear to lag a moving off-axis head-
+  tracking reticle during turns even when the constrained launch direction is
+  correct.
 
 
 ROLLBACK

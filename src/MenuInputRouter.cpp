@@ -36,6 +36,11 @@ namespace AbsoluteControlPanelResearch::MenuInputRouter
             return a_keyCode == kAccept || a_keyCode == kEnter || a_keyCode == kSpace;
         }
 
+        [[nodiscard]] bool IsClear(std::int32_t a_keyCode) noexcept
+        {
+            return a_keyCode == kBackspace || a_keyCode == kDelete;
+        }
+
         [[nodiscard]] std::size_t ActivePageIndex(const MenuSession::Model& a_model) noexcept
         {
             const auto found = std::ranges::find_if(a_model.pages, [&](const auto& page) {
@@ -302,6 +307,23 @@ namespace AbsoluteControlPanelResearch::MenuInputRouter
             return Adjust(a_page, a_control, 1);
         }
 
+        [[nodiscard]] std::optional<MenuSession::Command> ClearBinding(
+            const MenuSession::Page& a_page,
+            const MenuSession::Control& a_control) noexcept
+        {
+            if (!a_control.available ||
+                a_control.descriptor.kind != SlopApi::ControlKind::InputBinding ||
+                (a_control.descriptor.flags & SlopApi::kControlReadOnly) != 0 ||
+                (a_control.descriptor.flags & SlopApi::kBindingClearable) == 0) {
+                return std::nullopt;
+            }
+            auto command = ControlCommand(
+                MenuSession::CommandKind::Write, a_page, a_control);
+            command.value.kind = SlopApi::ValueKind::String;
+            command.value.stringValue[0] = '\0';
+            return command;
+        }
+
         [[nodiscard]] MenuSession::Command ActionCommand(
             const MenuSession::Page& a_page, std::uint32_t a_actionIndex)
         {
@@ -325,7 +347,8 @@ namespace AbsoluteControlPanelResearch::MenuInputRouter
                IsDown(a_keyCode) || IsLeft(a_keyCode) || IsRight(a_keyCode) ||
                a_keyCode == kDecrease || a_keyCode == kIncrease ||
                a_keyCode == kPreviousPage || a_keyCode == kNextPage ||
-               a_keyCode == kApply || a_keyCode == kCancel;
+               a_keyCode == kApply || a_keyCode == kCancel ||
+               IsClear(a_keyCode);
     }
 
     RouteResult Route(const MenuSession::Model& a_model, std::int32_t a_keyCode,
@@ -552,6 +575,12 @@ namespace AbsoluteControlPanelResearch::MenuInputRouter
         }
         const auto selected = (std::min)(SelectedControlIndex(a_model, page),
             page.controls.size() - 1);
+        if (IsClear(a_keyCode)) {
+            if (result.focus.region == FocusRegion::Controls) {
+                result.command = ClearBinding(page, page.controls[selected]);
+            }
+            return result;
+        }
         if (IsUp(a_keyCode) || IsDown(a_keyCode)) {
             const auto count = page.controls.size();
             auto target = selected;

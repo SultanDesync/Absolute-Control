@@ -14,6 +14,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $repositoryRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
+$releaseExcludesPath = (Resolve-Path -LiteralPath (Join-Path $repositoryRoot 'packaging\suite\empty-excludes')).Path
 if ([string]::IsNullOrWhiteSpace($SiblingRoot)) {
     $SiblingRoot = Split-Path -Parent $repositoryRoot
 }
@@ -41,7 +42,9 @@ function Invoke-GitText {
         [Parameter(Mandatory = $true)][string]$Repository,
         [Parameter(Mandatory = $true)][string[]]$Arguments
     )
-    $result = & git -c "safe.directory=$Repository" -C $Repository @Arguments 2>&1
+    # Keep inaccessible or machine-local global ignore files from contaminating
+    # porcelain output. Release dirtiness is repository-local by definition.
+    $result = & git -c "safe.directory=$Repository" -c "core.excludesFile=$releaseExcludesPath" -C $Repository @Arguments 2>&1
     if ($LASTEXITCODE -ne 0) {
         throw "git $($Arguments -join ' ') failed for $Repository`: $($result -join [Environment]::NewLine)"
     }
