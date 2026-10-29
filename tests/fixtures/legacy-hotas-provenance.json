@@ -1,0 +1,32 @@
+{
+  "status": "source-derived fixtures; not recorded device traces",
+  "auditedOn": "2026-09-18",
+  "pathBase": "workspace containing the Absolute-Control checkout",
+  "sources": [
+    {
+      "path": "AbsoluteHOTAS/include/AbsoluteInputBusAPI.h",
+      "sha256": "5D18B0DAF3E95C6388AA51E78C18E4FEE4BEA5963741B76750394ED1EBC93929",
+      "contract": "frozen v1 dimensions, IDs, snapshots and counter width"
+    },
+    {
+      "path": "AbsoluteHOTAS/src/InputBus.cpp",
+      "sha256": "43C021244C3A05ACB5E40FDDA57788D91EDA038C49F55ACEC70DAA1E71297C96",
+      "contract": "FormatGuid, CommitCaptureLocked, PublishDeviceSnapshotsLocked"
+    },
+    {
+      "path": "Absolute Head Tracking/src/InputBusBinding.cpp",
+      "sha256": "1122E37267D46F681A5CF52FA6A19E01635BD22A65DA1597FE71ECA9C731482F",
+      "contract": "zero-based POV and axis parser"
+    },
+    {
+      "path": "AbsoluteZero-Ship-Control/src/InputBusClient.cpp",
+      "sha256": "9E7E8A02639D16CE2F1FC89BAC58F495EFDBBF8F2378965DEAB69B97204C4595",
+      "contract": "JoystickBindingPolicy::Parse digital grammar"
+    },
+    {
+      "path": "Absolute Power/src/JoystickShortcut.cpp",
+      "sha256": "F208C75F5BDA2490BE53A86DE42C8783112C85D3E162953407D34A1190AFF5C9",
+      "contract": "JoystickBindingPolicy::Parse digital grammar"
+    }
+  ]
+}

@@ -7,6 +7,7 @@
 #include "MenuInputRouter.h"
 #include "MenuSession.h"
 #include "input/PlatformInputServices.h"
+#include "interop/OSFUICompatibility.h"
 #include "runtime/ProbeRuntimeState.h"
 #include "runtime/RuntimeCompatibility.h"
 #include "scaleform/ScaleformMenuBridge.h"
@@ -83,9 +84,8 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
                 menuName = kMenuName.data();
                 SetFlags(g_menuFlags);
                 // Current UI insertion sorts by the byte at +0x110. GameMenuBase starts at
-                // priority 6. PauseMenu remains resident at observed priority 11 when this
-                // panel is opened from its injected row; priority 19 covers and owns input
-                // above it while remaining below CursorMenu (20).
+                // priority 6. PauseMenu or MainMenu remains resident underneath; priority
+                // 19 covers and owns input while remaining below CursorMenu (20).
                 *(
                     reinterpret_cast<std::uint8_t*>(this) + 0x110) = 19;
                 EvidenceLog::Event(
@@ -240,7 +240,7 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
             RE::UI_MESSAGE_RESULT ProcessMessage(RE::UIMessageData& a_message) override
             {
                 const auto typeBefore = a_message.type;
-                bool returnToPause{};
+                MenuOpenOrigin returnOrigin{ MenuOpenOrigin::None };
                 EvidenceLog::Event(
                     "menu_message_entered",
                     std::format(
@@ -251,7 +251,7 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
                     // Disarm before the base class starts tearing down the movie.
                     // Pointer tasks already queued by the polling thread must become
                     // harmless before any Scaleform object can be invalidated.
-                    returnToPause = bridge.OnHidden();
+                    returnOrigin = bridge.OnHidden();
                 }
                 const auto result = RE::IMenu::ProcessMessage(a_message);
                 EvidenceLog::Event(
@@ -262,11 +262,19 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
                         static_cast<std::uint32_t>(a_message.type),
                         static_cast<std::int64_t>(result)));
                 if (typeBefore == RE::UI_MESSAGE_TYPE::kShow) {
+                    if (!bridgeInitializationAccepted) {
+                        EvidenceLog::Event("menu_show_rejected", "movie handshake unavailable");
+                        Ui::QueueControlPanelMessage(RE::UI_MESSAGE_TYPE::kHide,
+                            "movie-handshake-unavailable");
+                        return result;
+                    }
                     // Custom menu names are not recognized by Starfield's
                     // hard-coded MenuAudioHandler. Acquire the same balanced,
                     // ref-counted mode lease used by PauseMenu.
-                    audioLease.Acquire("menu-show");
                     bridge.OnShown();
+                    if (bridge.OpenOrigin() != MenuOpenOrigin::MainMenu) {
+                        audioLease.Acquire("menu-show");
+                    }
                     MenuApiHost::SetMenuOpen(true);
                     Runtime::Transition(ProbeEvent::MenuOpened);
                     EvidenceLog::Event(
@@ -285,7 +293,7 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
                     EvidenceLog::Event(
                         "research_pause_state_after_probe_close",
                         std::format("open={}", pauseOpen));
-                    if (returnToPause) {
+                    if (returnOrigin == MenuOpenOrigin::PauseMenu) {
                         if (pauseOpen) {
                             EvidenceLog::Event(
                                 "control_panel_return_revealed",
@@ -301,6 +309,18 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
                                 "control_panel_return_queued",
                                 "target=PauseMenu source=missing-underlay-recovery");
                         }
+                    } else if (returnOrigin == MenuOpenOrigin::MainMenu) {
+                        if (ui && ui->IsMenuOpen(RE::BSFixedString("MainMenu"))) {
+                            EvidenceLog::Event(
+                                "control_panel_return_revealed",
+                                "target=MainMenu source=resident-underlay");
+                        } else {
+                            // MainMenu may have closed because a load transition began.
+                            // Never synthesize a Show that could interrupt that load.
+                            EvidenceLog::Event(
+                                "control_panel_return_missing",
+                                "target=MainMenu source=preload-close; no recovery Show");
+                        }
                     }
                 }
                 return result;
@@ -308,6 +328,7 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
 
             bool LoadMovie(bool, bool a_arg2) override
             {
+                bridgeInitializationAccepted = false;
                 EvidenceLog::Event(
                     "movie_load_entered",
                     std::format(
@@ -318,7 +339,7 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
                     "movie_load_result", std::format("loaded={}", loaded));
                 if (!loaded || !uiMovie || !uiMovie->asMovieRoot) {
                     Runtime::Transition(ProbeEvent::RuntimeFault);
-                    return loaded;
+                    return false;
                 }
 
 
@@ -350,8 +371,11 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
                     MapCodeObjectFunctions();
                     bridge.LogMovieState("before_on_code_obj_create");
                     const bool invoked = menuObj.Invoke(ON_CODE_OBJ_CREATED_FUNC);
+                    const bool handshake = bridge.CompleteHandshake(invoked);
+                    bridgeInitializationAccepted = handshake;
+                    if (!handshake) Runtime::Transition(ProbeEvent::RuntimeFault);
                     EvidenceLog::Event(
-                        "bridge_create_invoked", std::format("invoked={}", invoked));
+                        "bridge_create_invoked", std::format("invoked={} handshake={}", invoked, handshake));
                     bridge.LogMovieState("after_on_code_obj_create");
                 } else {
                     EvidenceLog::Event(
@@ -360,7 +384,7 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
                     Ui::QueueControlPanelMessage(
                         RE::UI_MESSAGE_TYPE::kHide, "bridge_root_missing");
                 }
-                return loaded;
+                return bridgeInitializationAccepted;
             }
 
             void MapCodeObjectFunctions() override
@@ -414,6 +438,7 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
             }
 
         private:
+            bool bridgeInitializationAccepted{};
             Ui::PauseMenuAudioLease audioLease;
             Scaleform::MenuBridge bridge;
         };
@@ -457,10 +482,17 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
         if (!ui) {
             return false;
         }
-        if (!ui->IsMenuRegistered(RE::BSFixedString(kMenuName.data()))) {
+        const RE::BSFixedString name{ kMenuName.data() };
+        if (const auto* existing = ui->GetMenuEntry(name)) {
+            if (existing->initFunc != &CreateMenu) {
+                EvidenceLog::Event("menu_registration_rejected", "foreign factory owns menu name");
+                return false;
+            }
+        } else {
             ui->RegisterMenu(kMenuName.data(), &CreateMenu);
         }
-        return ui->IsMenuRegistered(RE::BSFixedString(kMenuName.data()));
+        const auto* retained = ui->GetMenuEntry(name);
+        return retained && retained->initFunc == &CreateMenu;
     }
 
     void RequestOpenFromHotkey() noexcept
@@ -474,6 +506,11 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
         if (ui->IsMenuOpen(menuName)) {
             EvidenceLog::Event(
                 "open_hotkey_ignored", "Control Panel menu already open");
+            return;
+        }
+        if (Interop::OSFUICompatibility::IsPresentationActive(ui)) {
+            EvidenceLog::Event(
+                "open_hotkey_rejected", "OSF UI presentation is active");
             return;
         }
         if (ui->IsMenuOpen(RE::BSFixedString("PauseMenu")) ||
@@ -511,6 +548,12 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
                     // ENTER_FRAME heartbeat; issuing another Show is unnecessary.
                     EvidenceLog::Event(
                         "provider_open_routed", "menu already open");
+                    return;
+                }
+                if (Interop::OSFUICompatibility::IsPresentationActive(ui)) {
+                    MenuApiHost::DiscardOpenRequest();
+                    EvidenceLog::Event(
+                        "provider_open_rejected", "OSF UI presentation is active");
                     return;
                 }
                 if (ui->IsMenuOpen(RE::BSFixedString("PauseMenu")) ||

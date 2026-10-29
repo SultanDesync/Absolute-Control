@@ -36,7 +36,7 @@ Each standalone page remains the authoritative source for that module's full des
 [*]Install the all-in-one archive with MO2 or Vortex.[/*]
 [*]Use the guided installer to select the gameplay modules you want.[/*]
 [*]Launch Starfield through SFSE.[/*]
-[*]Open the Pause Menu and select [color=#ffaa00][b]MOD OPTIONS[/b][/color].[/*]
+[*]Open the Pause Menu and select [color=#ffaa00][b]ABSOLUTE CONTROL[/b][/color].[/*]
 [*]Review each installed module, apply its settings, and test in a safe flight context.[/*]
 [/list]
 
@@ -60,7 +60,7 @@ The bundle contains the same standalone DLLs and mod-owned default INIs supplied
 
 [center][size=5][color=#00ccff][b]For mod authors — menu integration[/b][/color][/size][/center]
 
-Absolute Control is a modular in-game menu host, not only a launcher for the Absolute Suite. Its native SDK allows SFSE plugins to register their own pages, settings, input capture, live telemetry, and optional suite services inside the shared [color=#ffaa00][b]MOD OPTIONS[/b][/color] interface without creating a hard dependency between gameplay modules.
+Absolute Control is the suite's native in-game editor. Its provider API allows SFSE plugins to register pages, settings, input capture and live telemetry inside the shared [color=#ffaa00][b]ABSOLUTE CONTROL[/b][/color] interface while retaining their own gameplay and configuration ownership.
 
 Mod authors interested in giving an existing or new plugin a native integrated configuration menu can message the author to apply for SDK beta access and integration support.
 

@@ -33,7 +33,8 @@ int main()
         Read("src/input/PlatformInputServices.cpp") +
         Read("src/ui/ControlPanelMenu.cpp") +
         Read("src/ui/MenuMessaging.cpp") +
-        Read("src/ui/PauseMenuIntegration.cpp");
+        Read("src/ui/PauseMenuIntegration.cpp") +
+        Read("include/ui/PauseEntryPolicy.h");
     const auto evidence = Read("src/EvidenceLog.cpp");
     const auto actionScriptRoot = Read("interface/src/AbsoluteControlPanelMenu.as");
     const auto widgets = Read("interface/src/acp/ui/ControlWidgets.as");
@@ -81,6 +82,18 @@ int main()
     CHECK(native.find("a_params.argCount == 11") != std::string::npos);
     CHECK(native.find("command.expectedGeneration") != std::string::npos);
     CHECK(native.find("ReadExactGeneration") != std::string::npos);
+    CHECK(native.find("protocol.Ready(a_params.argCount,") != std::string::npos);
+    CHECK(native.find("bridge.CompleteHandshake(invoked)") != std::string::npos);
+    CHECK(native.find("protocol.Acknowledge(generation)") != std::string::npos);
+    CHECK(native.find("protocol.CompletePublication(invoked)") != std::string::npos);
+    CHECK(native.find("if (accepted) {\n                    session.AcknowledgePublishedGeneration") !=
+        std::string::npos);
+    CHECK(native.find("existing->initFunc != &CreateMenu") != std::string::npos);
+    CHECK(native.find("retained && retained->initFunc == &CreateMenu") != std::string::npos);
+    CHECK(native.find("if (!bridgeInitializationAccepted)") != std::string::npos);
+    CHECK(native.find("return bridgeInitializationAccepted;") != std::string::npos);
+    CHECK(native.find("FlushDeferredModel();\n                        if (closing || !protocol.HasAppliedModel()) break;") !=
+        std::string::npos);
     CHECK(native.find("MenuApiHost::ConsumeRefresh(\n                        refreshCursor, session.ActiveModuleId(),") !=
         std::string::npos);
     CHECK(native.find("session.AcknowledgePublishedGeneration(a_model.generation)") !=
@@ -145,7 +158,7 @@ int main()
     CHECK(native.find("bridge_pointer_armed") != std::string::npos);
     CHECK(native.find("closing || !menuShown || !pointerInputArmed") !=
         std::string::npos);
-    CHECK(native.find("returnToPause = bridge.OnHidden();\n                }\n"
+    CHECK(native.find("returnOrigin = bridge.OnHidden();\n                }\n"
                       "                const auto result = RE::IMenu::ProcessMessage") !=
         std::string::npos);
     CHECK(native.find("bridge.OnShown();") != std::string::npos);
@@ -155,15 +168,17 @@ int main()
     CHECK(native.find("REL::ID(130642)") != std::string::npos);
     CHECK(native.find("func(static_cast<sink_t*>(this), a_event, a_source)") !=
         std::string::npos);
-    CHECK(native.find("SetReturnToPauseOnClose(openedFromPause)") !=
+    CHECK(native.find("SetOpenOrigin(origin)") !=
         std::string::npos);
     CHECK(native.find("control_panel_show_ignored") != std::string::npos);
     CHECK(native.find("compare_exchange_strong") != std::string::npos);
-    CHECK(native.find("returnToPauseOnClose =\n"
-                      "                        Ui::PauseMenuIntegration::"
-                      "ConsumeReturnToPauseOnClose()") != std::string::npos);
-    CHECK(native.find("const bool returnToPause = closing && returnToPauseOnClose") !=
+    CHECK(native.find("openOrigin = Ui::PauseMenuIntegration::ConsumeOpenOrigin()") != std::string::npos);
+    CHECK(native.find("const auto returnOrigin = closing ? openOrigin : Ui::MenuOpenOrigin::None") !=
         std::string::npos);
+    CHECK(native.find("bridge.OpenOrigin() != MenuOpenOrigin::MainMenu") != std::string::npos);
+    CHECK(native.find("returnOrigin == MenuOpenOrigin::MainMenu") != std::string::npos);
+    CHECK(native.find("\"target=MainMenu source=resident-underlay\"") != std::string::npos);
+    CHECK(native.find("\"MainMenu\", RE::UI_MESSAGE_TYPE::kShow") == std::string::npos);
     CHECK(native.find("session.Teardown();") != std::string::npos);
     CHECK(native.find("CancelBindingCapture(\"Menu closed during input capture\")") ==
         std::string::npos);
@@ -259,6 +274,9 @@ int main()
     CHECK(shell.find("drawRadialResponse") != std::string::npos);
     CHECK(shell.find("drawHeadPose") != std::string::npos);
     CHECK(shell.find("drawProfileHead") != std::string::npos);
+    CHECK(shell.find("drawTopHeadEarcup") != std::string::npos);
+    CHECK(shell.find("head.graphics.drawRoundRect(-43, -2") ==
+          std::string::npos);
     CHECK(shell.find("drawArtificialHorizon") != std::string::npos);
     CHECK(shell.find("drawHeadPoseAction") != std::string::npos);
     CHECK(shell.find("drawHeadPoseSharedTuning") != std::string::npos);

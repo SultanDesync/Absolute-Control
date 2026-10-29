@@ -29,24 +29,37 @@ namespace
 
 int main()
 {
+    const auto mainSource = Read("src/Main.cpp");
+    const auto runtimeStart = mainSource.find("AbsoluteControl::Runtime::NativeBackend().Start");
+    const auto menuStart = mainSource.find("NativeMenuProbe::OnEarlyMenus");
+    CHECK(runtimeStart != std::string::npos && menuStart != std::string::npos && runtimeStart < menuStart);
+    const auto backend = Read("src/runtime/BackendRuntime.cpp") + Read("src/runtime/DirectInputProvider.cpp");
+    CHECK(backend.find("Scaleform") == std::string::npos);
+    CHECK(backend.find("QueryInputBusApi") == std::string::npos);
+    CHECK(backend.find("DirectInput8Create") != std::string::npos);
+    CHECK(backend.find("SetCooperativeLevel") != std::string::npos);
     const auto bootstrap = Read("src/NativeMenuProbe.cpp");
     const auto config = Read("include/ProbeConfig.h");
     const auto productIni = Read("config/AbsoluteControlPanel.ini");
     const auto researchIni = Read("config/AbsoluteControlPanelResearch.ini");
     const auto deployProbe = Read("tools/research/deploy-probe.ps1");
     const auto runtime = Read("src/runtime/RuntimeCompatibility.cpp");
-    const auto pause = Read("src/ui/PauseMenuIntegration.cpp");
+    const auto pause = Read("src/ui/PauseMenuIntegration.cpp") +
+        Read("include/ui/PauseEntryPolicy.h");
     const auto menu = Read("src/ui/ControlPanelMenu.cpp");
     const auto menuAudio = Read("src/ui/MenuAudioIntegration.cpp");
     const auto bridge = Read("src/scaleform/ScaleformMenuBridge.cpp");
     const auto semanticInput = Read("src/input/NativeMenuInputAdapter.cpp");
     const auto platformInput = Read("src/input/PlatformInputServices.cpp");
+    const auto osfCompatibility = Read("include/interop/OSFUICompatibility.h") +
+        Read("src/interop/OSFUICompatibility.cpp");
     const auto research = Read("src/research/ResearchSupport.cpp");
     const auto build = Read("xmake.lua");
     CHECK(!bootstrap.empty() && !config.empty() && !productIni.empty() && !researchIni.empty());
     CHECK(!deployProbe.empty() && !runtime.empty() && !pause.empty() && !menu.empty());
     CHECK(!menuAudio.empty());
     CHECK(!bridge.empty() && !semanticInput.empty() && !platformInput.empty());
+    CHECK(!osfCompatibility.empty());
     CHECK(!research.empty() && !build.empty());
 
     CHECK(bootstrap.find("Runtime::ValidateMenuRelocations") != std::string::npos);
@@ -67,7 +80,7 @@ int main()
 
     CHECK(runtime.find("kVerifiedRelocations") != std::string::npos);
     CHECK(pause.find("ActiveMenuInsertHook") != std::string::npos);
-    CHECK(pause.find("kPauseEntryLabel = \"MOD OPTIONS\"") != std::string::npos);
+    CHECK(pause.find("kLabel = \"ABSOLUTE CONTROL\"") != std::string::npos);
     CHECK(pause.find("EntryMemberCopyVisitor") != std::string::npos);
     CHECK(pause.find("ABSOLUTE CONTROL PANEL") == std::string::npos);
     CHECK(menu.find("class AbsoluteControlPanelMenu") != std::string::npos);
@@ -85,6 +98,16 @@ int main()
     CHECK(bridge.find("a_params.argCount == 11") != std::string::npos);
     CHECK(semanticInput.find("MenuInputRouter::Route") != std::string::npos);
     CHECK(platformInput.find("GetAsyncKeyState") != std::string::npos);
+    CHECK(osfCompatibility.find("OSFUI.dll") != std::string::npos);
+    CHECK(osfCompatibility.find("OSFUI_FocusMenu") != std::string::npos);
+    CHECK(osfCompatibility.find("GetProcAddress") == std::string::npos);
+    const auto firstOsfOpenGuard = menu.find(
+        "OSFUICompatibility::IsPresentationActive");
+    CHECK(firstOsfOpenGuard != std::string::npos);
+    CHECK(menu.find("OSFUICompatibility::IsPresentationActive",
+              firstOsfOpenGuard + 1) != std::string::npos);
+    CHECK(bootstrap.find("OSFUICompatibility::LogStartupState") !=
+        std::string::npos);
     CHECK(research.find("::SendInput") != std::string::npos);
 
     CHECK(build.find("src/runtime/RuntimeCompatibility.cpp") != std::string::npos);
@@ -94,5 +117,6 @@ int main()
     CHECK(build.find("src/scaleform/ScaleformMenuBridge.cpp") != std::string::npos);
     CHECK(build.find("src/input/NativeMenuInputAdapter.cpp") != std::string::npos);
     CHECK(build.find("src/input/PlatformInputServices.cpp") != std::string::npos);
+    CHECK(build.find("src/interop/OSFUICompatibility.cpp") != std::string::npos);
     return 0;
 }

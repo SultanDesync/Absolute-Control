@@ -6,6 +6,17 @@
 This file records why the project is shaped as it is. It prevents a future maintainer or builder
 agent from rediscovering the same tradeoffs from conversation history.
 
+## 2026-09-04 — Retain native hosting and brand the optional entry
+
+**Status:** Accepted product direction; revised entry runtime acceptance pending.
+
+Absolute Control remains the supported native host for the suite's specialized menus. Migration
+to OSF UI is not planned. Preserve the independent gameplay/configuration boundaries and improve
+coexistence with peer menus. Rename the PauseMenu row to **CONTROL PANEL**; retain internal menu
+and API identities. Optional entry-hook failure must not reject an otherwise validated native host.
+See [PauseMenu compatibility](PAUSE-MENU-COMPATIBILITY.md) for implemented guards, remaining
+Scaleform limitations, the proposed publication-boundary research and required runtime checks.
+
 ## D-001 — Product name and AI-forward method
 
 **Status:** Accepted.

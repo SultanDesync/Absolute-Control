@@ -76,7 +76,8 @@ matching parses JSON fields and must not depend on serialization field order.
 
 Current commands are:
 
-- `menu_up`, `nav_down`, `nav_left`, `nav_right`, and `accept`;
+- `menu_up`, `nav_down`, `nav_left`, `nav_right`, `accept`, and the guarded
+  `confirm_continue`;
 - `pause` and `probe_escape`;
 - `show_probe` and `hide_probe`;
 - `inject_pause_entry`; and
@@ -95,11 +96,54 @@ changes still require a Starfield restart because both binaries are cached by th
 use Windows PowerShell) with an ignored local manifest; the embedded `System.Drawing` helper is not
 PowerShell 7 compatible. It validates the ResearchDev manifest, deploys
 the exact DLL/SWF pair, launches the shortcut, advances the title screen through bounded commands,
-loads the retained safe save, opens the native movie, and requires structural
+loads the retained safe save through a native state/row/text-guarded confirmation, waits for fresh
+HUD admission before sending Pause, opens the native movie, and requires structural
 `bridge_model_applied` plus populated `bridge_model_published` evidence. Manual mode returns with
 the game retained; `visibleMilliseconds` remains bounded to 15 minutes so the ResearchDev watchdog
 still provides eventual recovery. A magenta pixel threshold of zero disables the archived visual
 sentinel requirement; semantic movie/bridge evidence remains authoritative.
+
+### Subscriber menu smoke test
+
+Set `subscriberMenuSmoke: true`, `manualValidation: false`, and
+`keepGameRunning: false` in an ignored local runner manifest for a read-only
+page-loading pass over Zero, Power and Head Tracking. Supply freshly built
+subscriber DLLs through `additionalPluginFiles` or their already enabled test
+mods; preserve deployed files before replacing them. Keep HOTAS out of this
+native-backend development cohort.
+
+After guarded startup, the runner opens all nine subscriber pages through the
+public `requestOpenPage` API. Research-only, expiring commands allow just these
+named pages; they neither accept arbitrary routes nor edit settings. Each page
+must become active with controls in an acknowledged SWF model. AC lazily loads
+only the active page's controls, so a populated initial menu is insufficient.
+The runner saves per-page screenshots and `subscriber-menu-smoke.json`, then
+requests normal game shutdown.
+
+`tools/research/Test-SubscriberMenuSmoke.ps1` can recheck exported evidence for
+an exact run ID. Its companion test in `tools/research/tests` rejects stale runs,
+unacknowledged/rejected publications, missing or inactive pages, mismatched
+generations, duplicate active-page records and empty controls. This proves menu
+loading only; binding capture, persistence and gameplay require separate tests.
+
+### Faster guarded startup (2026-09-18)
+
+The runner no longer sleeps after mailbox readiness or before checking Continue selection.
+Evidence polling defaults to 100 ms; screenshot checks use 250 ms. After selecting Continue,
+`confirm_continue` checks the live MainMenu action, selected enabled row, confirmation text,
+disabled list interaction and nonempty prompt immediately before sending the confirmation.
+It retries readiness for at most two seconds and rejects expired work without sending a key.
+Pause is requested as soon as the current run reports HUD admission, not after a fixed load delay.
+
+Pause-only diagnostics default to the frame-60 sample. `diagnosticSampleFrame` can request 180
+or 600; later native observations continue in a retained session without blocking the fast path.
+
+One fully hands-off cold run with AC Research, Zero and OSF passed: approximately 55 seconds from
+launch request to retained diagnostics, and 13 seconds from the first Continue accept to confirmed
+PauseMenu. The guarded confirmation completed in under one second. These are measured results
+for the test profile, not a universal loading-time guarantee. Run-linked overwrite growth was zero.
+The research build, confirmation-policy tests, release/research boundary test and PowerShell
+timing-contract test passed; this does not constitute a full product or UX regression run.
 
 The lifecycle-owned implementation has completed 25 consecutive isolated cycles. New runtime
 support must repeat that test according to [the update runbook](RUNTIME-UPDATE-RUNBOOK.md).

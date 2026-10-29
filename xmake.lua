@@ -80,17 +80,23 @@ local release_sources = {
     "src/ProbeConfig.cpp",
     "src/input/NativeMenuInputAdapter.cpp",
     "src/input/PlatformInputServices.cpp",
+    "src/interop/OSFUICompatibility.cpp",
     "src/runtime/ProbeRuntimeState.cpp",
+    "src/runtime/BackendRuntime.cpp",
+    "src/runtime/DeviceStore.cpp",
+    "src/runtime/DirectInputProvider.cpp",
     "src/runtime/RuntimeCompatibility.cpp",
     "src/scaleform/ScaleformMenuBridge.cpp",
     "src/ui/ControlPanelMenu.cpp",
     "src/ui/MenuAudioIntegration.cpp",
     "src/ui/MenuMessaging.cpp",
-    "src/ui/PauseMenuIntegration.cpp"
+    "src/ui/PauseMenuIntegration.cpp",
+    "src/ui/PauseMenuPresentation.cpp"
 }
 
 local research_only_sources = {
     "src/ResearchInputCapture.cpp",
+    "src/research/PauseMenuDiagnostics.cpp",
     "src/research/ResearchSupport.cpp"
 }
 
@@ -116,6 +122,7 @@ local function configure_control_panel_plugin(plugin_name, description)
     })
 
     add_control_panel_core_sources()
+    add_links("dinput8", "dxguid")
     add_headerfiles("include/(**.h)")
     -- This generated overlay shadows only RE/IDs.h. The upstream submodule remains pristine,
     -- and any upstream text change makes configuration fail instead of silently mispatching.
@@ -132,25 +139,30 @@ target("AbsoluteControlPanel", function()
         "Native shared configuration menu for Starfield SFSE plugins")
 
     add_installfiles(
+        "CREDITS.md",
         "docs/CURRENT-STATE.md",
         "docs/DECISIONS.md",
         "docs/MODULE-API.md",
         "docs/NATIVE-MENU-CONTRACT.md",
         "docs/AI-INTEGRATION-HARNESS.md",
+        "docs/SUITE-RESPONSIBILITY-ARCHITECTURE.md",
         "docs/SDK-STATUS.md",
         "docs/SDK-RELEASE-PLAN.md",
         "docs/SUBSCRIBER-UI-STANDARD.md",
         "docs/SEMANTIC-UI-COMPOSITION-ARCHITECTURE.md",
+        "docs/OSF-UI-COMPATIBILITY.md",
         "docs/RUNTIME-UPDATE-RUNBOOK.md",
         "docs/TEST-MATRIX.md", {
         prefixdir = "Documentation"
     })
     add_installfiles("include/AbsoluteControlPanelAPI.h", "include/SlopAPI.h",
+        "include/AbsoluteControlSubscriberKit.h",
         "include/LiveComponentsExperimentalAPI.h",
         "include/AbsoluteControlCompositionExperimentalAPI.h", {
         prefixdir = "SDK"
     })
     add_installfiles("sdk/README.md", "sdk/CHANGELOG.md",
+        "sdk/STANDARD-SUBSCRIBER.md",
         "sdk/menu-definition.schema.json", {
         prefixdir = "SDK"
     })
@@ -208,6 +220,41 @@ target("AbsoluteControlPanelResearchDev", function()
             "-ArtifactRole", "research-dev"
         })
     end)
+end)
+
+-- Internal R2 codec/contract fixtures; no production provider is acquired.
+target("device_lifecycle_test", function()
+    set_kind("binary")
+    set_default(false)
+    add_tests("snapshot_reconciliation_notifications_and_overflow")
+    add_includedirs("include")
+    add_files("src/runtime/DeviceStore.cpp", "tests/DeviceLifecycleTests.cpp")
+end)
+
+target("backend_runtime_test", function()
+    set_kind("binary")
+    set_default(false)
+    add_tests("native_data_plane_and_worker_lifetime")
+    add_includedirs("include")
+    add_files("src/runtime/BackendRuntime.cpp", "src/runtime/DeviceStore.cpp",
+        "tests/BackendRuntimeTests.cpp")
+end)
+
+target("legacy_hotas_token_test", function()
+    set_kind("binary")
+    set_default(false)
+    add_tests("round_trip_and_dialect_ambiguity")
+    add_includedirs("include")
+    add_files("src/runtime/LegacyHotasToken.cpp", "tests/LegacyHotasTokenTests.cpp")
+end)
+
+-- Internal R0/R1 harness only; this source is not in either plugin target.
+target("headless_core_test", function()
+    set_kind("binary")
+    set_default(false)
+    add_tests("startup_authority_and_neutralization")
+    add_includedirs("include")
+    add_files("src/runtime/HeadlessCore.cpp", "tests/HeadlessCoreTests.cpp")
 end)
 
 target("probe_state_test", function()
@@ -273,6 +320,30 @@ target("scaleform_bridge_source_test", function()
     set_default(false)
     add_tests("source_contract")
     add_files("tests/ScaleformBridgeSourceTests.cpp")
+end)
+
+target("continue_confirmation_policy_test", function()
+    set_kind("binary")
+    set_default(false)
+    add_files("tests/ContinueConfirmationPolicyTests.cpp")
+    add_includedirs("include")
+    add_tests("guarded_safe_save_confirmation")
+end)
+
+target("pause_entry_policy_test", function()
+    set_kind("binary")
+    set_default(false)
+    add_tests("coexistence_ownership_and_action_dispatch")
+    add_includedirs("include")
+    add_files("tests/PauseEntryPolicyTests.cpp")
+end)
+
+target("bridge_protocol_state_test", function()
+    set_kind("binary")
+    set_default(false)
+    add_tests("version_and_publication_acceptance")
+    add_includedirs("include")
+    add_files("tests/BridgeProtocolStateTests.cpp")
 end)
 
 target("native_decomposition_source_test", function()

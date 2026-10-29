@@ -7,6 +7,10 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+# Load script-backed utility commands before nested build scripts run. Depending
+# on the launching shell, automatic module loading can miss Get-FileHash there.
+Import-Module Microsoft.PowerShell.Utility -Global
+
 function Get-ResearchFileSha256 {
     param([Parameter(Mandatory = $true)][string]$LiteralPath)
     $stream = [IO.File]::OpenRead($LiteralPath)
@@ -337,7 +341,9 @@ function Wait-ForCondition {
         [scriptblock]$Condition,
         [int]$TimeoutSeconds,
         [string]$Description,
-        [System.Diagnostics.Process]$Process
+        [System.Diagnostics.Process]$Process,
+        [ValidateRange(25, 5000)]
+        [int]$PollMilliseconds = 100
     )
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     while ([DateTime]::UtcNow -lt $deadline) {
@@ -358,7 +364,7 @@ function Wait-ForCondition {
         if ($null -ne $value -and $value -ne $false) {
             return $value
         }
-        Start-Sleep -Milliseconds 500
+        Start-Sleep -Milliseconds $PollMilliseconds
     }
     throw "Timed out waiting for $Description after $TimeoutSeconds seconds."
 }
@@ -420,8 +426,14 @@ function Write-SentinelSignal {
         [string]$Event
     )
 
-    $present = $Signal.PixelCount -ge $script:SentinelMinimumPixels
+    $enabled = $script:SentinelMinimumPixels -gt 0
+    $present = if ($enabled) {
+        $Signal.PixelCount -ge $script:SentinelMinimumPixels
+    } else {
+        $null
+    }
     $record = [ordered]@{
+        enabled = $enabled
         present = $present
         pixel_count = $Signal.PixelCount
         minimum_pixels = $script:SentinelMinimumPixels
@@ -463,8 +475,11 @@ function Invoke-ResearchInput {
     Move-Item -LiteralPath $temporaryPath -Destination $script:InputPath -Force
     Write-RunnerEvent 'research_input_requested' "id=$CommandId command=$Command"
 
-    $eventRecord = Wait-ForPluginEvent -Event 'research_input_key_up' `
-        -DetailContains "id=$CommandId command=$Command" -TimeoutSeconds 15 -Process $Process
+    $eventRecord = Wait-ForResearchInputResult -CommandId $CommandId `
+        -Command $Command -TimeoutSeconds 15 -Process $Process
+    if ($eventRecord.event -eq 'research_input_rejected') {
+        throw "Research input rejected: $($eventRecord.detail)"
+    }
     if (-not $eventRecord.detail.Contains('sent=1 error=0')) {
         throw "Research input failed: $($eventRecord.detail)"
     }
@@ -498,12 +513,60 @@ function Wait-ForPluginEvent {
         }
 }
 
+function Wait-ForResearchInputResult {
+    param(
+        [uint32]$CommandId,
+        [string]$Command,
+        [int]$TimeoutSeconds,
+        [System.Diagnostics.Process]$Process
+    )
+
+    return Wait-ForCondition -TimeoutSeconds $TimeoutSeconds `
+        -Description "research input result id=$CommandId command=$Command" `
+        -Process $Process -Condition {
+            if (-not (Test-Path -LiteralPath $script:PluginEvidencePath)) {
+                return $false
+            }
+            $detailPrefix = "id=$CommandId command=$Command"
+            $record = Get-Content -LiteralPath $script:PluginEvidencePath -Tail 500 |
+                ForEach-Object {
+                    try { $_ | ConvertFrom-Json } catch { $null }
+                } | Where-Object {
+                    $null -ne $_ -and $_.run_id -eq $script:RunId -and
+                    $_.event -in @('research_input_key_up', 'research_input_rejected') -and
+                    ([string]$_.detail).StartsWith($detailPrefix)
+                } | Select-Object -Last 1
+            if ($null -ne $record) { return $record }
+            return $false
+        }
+}
+
 function Invoke-StepTone {
     param([int]$Frequency)
     try {
         [Console]::Beep($Frequency, 120)
     } catch {
         Write-RunnerEvent 'step_tone_unavailable' $_.Exception.Message
+    }
+}
+
+function Export-RunEvidence {
+    if ($null -ne $script:PluginEvidencePath -and
+        (Test-Path -LiteralPath $script:PluginEvidencePath -PathType Leaf)) {
+        $matchingEvidence = @(Get-Content -LiteralPath $script:PluginEvidencePath |
+            Where-Object { $_.Contains(('"run_id":"{0}"' -f $script:RunId)) })
+        if ($matchingEvidence.Count -gt 0) {
+            [System.IO.File]::WriteAllLines(
+                (Join-Path $script:RunDirectory 'plugin-events.jsonl'),
+                [string[]]$matchingEvidence,
+                [System.Text.UTF8Encoding]::new($false))
+        }
+    }
+
+    $buildManifestPath = Join-Path $repositoryRoot `
+        'interface\dist\AbsoluteControlPanelMenu.build.json'
+    if (Test-Path -LiteralPath $buildManifestPath -PathType Leaf) {
+        Copy-Item -LiteralPath $buildManifestPath -Destination $script:RunDirectory
     }
 }
 
@@ -542,8 +605,35 @@ $keepGameRunning = $null -ne $manifest.keepGameRunning -and
     [bool]$manifest.keepGameRunning
 $manualValidation = $null -ne $manifest.manualValidation -and
     [bool]$manifest.manualValidation
+$pauseDiagnosticsOnly =
+    $manifest.PSObject.Properties.Name -contains 'pauseDiagnosticsOnly' -and
+    [bool]$manifest.pauseDiagnosticsOnly
+$diagnosticSampleFrame =
+    if ($manifest.PSObject.Properties.Name -contains 'diagnosticSampleFrame') {
+        [int]$manifest.diagnosticSampleFrame
+    } else { 60 }
+if ($diagnosticSampleFrame -notin @(60, 180, 600)) {
+    throw 'diagnosticSampleFrame must be one of 60, 180, or 600.'
+}
+$diagnosticSampleTimeoutSeconds =
+    if ($manifest.PSObject.Properties.Name -contains 'diagnosticSampleTimeoutSeconds') {
+        [int]$manifest.diagnosticSampleTimeoutSeconds
+    } else {
+        switch ($diagnosticSampleFrame) {
+            60 { 10 }
+            180 { 15 }
+            600 { 20 }
+        }
+    }
+if ($diagnosticSampleTimeoutSeconds -lt 1 -or
+    $diagnosticSampleTimeoutSeconds -gt 30) {
+    throw 'diagnosticSampleTimeoutSeconds must be between 1 and 30.'
+}
 if ($manualValidation -and -not $keepGameRunning) {
     throw 'manualValidation requires keepGameRunning so the game remains available to the tester.'
+}
+if ($pauseDiagnosticsOnly -and -not $keepGameRunning) {
+    throw 'pauseDiagnosticsOnly requires keepGameRunning so the verified PauseMenu session remains available.'
 }
 
 Copy-Item -LiteralPath $resolvedManifest -Destination (Join-Path $runDirectory 'manifest.json')
@@ -574,6 +664,14 @@ $pluginEvidencePath = $null
 $armPath = $null
 $advancePath = $null
 $inputPath = $null
+$overwriteBeforePath = $null
+$pauseDiagnosticsReady = $false
+$mainMenuDiagnosticsOnly = $manifest.PSObject.Properties.Name -contains 'mainMenuDiagnosticsOnly' -and
+    [bool]$manifest.mainMenuDiagnosticsOnly
+$mainMenuDiagnosticsReady = $false
+if ($mainMenuDiagnosticsOnly -and -not $keepGameRunning) {
+    throw 'mainMenuDiagnosticsOnly requires keepGameRunning.'
+}
 try {
     $additionalPluginFiles = @()
     if ($manifest.PSObject.Properties.Name -contains 'additionalPluginFiles') {
@@ -606,6 +704,14 @@ try {
     $pluginEvidencePath = Join-Path $documents (
         'My Games\Starfield\SFSE\Logs\AbsoluteControlPanel.evidence.jsonl')
     $script:PluginEvidencePath = $pluginEvidencePath
+    if ($manifest.PSObject.Properties.Name -contains 'overwritePath' -and
+        -not [string]::IsNullOrWhiteSpace($manifest.overwritePath)) {
+        $overwriteBeforePath = Join-Path $runDirectory 'overwrite-before.json'
+        $snapshot = & (Join-Path $PSScriptRoot 'measure-overwrite-run.ps1') `
+            -Mode Snapshot -OverwritePath $manifest.overwritePath `
+            -OutputPath $overwriteBeforePath
+        Write-RunnerEvent 'overwrite_before' "status=$($snapshot.currentSnapshot.status)"
+    }
     Write-RunnerEvent 'launch_requested' "shortcut=$($manifest.shortcut)"
     Start-Process -FilePath $manifest.shortcut | Out-Null
 
@@ -625,7 +731,8 @@ try {
 
     $titleProbePath = Join-Path $runDirectory 'title-probe.png'
     $titleSignal = Wait-ForCondition -TimeoutSeconds $titleScreenTimeoutSeconds `
-        -Description 'Starfield title prompt pixel signal' -Process $starfield -Condition {
+        -Description 'Starfield title prompt pixel signal' -Process $starfield `
+        -PollMilliseconds 250 -Condition {
             Save-WindowScreenshot -Process $starfield -Path $titleProbePath
             $signal = Get-TitlePromptSignal -Path $titleProbePath
             if ([AbsoluteControlPanelWindow]::IsTitlePromptSignal($signal)) {
@@ -655,7 +762,8 @@ try {
 
     $script:TitleAbsentSamples = 0
     Wait-ForCondition -TimeoutSeconds $titleTransitionTimeoutSeconds `
-        -Description 'Starfield title prompt transition' -Process $starfield -Condition {
+        -Description 'Starfield title prompt transition' -Process $starfield `
+        -PollMilliseconds 250 -Condition {
             Save-WindowScreenshot -Process $starfield -Path $titleProbePath
             $signal = Get-TitlePromptSignal -Path $titleProbePath
             if ([AbsoluteControlPanelWindow]::IsTitlePromptSignal($signal)) {
@@ -670,35 +778,80 @@ try {
     $inputPath = Join-Path (Split-Path -Parent $pluginEvidencePath) (
         "AbsoluteControlPanelResearch.$runId.input")
     $script:InputPath = $inputPath
-    Start-Sleep -Milliseconds 1500
+    # The title watcher starts before PostDataLoad, but the general input
+    # mailbox does not. Title dismissal alone cannot establish input readiness.
+    Wait-ForPluginEvent -Event 'research_input_mailbox_registered' `
+        -DetailContains $inputPath -TimeoutSeconds $titleScreenTimeoutSeconds `
+        -Process $starfield | Out-Null
+    Write-RunnerEvent 'runtime_input_ready'
+    if ($mainMenuDiagnosticsOnly) {
+        # Never issue Continue, confirmation, or any save-loading input in title-only runs.
+        $mainEntry = Wait-ForPluginEvent -Event 'main_menu_entry_injected' `
+            -DetailContains 'invoked=true' -TimeoutSeconds 30 -Process $starfield
+        Save-WindowScreenshot -Process $starfield -Path (Join-Path $runDirectory 'main-menu.png')
+        Export-RunEvidence
+        $mainMenuDiagnosticsReady = $true
+        Write-RunnerEvent 'main_menu_diagnostics_ready' $mainEntry.detail
+        return
+    }
     Invoke-ResearchInput -CommandId 1 -Command 'menu_up' -Process $starfield
-    Start-Sleep -Milliseconds 500
 
     $continueSelectionPath = Join-Path $runDirectory 'continue-selection.png'
-    Save-WindowScreenshot -Process $starfield -Path $continueSelectionPath
-    $continueLuminance = [AbsoluteControlPanelWindow]::AnalyzeMeanLuminance(
-        $continueSelectionPath, 0.220, 0.363, 0.008, 0.009)
-    $newLuminance = [AbsoluteControlPanelWindow]::AnalyzeMeanLuminance(
-        $continueSelectionPath, 0.220, 0.397, 0.008, 0.009)
-    $continueSelected = $continueLuminance -ge 180 -and
-        ($continueLuminance - $newLuminance) -ge 50
+    $continueSelectionTimeoutSeconds =
+        if ($manifest.PSObject.Properties.Name -contains
+            'continueSelectionTimeoutSeconds') {
+            [int]$manifest.continueSelectionTimeoutSeconds
+        } else { 10 }
+    $continueSelection = Wait-ForCondition `
+        -TimeoutSeconds $continueSelectionTimeoutSeconds `
+        -Description 'visible Continue selection' -Process $starfield `
+        -PollMilliseconds 250 -Condition {
+            Save-WindowScreenshot -Process $starfield -Path $continueSelectionPath
+            $continueLuminance =
+                [AbsoluteControlPanelWindow]::AnalyzeMeanLuminance(
+                    $continueSelectionPath, 0.220, 0.363, 0.008, 0.009)
+            $newLuminance =
+                [AbsoluteControlPanelWindow]::AnalyzeMeanLuminance(
+                    $continueSelectionPath, 0.220, 0.397, 0.008, 0.009)
+            if ($continueLuminance -ge 180 -and
+                ($continueLuminance - $newLuminance) -ge 50) {
+                return [pscustomobject]@{
+                    continueLuminance = $continueLuminance
+                    newLuminance = $newLuminance
+                }
+            }
+            return $false
+        }
     Write-RunnerEvent 'continue_selection_evaluated' (
-        'selected={0} continue_luminance={1:F2} new_luminance={2:F2}' -f
-        $continueSelected, $continueLuminance, $newLuminance)
-    if (-not $continueSelected) {
-        throw 'Continue was not visibly selected after the guarded W input.'
-    }
+        'selected=true continue_luminance={0:F2} new_luminance={1:F2}' -f
+        $continueSelection.continueLuminance, $continueSelection.newLuminance)
     Invoke-StepTone -Frequency 660
 
+    # The first accept requests Continue. The dedicated native command waits up
+    # to two seconds for the exact Continue confirmation predicate and rejects
+    # without sending input if any MainMenu state/row/prompt guard mismatches.
     Invoke-ResearchInput -CommandId 2 -Command 'accept' -Process $starfield
-    Start-Sleep -Milliseconds 3000
-    Invoke-ResearchInput -CommandId 3 -Command 'accept' -Process $starfield
+    Invoke-ResearchInput -CommandId 3 -Command 'confirm_continue' -Process $starfield
     Invoke-StepTone -Frequency 740
     $loadWaitMilliseconds = if ($null -ne $manifest.loadWaitMilliseconds) {
         [int]$manifest.loadWaitMilliseconds
     } else { 30000 }
-    Write-RunnerEvent 'continue_load_wait_started' "milliseconds=$loadWaitMilliseconds"
-    Start-Sleep -Milliseconds $loadWaitMilliseconds
+    $loadReadyTimeoutSeconds =
+        if ($manifest.PSObject.Properties.Name -contains 'loadReadyTimeoutSeconds') {
+            [int]$manifest.loadReadyTimeoutSeconds
+        } else {
+            [int][Math]::Ceiling($loadWaitMilliseconds / 1000.0) + 30
+        }
+    Write-RunnerEvent 'continue_load_wait_started' (
+        "legacy_milliseconds=$loadWaitMilliseconds " +
+        "hud_timeout_seconds=$loadReadyTimeoutSeconds")
+    # HUD admission is the semantic boundary for an entered save. Waiting on
+    # this evidence also retains any native diagnostic dialog detected by the
+    # common bounded waiter without sending Escape into an unfinished load.
+    Wait-ForPluginEvent -Event 'active_menu_insert_completed' `
+        -DetailContains 'name=HUDMenu ' -TimeoutSeconds $loadReadyTimeoutSeconds `
+        -Process $starfield | Out-Null
+    Write-RunnerEvent 'safe_save_hud_confirmed'
     Invoke-ResearchInput -CommandId 4 -Command 'pause' -Process $starfield
 
     Wait-ForPluginEvent -Event 'research_pause_state' -DetailContains 'id=4 open=true' `
@@ -707,6 +860,24 @@ try {
     Invoke-StepTone -Frequency 880
     $pauseCheckpointPath = Join-Path $runDirectory 'pause-menu.png'
     Save-WindowScreenshot -Process $starfield -Path $pauseCheckpointPath
+
+    if ($pauseDiagnosticsOnly) {
+        # Frame 60 is the fast default qualification boundary. Later retained
+        # samples, including frame 600, continue asynchronously in the plugin.
+        # A manifest may request 180 or 600 when that exact later sample matters.
+        $pauseObservation = Wait-ForPluginEvent `
+            -Event 'pause_list_observation' `
+            -DetailContains (
+                "phase=frame_$diagnosticSampleFrame available=true") `
+            -TimeoutSeconds $diagnosticSampleTimeoutSeconds -Process $starfield
+        Export-RunEvidence
+        Write-RunnerEvent 'pause_diagnostics_ready' (
+            "pause_menu_open=true native_probe_complete=true $($pauseObservation.detail); " +
+            'session retained before PauseMenu close or Absolute Control arm')
+        Invoke-StepTone -Frequency 1320
+        $pauseDiagnosticsReady = $true
+        return
+    }
 
     Invoke-ResearchInput -CommandId 5 -Command 'pause' -Process $starfield
     Wait-ForPluginEvent -Event 'research_pause_state' -DetailContains 'id=5 open=false' `
@@ -736,7 +907,8 @@ try {
                     } | Select-Object -Last 1
                 if ($null -ne $movieEvent) { return 'plugin_movie_event' }
             }
-            if ([DateTime]::UtcNow -ge $script:NextSentinelSample) {
+            if ($script:SentinelMinimumPixels -gt 0 -and
+                [DateTime]::UtcNow -ge $script:NextSentinelSample) {
                 $script:NextSentinelSample = [DateTime]::UtcNow.AddMilliseconds(
                     $script:SentinelPollMilliseconds)
                 try {
@@ -759,8 +931,9 @@ try {
     Save-WindowScreenshot -Process $starfield -Path $screenshotPath
     Write-RunnerEvent 'screenshot_captured' $screenshotPath
     $sentinelSignal = Get-SentinelSignal -Path $screenshotPath
-    if (-not (Write-SentinelSignal -Signal $sentinelSignal -Path $screenshotPath `
-            -Event 'sentinel_evaluated')) {
+    $sentinelPresent = Write-SentinelSignal -Signal $sentinelSignal -Path $screenshotPath `
+        -Event 'sentinel_evaluated'
+    if ($script:SentinelMinimumPixels -gt 0 -and -not $sentinelPresent) {
         throw "Native menu movie did not produce the required magenta sentinel."
     }
 
@@ -771,7 +944,48 @@ try {
         -Process $starfield | Out-Null
     Write-RunnerEvent 'initial_model_round_trip_confirmed'
 
+    if ($manifest.PSObject.Properties.Name -contains 'subscriberMenuSmoke' -and
+        [bool]$manifest.subscriberMenuSmoke) {
+        $smokePages = [ordered]@{
+            open_zero_alignment = 'module=absolute.zero page=mouse-alignment '
+            open_zero_bindings = 'module=absolute.zero page=mouse-alignment-bindings '
+            open_power_presets = 'module=absolute.power page=power-presets '
+            open_power_automation = 'module=absolute.power page=power-automation '
+            open_power_diagnostics = 'module=absolute.power page=power-diagnostics '
+            open_head_axes = 'module=absolute.head_tracking page=axes '
+            open_head_general = 'module=absolute.head_tracking page=general '
+            open_head_aim = 'module=absolute.head_tracking page=aim-restriction '
+            open_head_bindings = 'module=absolute.head_tracking page=bindings '
+        }
+        foreach ($entry in $smokePages.GetEnumerator()) {
+            & (Join-Path $PSScriptRoot 'invoke-runtime-input.ps1') `
+                -MailboxDirectory (Split-Path -Parent $inputPath) `
+                -EvidencePath $pluginEvidencePath -RunId $runId -Command $entry.Key | Out-Null
+            Wait-ForCondition -TimeoutSeconds 10 -Process $starfield `
+                -Description "active subscriber page $($entry.Key)" -Condition {
+                    $pageEvent = Get-Content -LiteralPath $pluginEvidencePath | ForEach-Object {
+                        try { $_ | ConvertFrom-Json } catch { $null }
+                    } | Where-Object {
+                        $null -ne $_ -and $_.run_id -eq $runId -and
+                        $_.event -eq 'bridge_page_applied' -and
+                        $_.detail.Contains($entry.Value) -and $_.detail.EndsWith('active=true')
+                    } | Select-Object -Last 1
+                    if ($null -ne $pageEvent) { return $pageEvent }
+                    return $false
+                } | Out-Null
+            Save-WindowScreenshot -Process $starfield -Path (Join-Path $runDirectory ($entry.Key + '.png'))
+        }
+        Export-RunEvidence
+        & (Join-Path $PSScriptRoot 'Test-SubscriberMenuSmoke.ps1') `
+            -EvidencePath (Join-Path $runDirectory 'plugin-events.jsonl') `
+            -RunId $runId `
+            -ReportPath (Join-Path $runDirectory 'subscriber-menu-smoke.json')
+        Write-RunnerEvent 'subscriber_menu_smoke_passed' 'Zero=2 Power=3 HeadTracking=4; no configuration edits exercised'
+        return
+    }
+
     if ($manualValidation) {
+        Export-RunEvidence
         Write-RunnerEvent 'manual_validation_ready' (
             'Absolute Control Panel is populated; Q/R page, W/S row, E activate, A/D adjust, F apply, X cancel, Esc close')
         Invoke-StepTone -Frequency 1320
@@ -807,15 +1021,7 @@ try {
         -TimeoutSeconds $manifest.watchdogTimeoutSeconds -Process $starfield | Out-Null
     Write-RunnerEvent 'watchdog_seen'
 
-    $matchingEvidence = Get-Content -LiteralPath $pluginEvidencePath |
-        Where-Object { $_.Contains(('"run_id":"{0}"' -f $runId)) }
-    [System.IO.File]::WriteAllLines(
-        (Join-Path $runDirectory 'plugin-events.jsonl'),
-        [string[]]$matchingEvidence,
-        [System.Text.UTF8Encoding]::new($false))
-    Copy-Item -LiteralPath (
-        Join-Path $repositoryRoot 'interface\dist\AbsoluteControlPanelMenu.build.json') `
-        -Destination $runDirectory
+    Export-RunEvidence
     Write-RunnerEvent 'run_complete'
 } catch {
     if ($null -ne $starfield -and -not $starfield.HasExited) {
@@ -850,8 +1056,22 @@ try {
         $starfield.Refresh()
         if (-not $starfield.HasExited) {
             if ($keepGameRunning) {
-                Write-RunnerEvent 'session_retained' (
-                    "pid=$($starfield.Id) run_id=$runId; use cycle-pause.ps1")
+                $retainedDetail = if ($mainMenuDiagnosticsOnly) {
+                    "pid=$($starfield.Id) run_id=$runId main_menu_diagnostics_ready=$mainMenuDiagnosticsReady; no save loaded by runner"
+                } elseif ($pauseDiagnosticsOnly) {
+                    if ($pauseDiagnosticsReady) {
+                        "pid=$($starfield.Id) run_id=$runId " +
+                        'pause_diagnostics_ready=true pause_menu_open=true; ' +
+                        'resume manually or issue a bounded runtime-input command'
+                    } else {
+                        "pid=$($starfield.Id) run_id=$runId " +
+                        'pause_diagnostics_ready=false pause_menu_open=unqualified; ' +
+                        'inspect retained evidence before issuing input'
+                    }
+                } else {
+                    "pid=$($starfield.Id) run_id=$runId; use cycle-pause.ps1"
+                }
+                Write-RunnerEvent 'session_retained' $retainedDetail
             } else {
                 Write-RunnerEvent 'shutdown_requested' 'CloseMainWindow'
                 [void]$starfield.CloseMainWindow()
@@ -859,9 +1079,27 @@ try {
                 if (-not $starfield.HasExited) {
                     Write-RunnerEvent 'shutdown_incomplete' 'Starfield was left running; no forced termination used.'
                 } else {
-                    Write-RunnerEvent 'shutdown_complete'
-                }
+                Write-RunnerEvent 'shutdown_complete'
             }
         }
     }
+    if ($null -ne $overwriteBeforePath -and (Test-Path -LiteralPath $overwriteBeforePath)) {
+        try {
+            $phase = 'launch_not_observed'
+            if ($null -ne $starfield) {
+                $starfield.Refresh()
+                $phase = if ($starfield.HasExited) { 'post_exit' } else { 'live_session' }
+            }
+            $comparison = & (Join-Path $PSScriptRoot 'measure-overwrite-run.ps1') `
+                -Mode Compare -OverwritePath $manifest.overwritePath `
+                -BaselinePath $overwriteBeforePath `
+                -OutputPath (Join-Path $runDirectory 'overwrite-after.json')
+            Write-RunnerEvent 'overwrite_after' (
+                "phase=$phase comparable=$($comparison.comparison.comparable) " +
+                "delta_bytes=$($comparison.comparison.totalDelta.bytes)")
+        } catch {
+            Write-RunnerEvent 'overwrite_after_failed' $_.Exception.Message
+        }
+    }
+}
 }

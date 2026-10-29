@@ -10,7 +10,8 @@
   fail closed on the retired `AbsoluteControlPanelResearch.dll` and mixed hosts.
 - **Host readiness:** the query table remains discoverable during initialization;
   `registerModule`, `registerPage`, and `requestRefresh` return `NotReady` until exact runtime
-  validation, lifecycle-hook installation, and menu-factory retention succeed. Runtime rejection
+  validation and menu-factory retention succeed. The optional PauseMenu lifecycle hook can fail
+  independently while provider/configured-hotkey activation remains available. Core runtime rejection
   is terminal and returns `Rejected` for those mutations.
 - **Provider lifetime:** callback leases count calls outside registry/provider locks. A successful
   draft write holds a transaction token; `unregisterModule` returns retryable `Rejected` while any

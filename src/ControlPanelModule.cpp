@@ -91,7 +91,7 @@ namespace AbsoluteControlPanelResearch::ControlPanelModule
                 "Keep plugin registration order or sort module names alphabetically. Absolute Control remains last.",
                 0, 1, 1),
             Control(Api::ControlKind::Toggle, Api::kControlNone,
-                "pause-menu-entry", "Show MOD OPTIONS in Pause Menu",
+                "pause-menu-entry", "Show Absolute Control in Pause Menu",
                 "Applies immediately to future Pause Menu instances."),
             Control(Api::ControlKind::Choice, Api::kControlNone,
                 "recovery-hotkey", "Recovery hotkey",

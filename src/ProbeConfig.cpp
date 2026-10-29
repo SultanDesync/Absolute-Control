@@ -89,6 +89,14 @@ namespace AbsoluteControlPanelResearch
             } else if (key == "EnablePauseMenuEntry") {
                 config.enablePauseMenuEntry =
                     ParseBool(value, config.enablePauseMenuEntry);
+            } else if (key == "PauseMenuAutoFit") {
+                config.pauseMenuAutoFit = ParseBool(value, config.pauseMenuAutoFit);
+            } else if (key == "EnableMainMenuEntry") {
+                config.enableMainMenuEntry = ParseBool(value, config.enableMainMenuEntry);
+            } else if (key == "PauseMenuMatchFont") {
+                config.pauseMenuMatchFont = ParseBool(value, config.pauseMenuMatchFont);
+            } else if (key == "PauseMenuPurpleEntry") {
+                config.pauseMenuPurpleEntry = ParseBool(value, config.pauseMenuPurpleEntry);
             } else if (key == "OpenHotkey") {
                 config.openHotkey = ParseUnsigned(value, config.openHotkey);
             } else if (key == "MenuFlags") {

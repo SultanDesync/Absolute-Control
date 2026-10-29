@@ -8,6 +8,13 @@ The canonical product target owns the native menu host and its small self-manage
 module. The opt-in research target composes that host with automation; subscriber gameplay remains
 in other projects.
 
+Both targets also include the AC-owned `BackendRuntime`, `DirectInputProvider`
+and `DeviceStore`. The worker starts independently of presentation. DeviceStore
+publishes copied frames separately from its bounded lifecycle notifications;
+inventory snapshots include a coherent notification cursor for reconciliation.
+These native contracts remain internal. See [checkpoint 04](REFACTOR-CHECKPOINT-04.md)
+and [checkpoint 06](REFACTOR-CHECKPOINT-06.md) for ownership and readiness limits.
+
 ## Build products
 
 | Role | xmake target and DLL | Manifest | Package policy |
@@ -31,6 +38,7 @@ SFSE entry (Main)
        -> runtime compatibility + lifecycle state
        -> API readiness gate (MenuApiHost)
        -> PauseMenu integration + native menu factory
+       -> optional-host coexistence guards (Interop)
        -> process-lived input services
 
 public C ABI -> MenuApiHost registry/leases -> MenuSession transactions
@@ -61,8 +69,15 @@ Responsibilities and dependency rules:
 - `ui/ControlPanelMenu` owns the engine menu object/factory and bridge attachment.
   `ui/PauseMenuIntegration` owns the version-sensitive additive vanilla entry seam and the pending
   invocation origin claimed by a displayed bridge session.
+  Entry-hook failure is non-fatal after core compatibility passes: the native factory/API and
+  provider or configured recovery-key activation do not depend on PauseMenu injection.
+  `ui/PauseEntryPolicy` checks row ownership, action identity and collision admission independently
+  of Scaleform; the distinct entry is **CONTROL PANEL**.
 - `runtime/RuntimeCompatibility` owns exact game-version/relocation checks. Runtime offsets and
   object-layout assumptions must not spread into the API, session, or ActionScript layers.
+- `interop/OSFUICompatibility` detects OSF UI without linking or querying its ABI and prevents a
+  standalone/provider open while OSF UI's input-owning focus menu is active. It does not translate
+  schemas, settings, or persistence.
 - `EvidenceLog` exposes best-effort structured events. Only `diagnostics/AsyncLineSink` performs
   evidence-file writes, on its worker.
 - `research/**` and `ResearchInputCapture` may depend on product seams for

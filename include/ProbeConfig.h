@@ -15,7 +15,11 @@ namespace AbsoluteControlPanelResearch
     {
         bool enableRegistration{ true };
         bool enablePauseMenuEntry{ false };
-        // The PauseMenu row is the canonical entry point. A nonzero Win32
+        bool enableMainMenuEntry{ true };
+        bool pauseMenuAutoFit{ true };
+        bool pauseMenuMatchFont{ false };
+        bool pauseMenuPurpleEntry{ false };
+        // Native menu rows are the normal entry points. A nonzero Win32
         // virtual-key code opts into a standalone recovery hotkey.
         std::uint32_t openHotkey{ 0 };
         std::uint32_t menuFlags{ 0x0800071B };

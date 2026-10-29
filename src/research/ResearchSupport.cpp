@@ -1,11 +1,14 @@
 #include "research/ResearchSupport.h"
+#include "research/ContinueConfirmationPolicy.h"
 
 #include "EvidenceLog.h"
+#include "AbsoluteControlPanelAPI.h"
 #include "NativeMenuProbe.h"
 #include "runtime/ProbeRuntimeState.h"
 #include "runtime/CooperativeService.h"
 #include "ui/MenuMessaging.h"
 #include "ui/PauseMenuIntegration.h"
+#include "ui/PauseEntryPolicy.h"
 
 #include <RE/Starfield.h>
 #include <SFSE/SFSE.h>
@@ -386,14 +389,133 @@ namespace AbsoluteControlPanelResearch::ResearchSupport
             }
         }
 
+        bool ContinueConfirmationReady() noexcept
+        {
+            try {
+                using Value = RE::Scaleform::GFx::Value;
+                const auto ui = RE::UI::GetSingleton();
+                const RE::BSFixedString name("MainMenu");
+                auto menu = ui ? ui->GetMenu(name) : nullptr;
+                if (!ui || !ui->IsMenuOpen(name) || !menu || !menu->uiMovie ||
+                    !menu->uiMovie->asMovieRoot) return false;
+                auto* root = menu->uiMovie->asMovieRoot.get();
+                Value panel, list, row, prompt;
+                if (!root->GetVariable(&panel, "_root.Menu_mc.MainPanel_mc") || !panel.IsObject() ||
+                    !panel.GetMember("MainList_mc", &list) || !list.IsObject() ||
+                    !list.GetMember("selectedEntry", &row) || !row.IsObject() ||
+                    !root->GetVariable(&prompt,
+                        "_root.Menu_mc.MainPanel_mc.ConfirmPrompt_mc.TextPulse_mc.textField") ||
+                    !prompt.IsObject()) return false;
+                ContinueConfirmationState state;
+                state.readable = true;
+                state.mainMenuOpen = true;
+                const auto boolean = [&](const Value& object, const char* key) {
+                    Value value;
+                    if (!object.GetMember(key, &value) || !value.IsBoolean()) {
+                        state.readable = false;
+                        return false;
+                    }
+                    return value.GetBoolean();
+                };
+                const auto action = [&](const Value& object, const char* key) -> std::uint32_t {
+                    Value value;
+                    if (object.GetMember(key, &value)) {
+                        if (value.IsUInt()) return value.GetUInt();
+                        if (value.IsInt() && value.GetInt() >= 0) return value.GetInt();
+                        if (value.IsNumber() && value.GetNumber() == 1.0) return 1;
+                    }
+                    state.readable = false;
+                    return 0;
+                };
+                const auto nonempty = [&](const Value& object, const char* key) {
+                    Value value;
+                    if (!object.GetMember(key, &value) || !value.IsString()) {
+                        state.readable = false;
+                        return false;
+                    }
+                    const auto* text = value.GetString();
+                    return text && *text;
+                };
+                state.panelVisible = boolean(panel, "visible");
+                state.currentAction = action(panel, "currentAction");
+                state.selectedAction = action(row, "uActionType");
+                state.rowDisabled = boolean(row, "bDisabled");
+                state.hasConfirmText = nonempty(row, "sConfirmText");
+                state.inputDisabled = boolean(list, "disableInput");
+                state.selectionDisabled = boolean(list, "disableSelection");
+                state.hasPrompt = nonempty(prompt, "text");
+                return CanConfirmContinue(state);
+            } catch (...) { return false; }
+        }
+
+        bool SelectMainEntry() noexcept
+        {
+            try {
+                using Value = RE::Scaleform::GFx::Value;
+                const auto ui = RE::UI::GetSingleton();
+                const RE::BSFixedString name("MainMenu");
+                auto menu = ui ? ui->GetMenu(name) : nullptr;
+                if (!ui || !ui->IsMenuOpen(name) || !menu || !menu->uiMovie ||
+                    !menu->uiMovie->asMovieRoot || ui->IsMenuOpen(RE::BSFixedString(
+                        NativeMenuProbe::kMenuName.data()))) return false;
+                Value panel, list, value;
+                if (!menu->uiMovie->asMovieRoot->GetVariable(&panel, "_root.Menu_mc.MainPanel_mc") ||
+                    !panel.IsObject() || !panel.GetMember("visible", &value) ||
+                    !value.IsBoolean() || !value.GetBoolean() ||
+                    !panel.GetMember("MainList_mc", &list) || !list.IsObject()) return false;
+                for (const char* key : { "disableInput", "disableSelection" }) {
+                    if (!list.GetMember(key, &value) || !value.IsBoolean() || value.GetBoolean()) return false;
+                }
+                if (!list.GetMember("entryCount", &value) || !value.IsInt() ||
+                    value.GetInt() < 1 || value.GetInt() > 128) return false;
+                const auto count = value.GetInt();
+                for (int index = 0; index < count; ++index) {
+                    Value arg(index), row, owner, action;
+                    if (!list.Invoke("GetDataForEntry", &row, &arg, 1) || !row.IsObject()) return false;
+                    if (!row.GetMember(Ui::PauseEntryPolicy::kOwnerMarker, &owner) ||
+                        !owner.IsBoolean() || !owner.GetBoolean()) continue;
+                    if (!row.GetMember("uActionType", &action)) return false;
+                    const auto number = action.IsUInt() ? double(action.GetUInt()) :
+                        action.IsInt() ? double(action.GetInt()) : action.IsNumber() ? action.GetNumber() : -1.0;
+                    if (Ui::PauseEntryPolicy::ParseAction(number) != Ui::PauseEntryPolicy::kAction) return false;
+                    // Selection only: never invoke an entry action or load a save.
+                    return list.SetMember("selectedIndex", arg) && list.GetMember("selectedIndex", &value) &&
+                        value.IsInt() && value.GetInt() == index;
+                }
+            } catch (...) {}
+            return false;
+        }
+
         void QueueScanCodePulse(
             const SFSE::TaskInterface* a_taskInterface, std::uint32_t a_commandId,
             std::string a_command, WORD a_scanCode, bool a_extended,
-            const std::shared_ptr<Runtime::CallbackGate>& a_gate) noexcept
+            const std::shared_ptr<Runtime::CallbackGate>& a_gate,
+            std::chrono::steady_clock::time_point a_deadline = {}) noexcept
         {
+            if (a_command == "confirm_continue" && a_deadline == std::chrono::steady_clock::time_point{})
+                a_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
             QueueIfActive(a_taskInterface, a_gate, [
                 a_taskInterface, gate = a_gate, a_commandId,
-                command = std::move(a_command), a_scanCode, a_extended]() {
+                command = std::move(a_command), a_scanCode, a_extended, a_deadline]() {
+                if (command == "confirm_continue") {
+                    if (std::chrono::steady_clock::now() >= a_deadline) {
+                        EvidenceLog::Event("research_input_rejected",
+                            std::format("id={} command={} reason=confirmation_not_ready_or_expired", a_commandId, command));
+                        return;
+                    }
+                    if (!ContinueConfirmationReady()) {
+                        const bool scheduled = ScheduleDelayed(std::chrono::milliseconds(50),
+                            [a_taskInterface, gate, a_commandId, command, a_scanCode, a_extended, a_deadline]() {
+                                QueueScanCodePulse(a_taskInterface, a_commandId, command,
+                                    a_scanCode, a_extended, gate, a_deadline);
+                            });
+                        if (!scheduled) EvidenceLog::Event("research_input_rejected",
+                            std::format("id={} command={} reason=scheduler_unavailable", a_commandId, command));
+                        return;
+                    }
+                    EvidenceLog::Event("research_continue_confirmation_verified",
+                        std::format("id={} command={} action=1", a_commandId, command));
+                }
                 const auto activeWindow = ::GetActiveWindow();
                 const auto foregroundBefore = ::GetForegroundWindow();
                 const bool focused = activeWindow != nullptr &&
@@ -496,6 +618,50 @@ namespace AbsoluteControlPanelResearch::ResearchSupport
                 }
 
                 const std::string command = commandLine.substr(8);
+                struct SmokePage { const char* command; const char* module; const char* page; };
+                static constexpr SmokePage smokePages[]{
+                    { "open_zero_alignment", "absolute.zero", "mouse-alignment" },
+                    { "open_zero_bindings", "absolute.zero", "mouse-alignment-bindings" },
+                    { "open_power_presets", "absolute.power", "power-presets" },
+                    { "open_power_automation", "absolute.power", "power-automation" },
+                    { "open_power_diagnostics", "absolute.power", "power-diagnostics" },
+                    { "open_head_axes", "absolute.head_tracking", "axes" },
+                    { "open_head_general", "absolute.head_tracking", "general" },
+                    { "open_head_aim", "absolute.head_tracking", "aim-restriction" },
+                    { "open_head_bindings", "absolute.head_tracking", "bindings" },
+                };
+                const auto smokePage = std::ranges::find_if(smokePages,
+                    [&](const SmokePage& page) { return command == page.command; });
+                if (smokePage != std::end(smokePages)) {
+                    a_lastCommandId = commandId;
+                    EvidenceLog::Event("research_probe_command_queued",
+                        std::format("id={} command={}", commandId, command));
+                    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+                    QueueIfActive(a_taskInterface, a_gate, [commandId, page = *smokePage, deadline]() {
+                        const auto* api = AbsoluteControlPanel_QueryApi(AbsoluteControlPanelApi::kAbiVersion);
+                        const bool ready = api && api->structSize >= AbsoluteControlPanelApi::kApiV1RequestOpenPageSize &&
+                            api->requestOpenPage && api->isOpen && api->isOpen() &&
+                            std::chrono::steady_clock::now() < deadline;
+                        const auto result = ready ? api->requestOpenPage(page.module, page.page) :
+                            AbsoluteControlPanelApi::Result::NotReady;
+                        EvidenceLog::Event(result == AbsoluteControlPanelApi::Result::Ok ?
+                            "research_probe_command_dispatched" : "research_input_rejected",
+                            std::format("id={} command={} result={}", commandId, page.command,
+                                static_cast<std::uint32_t>(result)));
+                    });
+                    return;
+                }
+                if (command == "select_main_entry") {
+                    a_lastCommandId = commandId;
+                    EvidenceLog::Event("research_probe_command_queued", std::format("id={} command={}", commandId, command));
+                    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+                    QueueIfActive(a_taskInterface, a_gate, [commandId, command, deadline]() {
+                        const bool selected = std::chrono::steady_clock::now() < deadline && SelectMainEntry();
+                        EvidenceLog::Event(selected ? "research_probe_command_dispatched" : "research_input_rejected",
+                            std::format("id={} command={} selected={} activation=false", commandId, command, selected));
+                    });
+                    return;
+                }
                 if (command == "inject_pause_entry") {
                     a_lastCommandId = commandId;
                     EvidenceLog::Event(
@@ -539,7 +705,7 @@ namespace AbsoluteControlPanelResearch::ResearchSupport
                 else if (command == "nav_down") scanCode = 0x1F;
                 else if (command == "nav_left") scanCode = 0x1E;
                 else if (command == "nav_right") scanCode = 0x20;
-                else if (command == "accept") scanCode = 0x12;
+                else if (command == "accept" || command == "confirm_continue") scanCode = 0x12;
                 else if (command == "pause" || command == "probe_escape") scanCode = 0x01;
                 else {
                     EvidenceLog::Event(

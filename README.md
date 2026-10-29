@@ -2,7 +2,7 @@
 
 Absolute Control is a shared native configuration menu for modular Starfield SFSE plugins.
 Independent modules register settings, actions, bindings, profiles, live telemetry, and diagnostics
-inside one consistent **MOD OPTIONS** interface while retaining ownership of their own configuration
+inside one consistent **ABSOLUTE CONTROL** interface while retaining ownership of their own configuration
 and gameplay behavior.
 
 The current all-in-one line is Absolute Suite `0.3.0-beta.1`, a guided installer containing
@@ -48,7 +48,7 @@ Absolute Control host currently does.
 2. With the suite, use the guided FOMOD to select gameplay modules. With the standalone host,
    install each gameplay module from its own page.
 3. Launch Starfield through SFSE.
-4. Open the Pause Menu and select **MOD OPTIONS**.
+4. Open the Pause Menu and select **ABSOLUTE CONTROL**.
 5. Choose a module from the left sidebar and configure its pages.
 
 Absolute Control provides common navigation, Apply/Cancel, dirty-close dialogs, binding capture,
@@ -74,6 +74,35 @@ same menu files, and one mod-manager entry would overwrite the other.
 The product menu is a dedicated native Scaleform interface. It does not use Dear ImGui, replace
 `pausemenu.swf`, intercept a graphics renderer, or require gameplay modules to link against the
 host.
+
+## OSF UI relationship and coexistence
+
+[OSF UI](https://github.com/ozooma10/osf-ui) implemented a shared Starfield mod-settings platform
+before Absolute Control. Absolute Control's shared-host concept, PauseMenu journey, left-hand mod
+list, top-level page tabs, control rows, diagnostics, and dark cyan/amber visual language
+substantially overlap that prior work. We credit OSF UI and its contributors explicitly and do not
+claim that interaction design as an independent invention. The renderers and state-ownership code
+differ—OSF UI uses an out-of-process WebView2/D3D12 renderer with JSON schemas and host-owned
+persistence, while Absolute Control uses a native Scaleform menu with provider-owned transactions
+and persistence—but those implementation differences do not erase the product-design overlap.
+
+They are designed to co-install as separate hosts. Their PauseMenu rows, action IDs, menu names,
+storage, and APIs remain distinct; Absolute Control also refuses hotkey/provider opens while OSF
+UI owns input. It does not emulate OSF UI's ABI or reinterpret OSF UI settings schemas. See the
+[OSF UI compatibility record](docs/OSF-UI-COMPATIBILITY.md) for the audit, exact coexistence
+contract, and remaining two-host runtime test.
+
+See [CREDITS.md](CREDITS.md) for the project acknowledgement. Absolute Control remains the suite's
+native editor; OSF UI migration is not the product direction. Shared menu conventions and visual
+influences are acknowledged separately from technical compatibility. The distinct PauseMenu entry
+distinguishes this host from a general mod-settings destination.
+
+The PauseMenu entry is optional. If another mod has changed its lifecycle callsite, Absolute Control
+leaves that hook untouched and still registers its own menu and provider API. Provider shortcuts
+remain available; a manual recovery key can be set through `[ControlPanel] OpenHotkey` in
+`AbsoluteControlPanel_Custom.ini` (for example, `0x71` for F2). It remains unbound by default.
+See the [entry compatibility design](docs/PAUSE-MENU-COMPATIBILITY.md) for the bounded injection
+policy and the in-game checks still required.
 
 ## Modular ownership
 

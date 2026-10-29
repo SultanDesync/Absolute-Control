@@ -109,6 +109,7 @@ function Invoke-ProcessGate {
                     Invoke-CheckedCommand 'xmake' @('f', '-P', 'sdk/tests/compile', '-y', '-m', 'release')
                     Invoke-CheckedCommand 'xmake' @('-P', 'sdk/tests/compile', '-y')
                     Invoke-CheckedCommand 'xmake' @('run', '-P', 'sdk/tests/compile', 'generated_menu_compile_test')
+                    Invoke-CheckedCommand 'xmake' @('run', '-P', 'sdk/tests/compile', 'subscriber_kit_compile_test')
                 }
                 'component-catalog' {
                     Invoke-CheckedCommand 'python' @('catalog/validate_catalog.py')

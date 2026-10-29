@@ -1,5 +1,6 @@
 
 #include "scaleform/ScaleformMenuBridge.h"
+#include "scaleform/BridgeProtocolState.h"
 
 #include "EvidenceLog.h"
 #include "MenuApiHost.h"
@@ -11,6 +12,7 @@
 #include "input/PlatformInputServices.h"
 #include "ui/MenuMessaging.h"
 #include "ui/PauseMenuIntegration.h"
+#include "ui/MenuOpenOrigin.h"
 
 #include <array>
 #include <cmath>
@@ -57,6 +59,33 @@ namespace AbsoluteControlPanelResearch::Scaleform
         {
             movie = a_movie;
             menuObj = a_menuObject;
+            protocol = {};
+            protocolHideQueued = false;
+        }
+
+        void RejectProtocol(std::string_view reason)
+        {
+            protocol.Fail();
+            closing = true;
+            pointerInputArmed = false;
+            pendingModel.reset();
+            if (protocolHideQueued) return;
+            protocolHideQueued = true;
+            // Hide owns normal teardown and provider rollback; never re-enter
+            // provider callbacks from a synchronous applyModel acknowledgement.
+            MenuApiHost::SetInputCaptureActive(false);
+            EvidenceLog::Event("bridge_protocol_rejected", reason);
+            Ui::QueueControlPanelMessage(RE::UI_MESSAGE_TYPE::kHide,
+                "bridge-protocol-rejected");
+        }
+
+        bool CompleteHandshake(bool invoked)
+        {
+            if (!invoked || !protocol.IsReady()) {
+                RejectProtocol("onCodeObjCreate did not complete a supported ready handshake");
+                return false;
+            }
+            return true;
         }
 
             void LogMovieState(std::string_view a_phase)
@@ -94,8 +123,26 @@ namespace AbsoluteControlPanelResearch::Scaleform
             {
                 const auto function = static_cast<NativeFunction>(
                     reinterpret_cast<std::uintptr_t>(a_params.userData));
+                if (closing || protocol.Failed()) return;
+                if (function != NativeFunction::Ready && !protocol.IsReady()) {
+                    RejectProtocol("callback before ready handshake");
+                    return;
+                }
+                if ((function == NativeFunction::Dispatch ||
+                        function == NativeFunction::Compound) &&
+                    !protocol.HasAppliedModel()) {
+                    EvidenceLog::Event("bridge_command_rejected", "no accepted model");
+                    return;
+                }
                 switch (function) {
-                case NativeFunction::Ready:
+                case NativeFunction::Ready: {
+                    const auto ready = protocol.Ready(a_params.argCount,
+                        a_params.argCount == 1 ? ReadUnsigned(a_params.args[0]) : 0);
+                    if (ready == BridgeProtocolState::ReadyResult::Rejected) {
+                        RejectProtocol("unsupported ready payload");
+                        break;
+                    }
+                    if (ready == BridgeProtocolState::ReadyResult::AlreadyReady) break;
                     EvidenceLog::Event("bridge_ready", std::format("argument_count={}", a_params.argCount));
                     // A fresh menu snapshot already includes every refresh that happened
                     // before the movie became ready. Start the wakeup cursor there so the
@@ -105,6 +152,7 @@ namespace AbsoluteControlPanelResearch::Scaleform
                         DeferModel(session.Snapshot(), "bridge-ready");
                     }
                     break;
+                }
                 case NativeFunction::Close:
                     CloseSession();
                     break;
@@ -144,11 +192,13 @@ namespace AbsoluteControlPanelResearch::Scaleform
                         !ReadExactGeneration(a_params.args[0], generation)) {
                         EvidenceLog::Event(
                             "bridge_model_applied_rejected", "invalid generation");
-                    } else if (generation != lastAppliedGeneration) {
-                        lastAppliedGeneration = generation;
-                        EvidenceLog::Event(
-                            "bridge_model_applied",
-                            std::format("generation={}", generation));
+                        RejectProtocol("malformed model acknowledgement");
+                        break;
+                    }
+                    const auto acknowledgement = protocol.Acknowledge(generation);
+                    if (acknowledgement == BridgeProtocolState::AckResult::Rejected) {
+                        RejectProtocol("model acknowledgement does not match publication");
+                        break;
                     }
                     // applyModel acknowledges synchronously.  Publishing another
                     // replacement model from that acknowledgement would recurse
@@ -170,6 +220,7 @@ namespace AbsoluteControlPanelResearch::Scaleform
                         PollOpenRequest();
                         PollRefresh();
                         FlushDeferredModel();
+                        if (closing || !protocol.HasAppliedModel()) break;
                         // Live data is a frame-coalesced active-page patch. It
                         // never rebuilds provider controls or the menu shell,
                         // so a smooth meter does not turn into a 60 Hz full
@@ -338,7 +389,7 @@ namespace AbsoluteControlPanelResearch::Scaleform
                     pendingModel.reset();
                     return;
                 }
-                if (!pendingModel || modelPublicationActive) {
+                if (!protocol.IsReady() || !pendingModel || modelPublicationActive) {
                     return;
                 }
                 auto model = std::move(*pendingModel);
@@ -460,6 +511,7 @@ namespace AbsoluteControlPanelResearch::Scaleform
                 if (closing) {
                     return true;
                 }
+                if (!protocol.HasAppliedModel()) return true;
                 return inputAdapter.HandleButtonInput(a_event, *this);
             }
 
@@ -476,6 +528,7 @@ namespace AbsoluteControlPanelResearch::Scaleform
                     }
                     return;
                 }
+                if (!protocol.HasAppliedModel()) return;
                 const auto method = a_phase == Input::PointerPhase::Down ? "handlePointerDown" :
                     (a_phase == Input::PointerPhase::Move ? "handlePointerMove" :
                                                      "handlePointerUp");
@@ -1155,19 +1208,38 @@ namespace AbsoluteControlPanelResearch::Scaleform
                 }
                 populated = populated && model.SetMember("modules", modules) &&
                     model.SetMember("pages", pages);
+                if (!protocol.BeginPublication(a_model.generation)) {
+                    RejectProtocol("invalid model publication state");
+                    return;
+                }
                 modelPublicationActive = true;
                 const bool invoked = populated && menuObj.Invoke("applyModel", nullptr, &model, 1);
                 modelPublicationActive = false;
-                if (invoked) {
+                const bool accepted = protocol.CompletePublication(invoked);
+                if (accepted) {
                     session.AcknowledgePublishedGeneration(a_model.generation);
                     lastPublishedInputFocus = inputFocus;
+                    EvidenceLog::Event("bridge_model_applied",
+                        std::format("generation={}", a_model.generation));
+                    // Emit inventory only after the movie acknowledges this
+                    // generation. Registration alone is not menu-load evidence.
+                    for (const auto& page : a_model.pages) {
+                        EvidenceLog::Event("bridge_page_applied", std::format(
+                            "generation={} module={} page={} controls={} active={}",
+                            a_model.generation, page.moduleId, page.pageId,
+                            page.controls.size(),
+                            page.moduleId == a_model.activeModuleId &&
+                                page.pageId == a_model.activePageId));
+                    }
+                } else {
+                    RejectProtocol("applyModel failed or did not acknowledge the published generation");
                 }
                 EvidenceLog::Event(
                     "bridge_model_published",
                     std::format(
-                        "generation={} revision={} modules={} pages={} populated={} invoked={}",
+                        "generation={} revision={} modules={} pages={} populated={} invoked={} accepted={}",
                         a_model.generation, a_model.revision, a_model.modules.size(),
-                        a_model.pages.size(), populated, invoked));
+                        a_model.pages.size(), populated, invoked, accepted));
             }
 
             [[nodiscard]] static std::uint32_t ReadUnsigned(
@@ -1272,19 +1344,21 @@ namespace AbsoluteControlPanelResearch::Scaleform
 
             void OnShown()
             {
+                // LoadMovie can queue Hide before Show finishes unwinding.
+                if (protocol.Failed()) return;
                 // UI::IsMenuOpen becomes true while the factory and Show lifecycle are
                 // still in flight.  The platform pointer worker can therefore deliver
-                // the click that selected the PauseMenu entry to this new movie.  Do
+                // click that selected an underlying-menu entry to this new movie. Do
                 // not Invoke into Scaleform until Show has completed and that click has
                 // crossed a release + one-frame quarantine.
                 if (!menuShown) {
-                    returnToPauseOnClose =
-                        Ui::PauseMenuIntegration::ConsumeReturnToPauseOnClose();
+                    openOrigin = Ui::PauseMenuIntegration::ConsumeOpenOrigin();
                     EvidenceLog::Event(
                         "control_panel_session_origin",
                         std::format(
                             "return_target={}",
-                            returnToPauseOnClose ? "PauseMenu" : "none"));
+                            openOrigin == Ui::MenuOpenOrigin::PauseMenu ? "PauseMenu" :
+                                openOrigin == Ui::MenuOpenOrigin::MainMenu ? "MainMenu" : "none"));
                 }
                 menuShown = true;
                 LiveComponents::HostRegistry().SetMenuActive(true);
@@ -1295,17 +1369,17 @@ namespace AbsoluteControlPanelResearch::Scaleform
                     "bridge_pointer_barrier_started", "reason=menu-shown");
             }
 
-            [[nodiscard]] bool OnHidden()
+            [[nodiscard]] Ui::MenuOpenOrigin OnHidden()
             {
-                const bool returnToPause = closing && returnToPauseOnClose;
+                const auto returnOrigin = closing ? openOrigin : Ui::MenuOpenOrigin::None;
                 menuShown = false;
                 LiveComponents::HostRegistry().SetMenuActive(false);
                 pointerInputArmed = false;
                 pointerReleaseObserved = false;
-                returnToPauseOnClose = false;
+                openOrigin = Ui::MenuOpenOrigin::None;
                 // Discard an origin queued by a duplicate Show while this
                 // session was already active; it must not leak to the next one.
-                (void)Ui::PauseMenuIntegration::ConsumeReturnToPauseOnClose();
+                (void)Ui::PauseMenuIntegration::ConsumeOpenOrigin();
                 if (session.IsCaptureActive()) {
                     EvidenceLog::Event(
                         session.IsTextCaptureActive() ? "text_capture_cancelled" :
@@ -1318,7 +1392,12 @@ namespace AbsoluteControlPanelResearch::Scaleform
                 pendingModel.reset();
                 EvidenceLog::Event(
                     "bridge_pointer_disarmed", "reason=menu-hidden");
-                return returnToPause;
+                return returnOrigin;
+            }
+
+            [[nodiscard]] Ui::MenuOpenOrigin OpenOrigin() const noexcept
+            {
+                return openOrigin;
             }
 
             void AdvancePointerInputBarrier()
@@ -1342,20 +1421,21 @@ namespace AbsoluteControlPanelResearch::Scaleform
             }
 
             MenuSession::Session session;
+            BridgeProtocolState protocol;
             MenuInputRouter::FocusState inputFocus;
             MenuInputRouter::FocusState lastPublishedInputFocus;
             std::optional<MenuInputRouter::FocusState> dirtyDecisionReturnFocus;
             Input::NativeMenuInputAdapter inputAdapter;
 
             std::uint64_t refreshCursor{};
-            std::uint64_t lastAppliedGeneration{};
             std::optional<MenuSession::Model> pendingModel;
             bool modelPublicationActive{};
+            bool protocolHideQueued{};
             bool closing{};
             bool menuShown{};
             bool pointerInputArmed{};
             bool pointerReleaseObserved{};
-            bool returnToPauseOnClose{};
+            Ui::MenuOpenOrigin openOrigin{ Ui::MenuOpenOrigin::None };
 
             RE::Scaleform::GFx::Movie* movie{};
             RE::Scaleform::GFx::Value menuObj;
@@ -1375,6 +1455,11 @@ namespace AbsoluteControlPanelResearch::Scaleform
         impl_->LogMovieState(a_phase);
     }
 
+    bool MenuBridge::CompleteHandshake(bool invoked)
+    {
+        return impl_->CompleteHandshake(invoked);
+    }
+
     void MenuBridge::Call(
         const RE::Scaleform::GFx::FunctionHandler::Params& a_params)
     {
@@ -1386,7 +1471,12 @@ namespace AbsoluteControlPanelResearch::Scaleform
         impl_->OnShown();
     }
 
-    bool MenuBridge::OnHidden()
+    Ui::MenuOpenOrigin MenuBridge::OpenOrigin() const noexcept
+    {
+        return impl_->OpenOrigin();
+    }
+
+    Ui::MenuOpenOrigin MenuBridge::OnHidden()
     {
         return impl_->OnHidden();
     }

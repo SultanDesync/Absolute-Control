@@ -6,3 +6,8 @@ target("generated_menu_compile_test")
     set_kind("binary")
     add_includedirs("../../../include", "../../examples/generated")
     add_files("GeneratedMenuCompile.cpp")
+
+target("subscriber_kit_compile_test")
+    set_kind("binary")
+    add_includedirs("../../../include")
+    add_files("SubscriberKitCompile.cpp")

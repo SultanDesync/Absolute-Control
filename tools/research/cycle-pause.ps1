@@ -4,7 +4,11 @@ param(
     [ValidateRange(1, 20)]
     [int]$CycleCount = 3,
     [ValidateRange(250, 10000)]
-    [int]$SettleMilliseconds = 1000
+    [int]$SettleMilliseconds = 1000,
+    [switch]$SkipWatchdogWait,
+    [switch]$CaptureOnly,
+    [ValidateRange(0, 8192)]
+    [int]$CaptureWidth = 0
 )
 
 $ErrorActionPreference = 'Stop'
@@ -30,6 +34,11 @@ public static class AbsoluteControlPanelPauseCapture
 
     public static void Save(IntPtr window, string path)
     {
+        Save(window, path, 0);
+    }
+
+    public static void Save(IntPtr window, string path, int maximumWidth)
+    {
         Rect bounds;
         if (!GetWindowRect(window, out bounds))
             throw new InvalidOperationException("Could not read the Starfield window bounds.");
@@ -47,7 +56,23 @@ public static class AbsoluteControlPanelPauseCapture
             finally { graphics.ReleaseHdc(deviceContext); }
             if (!captured)
                 graphics.CopyFromScreen(bounds.Left, bounds.Top, 0, 0, bitmap.Size);
-            bitmap.Save(path, ImageFormat.Png);
+            if (maximumWidth > 0 && bitmap.Width > maximumWidth)
+            {
+                var scaledHeight = Math.Max(1,
+                    (int)Math.Round(bitmap.Height * (maximumWidth / (double)bitmap.Width)));
+                using (var scaled = new Bitmap(maximumWidth, scaledHeight))
+                using (var scaledGraphics = Graphics.FromImage(scaled))
+                {
+                    scaledGraphics.InterpolationMode =
+                        System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                    scaledGraphics.DrawImage(bitmap, 0, 0, maximumWidth, scaledHeight);
+                    scaled.Save(path, ImageFormat.Png);
+                }
+            }
+            else
+            {
+                bitmap.Save(path, ImageFormat.Png);
+            }
         }
     }
 }
@@ -55,7 +80,9 @@ public static class AbsoluteControlPanelPauseCapture
 
 function Wait-ForEvidence {
     param(
-        [string]$Marker,
+        [Parameter(Mandatory = $true)]
+        [string]$Event,
+        [string]$DetailContains = '',
         [int]$TimeoutSeconds = 15
     )
 
@@ -66,13 +93,22 @@ function Wait-ForEvidence {
             throw 'Starfield exited during the pause-cycle observation.'
         }
         if (Test-Path -LiteralPath $script:PluginEvidencePath) {
-            $line = Get-Content -LiteralPath $script:PluginEvidencePath |
-                Where-Object { $_.Contains($Marker) } | Select-Object -Last 1
-            if ($null -ne $line) { return $line }
+            $record = Get-Content -LiteralPath $script:PluginEvidencePath |
+                ForEach-Object {
+                    try { $_ | ConvertFrom-Json } catch { $null }
+                } | Where-Object {
+                    $null -ne $_ -and $_.run_id -eq $script:RunId -and
+                    $_.event -eq $Event -and
+                    ([string]::IsNullOrEmpty($DetailContains) -or
+                        ([string]$_.detail).Contains($DetailContains))
+                } | Select-Object -Last 1
+            if ($null -ne $record) { return $record }
         }
         Start-Sleep -Milliseconds 100
     }
-    throw "Timed out waiting for plugin evidence: $Marker"
+    throw (
+        "Timed out waiting for plugin evidence: event=$Event " +
+        "detail_contains=$DetailContains")
 }
 
 function Invoke-PauseToggle {
@@ -85,19 +121,18 @@ function Invoke-PauseToggle {
         [System.Text.UTF8Encoding]::new($false))
     Move-Item -LiteralPath $temporaryPath -Destination $script:InputPath -Force
 
-    $keyMarker = '"run_id":"{0}","event":"research_input_key_up","detail":"id={1} command=pause' -f
-        $script:RunId, $commandId
-    $keyLine = Wait-ForEvidence -Marker $keyMarker
-    if (-not $keyLine.Contains('sent=1 error=0')) {
-        throw "Game-thread Escape pulse failed: $keyLine"
+    $keyRecord = Wait-ForEvidence -Event 'research_input_key_up' `
+        -DetailContains "id=$commandId command=pause"
+    if (-not ([string]$keyRecord.detail).Contains('sent=1 error=0')) {
+        throw "Game-thread Escape pulse failed: $($keyRecord.detail)"
     }
 
-    $stateMarker = '"run_id":"{0}","event":"research_pause_state","detail":"id={1} open=' -f
-        $script:RunId, $commandId
-    $stateLine = Wait-ForEvidence -Marker $stateMarker
-    if ($stateLine.Contains("id=$commandId open=true")) { return $true }
-    if ($stateLine.Contains("id=$commandId open=false")) { return $false }
-    throw "PauseMenu state was malformed: $stateLine"
+    $stateRecord = Wait-ForEvidence -Event 'research_pause_state' `
+        -DetailContains "id=$commandId open="
+    $stateDetail = [string]$stateRecord.detail
+    if ($stateDetail.Contains("id=$commandId open=true")) { return $true }
+    if ($stateDetail.Contains("id=$commandId open=false")) { return $false }
+    throw "PauseMenu state was malformed: $stateDetail"
 }
 
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
@@ -117,6 +152,25 @@ if ($script:Starfield.MainWindowHandle -eq [IntPtr]::Zero) {
     throw 'Starfield has no capturable main window.'
 }
 
+$cycleDirectory = Join-Path $resolvedRunDirectory 'pause-cycles'
+New-Item -ItemType Directory -Force -Path $cycleDirectory | Out-Null
+
+if ($CaptureOnly) {
+    # This branch intentionally returns before resolving or writing the input
+    # mailbox. Capture uses the existing window handle without focus changes.
+    $capturePath = Join-Path $cycleDirectory (
+        'capture-only-{0}.png' -f
+        [DateTimeOffset]::UtcNow.ToString('yyyyMMdd-HHmmss-fffffff'))
+    [AbsoluteControlPanelPauseCapture]::Save(
+        $script:Starfield.MainWindowHandle, $capturePath, $CaptureWidth)
+    [pscustomobject]@{
+        mode = 'capture_only'
+        run_id = $script:RunId
+        screenshot = $capturePath
+    }
+    return
+}
+
 $documents = [Environment]::GetFolderPath('MyDocuments')
 $script:PluginEvidencePath = Join-Path $documents (
     'My Games\Starfield\SFSE\Logs\AbsoluteControlPanel.evidence.jsonl')
@@ -126,21 +180,21 @@ $script:InputPath = Join-Path (Split-Path -Parent $script:PluginEvidencePath) (
 $maximumCommandId = 0
 if (Test-Path -LiteralPath $script:PluginEvidencePath) {
     foreach ($line in Get-Content -LiteralPath $script:PluginEvidencePath) {
-        if ($line.Contains(('"run_id":"{0}"' -f $script:RunId)) -and
-            $line -match '"event":"research_input_queued","detail":"id=(\d+)') {
-            $maximumCommandId = [Math]::Max($maximumCommandId, [int]$Matches[1])
+        try { $record = $line | ConvertFrom-Json } catch { $record = $null }
+        if ($null -ne $record -and $record.run_id -eq $script:RunId -and
+            ([string]$record.detail) -match '^id=(\d+)') {
+            $maximumCommandId = [Math]::Max(
+                $maximumCommandId, [int]$Matches[1])
         }
     }
 }
 $script:NextCommandId = $maximumCommandId + 1
 
-$cycleDirectory = Join-Path $resolvedRunDirectory 'pause-cycles'
-New-Item -ItemType Directory -Force -Path $cycleDirectory | Out-Null
-
 # The visual probe may still be on top when run-probe returns.  Its fixed watchdog
 # tears it down before the PauseMenu cycle begins.
-$watchdogMarker = '"run_id":"{0}","event":"watchdog_fired"' -f $script:RunId
-[void](Wait-ForEvidence -Marker $watchdogMarker -TimeoutSeconds 30)
+if (-not $SkipWatchdogWait) {
+    [void](Wait-ForEvidence -Event 'watchdog_fired' -TimeoutSeconds 30)
+}
 
 $isOpen = Invoke-PauseToggle
 if ($isOpen) {

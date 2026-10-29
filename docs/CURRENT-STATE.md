@@ -29,6 +29,31 @@ Nexus or SDK release.
 
 ## Evidence vocabulary
 
+The 2026-09-18 [suite responsibility model](SUITE-RESPONSIBILITY-ARCHITECTURE.md),
+[transition plan](SUITE-REFACTOR-TRANSITION-PLAN.md), and
+[source-audited authority risks](SUITE-REFACTOR-AUTHORITY-RISKS.md) describe the
+refactor direction. The AC-owned native device worker and copied data plane are
+implemented in [checkpoint 04](REFACTOR-CHECKPOINT-04.md), with bounded lifecycle
+notifications and coherent inventory snapshots added in
+[checkpoint 06](REFACTOR-CHECKPOINT-06.md). These have automated evidence;
+hardware/game qualification remains pending. Capture, calibration persistence,
+context/action routing, output ownership and the public native extension ABI
+remain incomplete. The nine Zero, Power and Head Tracking pages passed the
+[checkpoint 05](REFACTOR-CHECKPOINT-05.md) loading smoke; that does not establish
+their native gameplay migration. Older Input Bus evidence below describes the
+preceding suite architecture, not support for pairing unadapted HOTAS with the
+new native device worker.
+The risk audit adds no new in-game qualification or build result.
+
+The first 2026-09-18 implementation checkpoint hardens the SDK/Zero registration
+path against foreign duplicates and exposes failed rollback. Native registration
+verifies that the retained engine factory is ours. The bridge validates v1 Ready
+and exact model acceptance, rejects failed movie initialization, and stops work
+after protocol rejection. The Pause Menu label is now `ABSOLUTE CONTROL`; its
+action token, owner marker, engine menu name and exports are unchanged. This
+checkpoint is automated-tested; its Control + Zero + OSF runtime test is pending.
+See [checkpoint details](REFACTOR-CHECKPOINT-01.md).
+
 - **Runtime verified** — observed in Starfield with retained semantic/lifecycle evidence.
 - **Observed** — seen in Starfield but lacking a complete current artifact/scenario record.
 - **Automated verified** — current build or headless contract/process checks pass.
@@ -51,11 +76,11 @@ records runtime and UX as `not_run`; this result does not establish release read
 | Capability | Status | Current behavior |
 |---|---|---|
 | Native custom menu registration | Runtime verified on current hardened DLL | Registers an independent `GameMenuBase` and dedicated source-built SWF; two Pause-origin opens in one process completed. |
-| Additive PauseMenu entry | Revised label/native styling, resident-underlay transition, and native audio lease runtime verified | Appends a short `MOD OPTIONS` action without replacing `pausemenu.swf`; the row copies the native entry data shape so PauseMenu retains its typography and scale. Selecting it opens Absolute Control above the resident PauseMenu so gameplay is never exposed between menus. The panel takes a balanced native PauseMenu audio-mode lease because Starfield's audio handler ignores custom menu names. Runtime validation confirmed the gameplay ambience is suppressed in the panel and restored after Hide. Back reveals the same PauseMenu instance; a missing underlay uses a recovery Show. |
+| Additive PauseMenu entry | 2026-09-04 distinct entry and ownership guards automated verified; new runtime acceptance pending | Appends `CONTROL PANEL` with a namespaced row marker, preserves existing rows, rejects action collisions and stops after successful insertion or a rejected list. No vanilla SWF replacement. Prior runtime evidence covers the preceding `MOD OPTIONS` label, native styling, resident PauseMenu underlay and balanced audio lease; it does not qualify the new label/marker. See [entry compatibility](PAUSE-MENU-COMPATIBILITY.md). |
 | Standalone recovery hotkey | Opt-in; unbound by default | `OpenHotkey=0x00` installs no global listener. A user may assign a Win32 virtual-key code if the canonical PauseMenu entry is inaccessible; the direct close path is not the supported ultrawide lifecycle. |
 | ESM/ESP | Not required | DLL factory, runtime PauseMenu composition, and SWF path require no data plugin. |
-| Runtime support | Exact-gated | Only Starfield 1.16.244 is accepted. Twenty Address Library mappings plus the lifecycle callsite/target are checked before readiness. |
-| Host readiness | Runtime verified on current hardened DLL | The query table is discoverable while initializing. Registration and refresh return `NotReady` until runtime validation, hook installation, and factory retention succeed; Head Tracking and AbsoluteZero discover the current ResearchDev artifact at data-load and have a bounded post-post-data-load retry. Terminal failure returns `Rejected`. |
+| Runtime support | Exact-gated | Only Starfield 1.16.244 is accepted. Twenty Address Library mappings gate core readiness. The PauseMenu lifecycle callsite/target separately gates entry injection. |
+| Host readiness | Optional-entry failure isolation automated verified; runtime acceptance pending | The query table is discoverable while initializing. Registration and refresh return `NotReady` until core runtime validation and factory retention succeed. A conflicting PauseMenu lifecycle hook leaves the host available through provider/configured-hotkey activation; a core compatibility or factory failure still returns `Rejected`. |
 | Canonical build | Automated verified | Default target `AbsoluteControlPanel` emits `AbsoluteControlPanel.dll` and a packageable release-role manifest. “Packageable” identifies safe inputs; it is not a release claim. |
 | Built-in Control module | Automated verified; runtime UX pending | Both artifacts register the same release-safe module last in the module list. Menu owns Registration/Alphabetical ordering, Pause Menu entry, and F1–F12 recovery activation; Registry lists configuration, live-component, and semantic-composition buses with per-module subscribers. Preferences persist to `AbsoluteControlPanel_Custom.ini`. |
 | Research build | Automated boundary verified | Opt-in `AbsoluteControlPanelResearchDev` emits a non-packageable manifest and adds mailbox/SendInput and DirectInput research tools without adding a research-only menu module. The bounded live/compound registry is shared product code. |

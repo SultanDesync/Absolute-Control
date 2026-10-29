@@ -61,6 +61,10 @@ int main()
     CHECK(releaseSources.find("src/ui/ControlPanelMenu.cpp") != std::string::npos);
     CHECK(releaseSources.find("src/scaleform/ScaleformMenuBridge.cpp") != std::string::npos);
     CHECK(releaseSources.find("src/input/PlatformInputServices.cpp") != std::string::npos);
+    CHECK(releaseSources.find("src/runtime/BackendRuntime.cpp") != std::string::npos);
+    CHECK(releaseSources.find("src/runtime/DeviceStore.cpp") != std::string::npos);
+    CHECK(releaseSources.find("src/runtime/DirectInputProvider.cpp") != std::string::npos);
+    CHECK(releaseSources.find("LegacyHotasToken.cpp") == std::string::npos);
     CHECK(releaseSources.find("src/ui/PauseMenuIntegration.cpp") != std::string::npos);
     CHECK(releaseSources.find("src/research/ResearchSupport.cpp") == std::string::npos);
     CHECK(releaseSources.find("ResearchModule.cpp") == std::string::npos);
@@ -74,13 +78,24 @@ int main()
     CHECK(researchSources.find("ResearchInputCapture.cpp") != std::string::npos);
     CHECK(researchSources.find("LiveComponentsRegistry.cpp") == std::string::npos);
     CHECK(researchSources.find("src/research/ResearchSupport.cpp") != std::string::npos);
+    CHECK(researchSources.find("src/research/PauseMenuDiagnostics.cpp") != std::string::npos);
+    CHECK(releaseSources.find("PauseMenuDiagnostics.cpp") == std::string::npos);
+    const auto pauseDiagnostics = Read("src/research/PauseMenuDiagnostics.cpp");
+    CHECK(pauseDiagnostics.find("GetDataForEntry") != std::string::npos);
+    CHECK(pauseDiagnostics.find("SetMember") == std::string::npos);
+    CHECK(pauseDiagnostics.find("snapshots >= 80") != std::string::npos);
+    CHECK(pauseDiagnostics.find("Value(false)") != std::string::npos);
 
     const auto releaseTarget = Between(
         build, "target(\"AbsoluteControlPanel\"", "target(\"AbsoluteControlPanelResearchDev\"");
     CHECK(releaseTarget.find("set_default(true)") != std::string::npos);
     CHECK(releaseTarget.find("add_installfiles") != std::string::npos);
     CHECK(releaseTarget.find("LiveComponentsExperimentalAPI.h") != std::string::npos);
-    CHECK(releaseTarget.find("dinput8") == std::string::npos);
+    // DirectInput is now native production infrastructure, linked in the shared
+    // plugin configuration; research capture/automation remains separate.
+    const auto pluginConfiguration = Between(build,
+        "local function configure_control_panel_plugin", "-- Canonical, installable product artifact.");
+    CHECK(pluginConfiguration.find("add_links(\"dinput8\", \"dxguid\")") != std::string::npos);
     CHECK(releaseTarget.find("ACP_ENABLE_RESEARCH_TOOLS") == std::string::npos);
     CHECK(releaseTarget.find("New-BuildArtifactManifest.ps1") != std::string::npos);
 
@@ -124,6 +139,12 @@ int main()
         "ControlPanelModule::Register(", ready);
     CHECK(ready != std::string::npos);
     CHECK(retainedFactory != std::string::npos && retainedFactory < ready);
+    const auto optionalEntryFailure = Between(native,
+        "if (!Ui::PauseMenuIntegration::InstallLifecycleHook(",
+        "if (!Ui::ControlPanelMenu::Register(");
+    CHECK(optionalEntryFailure.find("pause_entry_unavailable") != std::string::npos);
+    CHECK(optionalEntryFailure.find("MarkRuntimeRejected") == std::string::npos);
+    CHECK(optionalEntryFailure.find("return;") == std::string::npos);
     CHECK(controlRegistration != std::string::npos && ready < controlRegistration);
     CHECK(native.find(
         "if (!config.enableRegistration) {\n            MenuApiHost::MarkRuntimeRejected();") !=

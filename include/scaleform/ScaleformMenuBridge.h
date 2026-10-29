@@ -1,6 +1,7 @@
 #pragma once
 
 #include "input/PlatformInputServices.h"
+#include "ui/MenuOpenOrigin.h"
 
 #include <RE/Starfield.h>
 
@@ -31,11 +32,12 @@ namespace AbsoluteControlPanelResearch::Scaleform
         void Attach(RE::Scaleform::GFx::Movie* a_movie,
             const RE::Scaleform::GFx::Value& a_menuObject);
         void LogMovieState(std::string_view a_phase);
+        [[nodiscard]] bool CompleteHandshake(bool invoked);
         void Call(const RE::Scaleform::GFx::FunctionHandler::Params& a_params);
         void OnShown();
-        // Returns true only when this displayed session originated in PauseMenu
-        // and reached Hide through its accepted user-close path.
-        [[nodiscard]] bool OnHidden();
+        [[nodiscard]] Ui::MenuOpenOrigin OpenOrigin() const noexcept;
+        // Returns the displayed session's origin only through its accepted close path.
+        [[nodiscard]] Ui::MenuOpenOrigin OnHidden();
         [[nodiscard]] bool HandleButtonInput(const RE::ButtonEvent& a_event);
         void HandlePointerPhase(Input::PointerPhase a_phase);
 

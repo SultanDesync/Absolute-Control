@@ -45,14 +45,20 @@ namespace AbsoluteControlPanelResearch::Ui
                     std::format("source={} reason=already-open", a_source));
                 return;
             }
-            const bool openedFromPause = a_source == "pause-entry";
+            const auto origin = a_source == "pause-entry"
+                ? MenuOpenOrigin::PauseMenu
+                : a_source == "main-menu-entry"
+                    ? MenuOpenOrigin::MainMenu
+                    : MenuOpenOrigin::None;
             const bool originAccepted =
-                PauseMenuIntegration::SetReturnToPauseOnClose(openedFromPause);
+                PauseMenuIntegration::SetOpenOrigin(origin);
             EvidenceLog::Event(
                 "control_panel_open_origin",
                 std::format(
                     "source={} return_target={} accepted={}", a_source,
-                    openedFromPause ? "PauseMenu" : "none", originAccepted));
+                    origin == MenuOpenOrigin::PauseMenu ? "PauseMenu" :
+                        origin == MenuOpenOrigin::MainMenu ? "MainMenu" : "none",
+                    originAccepted));
         }
 
         QueueNamedMenuMessage(NativeMenuProbe::kMenuName, a_type, a_source);

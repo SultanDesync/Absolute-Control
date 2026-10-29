@@ -158,10 +158,19 @@ releases the lease and clears dirty/capture state without building another movie
 
 ## Other bridge functions
 
-- `ready(1)` publishes the initial model and initializes the refresh cursor.
+- `ready(1)` validates the exact protocol/version payload, queues the initial
+  model and initializes the refresh cursor. Repeated valid Ready is idempotent.
+  Missing/malformed/unsupported Ready rejects movie initialization; Show cannot
+  activate audio, input or open-state bookkeeping for that failed movie.
 - `close()` requests session close.
 - `focus(region,actionIndex)` synchronizes ActionScript focus used by native keyboard routing.
-- `modelApplied(generation)` acknowledges a model and polls refresh.
+- `modelApplied(generation)` must acknowledge the exact in-flight publication
+  synchronously from `applyModel`. Native considers the model accepted only after
+  both invocation and acknowledgement succeed. Outside publication, the same
+  accepted generation is a heartbeat that polls refresh; zero is allowed only
+  before the first model. Wrong generations or missing acknowledgements queue
+  Hide and stop further provider/live polling. This preserves the current v1 SWF
+  contract and does not require a SWF rebuild or change the subscriber ABI.
 - `handlePointerDown/Move/Up`, `handlePointerWheel`, and retained `handlePointerClick` are
   native-to-movie methods. Rendered ActionScript sprites own semantic hit testing.
 

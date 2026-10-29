@@ -112,6 +112,31 @@ and Windows thread ID. PauseMenu mutation is permitted only after the engine's a
 insertion boundary and from that movie's own Scaleform advance callback; no worker may poll a
 foreign movie.
 
+For a bounded startup diagnosis that must stop before the runner closes PauseMenu or arms
+Absolute Control, set `pauseDiagnosticsOnly` and `keepGameRunning` to `true` in the ignored local
+manifest. The runner visibly verifies the selected Continue row, requests it once, and then uses
+the dedicated `confirm_continue` command. That command sends the confirmation accept only after
+the native MainMenu state, Continue action/row, disabled state, list input state, and nonempty
+confirmation text all match; a mismatch produces immediate rejection evidence. The runner then
+waits for a fresh successful `HUDMenu` admission before sending Pause, verifies PauseMenu, and
+waits for the dedicated native read-only row/clip inventory at manifest-selected frame 60, 180,
+or 600. Frame 60 is the fast default; later retained samples continue asynchronously. It captures
+the PauseMenu screenshot and matching structured events, then returns noninteractively with the
+paused game retained. Set
+`loadReadyTimeoutSeconds` only when the default legacy load interval plus 30 seconds is not enough.
+`manualValidation` may remain present, but the earlier pause-only checkpoint takes precedence;
+setting it to `false` makes the intended boundary explicit. Invoke it from the repository root
+with:
+
+```powershell
+& .\tools\research\run-probe.ps1 `
+    -ManifestPath .\tools\research\manifests\<diagnostic-name>.local.json
+```
+
+The startup path never sends a blind second accept. If the exact Continue confirmation predicate
+does not become ready within the native command's bounded retry window, the command rejects and
+the runner preserves failure evidence instead of dismissing an unknown dialog.
+
 Structured plugin events and semantic read-back are mechanical pass/fail authorities. A narrow
 pixel oracle may be added when the current movie deliberately exposes one, but the removed magenta
 sentinel is not evidence. A vision model is reserved for failure screenshots, layout review, and

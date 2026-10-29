@@ -12,6 +12,7 @@ namespace AbsoluteControlPanelResearch::NativeMenuProbe
     inline const std::filesystem::path kCustomConfigPath =
         "Data/SFSE/Plugins/AbsoluteControlPanel_Custom.ini";
 
+    void OnEarlyMenus() noexcept;
     void OnDataReady() noexcept;
     [[nodiscard]] ProbePhase Phase() noexcept;
     [[nodiscard]] bool IsRegistrationEnabled() noexcept;

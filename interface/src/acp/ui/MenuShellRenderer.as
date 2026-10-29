@@ -1415,8 +1415,8 @@ package acp.ui
             // Earcups and short neck opening keep the symbol recognisably a
             // pilot without adding facial clutter.
             head.graphics.lineStyle(2, color, 0.68);
-            head.graphics.drawRoundRect(-43, -2, 9, 23, 4, 4);
-            head.graphics.drawRoundRect(34, -2, 9, 23, 4, 4);
+            drawTopHeadEarcup(head, -43);
+            drawTopHeadEarcup(head, 34);
             head.graphics.lineStyle(1, color, 0.48);
             head.graphics.moveTo(-13, 39);
             head.graphics.lineTo(-10, 50);
@@ -1426,6 +1426,23 @@ package acp.ui
             head.graphics.curveTo(0, 46, 10, 50);
             head.graphics.drawCircle(0, 0, 4);
             target.addChild(head);
+        }
+
+        private function drawTopHeadEarcup(head:Sprite, left:Number):void
+        {
+            // Scaleform can leave the closing seam of a stroked drawRoundRect
+            // visible on one side. Use an explicit closed path so both ears
+            // render with the same uninterrupted outline.
+            var right:Number = left + 9;
+            head.graphics.moveTo(left + 2, -2);
+            head.graphics.lineTo(right - 2, -2);
+            head.graphics.curveTo(right, -2, right, 0);
+            head.graphics.lineTo(right, 19);
+            head.graphics.curveTo(right, 21, right - 2, 21);
+            head.graphics.lineTo(left + 2, 21);
+            head.graphics.curveTo(left, 21, left, 19);
+            head.graphics.lineTo(left, 0);
+            head.graphics.curveTo(left, -2, left + 2, -2);
         }
 
         private function drawProfileHead(target:Sprite, centerX:Number,

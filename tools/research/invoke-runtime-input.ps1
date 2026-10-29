@@ -7,9 +7,13 @@ param(
     [string]$EvidencePath,
     [Parameter(Mandatory = $true)]
     [ValidateSet(
-        'menu_up', 'nav_down', 'nav_left', 'nav_right', 'accept', 'pause',
+        'menu_up', 'nav_down', 'nav_left', 'nav_right', 'accept',
+        'confirm_continue', 'pause',
         'probe_escape', 'show_probe', 'hide_probe', 'inject_pause_entry',
-        'probe_pause_root', 'probe_main_root')]
+        'probe_pause_root', 'probe_main_root', 'select_main_entry',
+        'open_zero_alignment', 'open_zero_bindings',
+        'open_power_presets', 'open_power_automation', 'open_power_diagnostics',
+        'open_head_axes', 'open_head_general', 'open_head_aim', 'open_head_bindings')]
     [string]$Command,
     [uint32]$CommandId = 0,
     [ValidateRange(1, 60)]
@@ -32,11 +36,11 @@ if ($CommandId -eq 0) {
     $maximumId = 0
     if (Test-Path -LiteralPath $evidencePath -PathType Leaf) {
         foreach ($line in Get-Content -LiteralPath $evidencePath -Tail 5000) {
-            if ($line -notmatch '"run_id":"([^\"]+)"' -or $Matches[1] -ne $RunId) {
-                continue
-            }
-            if ($line -match '"detail":"id=(\d+)') {
-                $maximumId = [Math]::Max($maximumId, [uint32]$Matches[1])
+            try { $record = $line | ConvertFrom-Json } catch { $record = $null }
+            if ($null -ne $record -and $record.run_id -eq $RunId -and
+                ([string]$record.detail) -match '^id=(\d+)(?:\s|$)') {
+                $maximumId = [Math]::Max(
+                    $maximumId, [uint32]$Matches[1])
             }
         }
     }
@@ -60,7 +64,8 @@ while ([DateTime]::UtcNow -lt $deadline) {
                 try { $_ | ConvertFrom-Json } catch { $null }
             } | Where-Object {
                 $null -ne $_ -and $_.run_id -eq $RunId -and
-                $_.detail -like "id=$CommandId*"
+                (([string]$_.detail) -eq "id=$CommandId" -or
+                    ([string]$_.detail).StartsWith("id=$CommandId "))
             }
         $accepted = $records | Where-Object {
             $_.event -in @(
@@ -70,7 +75,8 @@ while ([DateTime]::UtcNow -lt $deadline) {
         $completed = $records | Where-Object {
             $_.event -in @(
                 'research_input_key_up', 'research_probe_command_dispatched',
-                'pause_entry_injection_queued', 'foreign_menu_probe_queued')
+                'pause_entry_injection_queued', 'foreign_menu_probe_queued',
+                'research_input_rejected')
         } | Select-Object -Last 1
         if ($null -ne $accepted -and $null -ne $completed) {
             break
@@ -81,6 +87,9 @@ while ([DateTime]::UtcNow -lt $deadline) {
 
 if ($null -eq $accepted -or $null -eq $completed) {
     throw "Runtime input timed out: id=$CommandId command=$Command"
+}
+if ($completed.event -eq 'research_input_rejected') {
+    throw "Runtime input rejected: $($completed.detail)"
 }
 if ($completed.event -eq 'research_input_key_up' -and
     $completed.detail -notlike '*sent=1 error=0*') {

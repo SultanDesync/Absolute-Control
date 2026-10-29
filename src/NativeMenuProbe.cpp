@@ -1,10 +1,12 @@
 #include "NativeMenuProbe.h"
+#include "ui/PauseMenuPresentation.h"
 
 #include "EvidenceLog.h"
 #include "ControlPanelModule.h"
 #include "MenuApiHost.h"
 #include "ProbeConfig.h"
 #include "input/PlatformInputServices.h"
+#include "interop/OSFUICompatibility.h"
 #include "runtime/ProbeRuntimeState.h"
 #include "runtime/RuntimeCompatibility.h"
 #include "ui/ControlPanelMenu.h"
@@ -18,10 +20,12 @@
 
 namespace AbsoluteControlPanelResearch::NativeMenuProbe
 {
-    void OnDataReady() noexcept
+    void OnEarlyMenus() noexcept
     {
+        static bool initialized = false;
+        if (initialized) return;
+        initialized = true;
         Runtime::Transition(ProbeEvent::PluginLoaded);
-        Runtime::Transition(ProbeEvent::DataReady);
 
         Runtime::SetConfig(LoadProbeConfig(
             kCustomConfigPath, LoadProbeConfig(kConfigPath)));
@@ -42,9 +46,28 @@ namespace AbsoluteControlPanelResearch::NativeMenuProbe
         EvidenceLog::Event(
             "config_loaded",
             std::format(
-                "path={} registration={} pause_entry={} hotkey=0x{:02X} flags=0x{:08X}",
+                "path={} registration={} pause_entry={} main_entry={} hotkey=0x{:02X} flags=0x{:08X}",
                 kConfigPath.string(), config.enableRegistration,
-                config.enablePauseMenuEntry, config.openHotkey, config.menuFlags));
+                config.enablePauseMenuEntry, config.enableMainMenuEntry, config.openHotkey, config.menuFlags));
+        // Install only the validated menu-boundary observer before MainMenu exists.
+        // Factory, providers, input services and runtime readiness stay data-gated.
+        if (config.enableRegistration && Runtime::ValidateMenuRelocations()) {
+            Ui::PauseMenuPresentation::Configure(config.pauseMenuAutoFit, config.pauseMenuPurpleEntry, config.pauseMenuMatchFont);
+            const bool installed = Ui::PauseMenuIntegration::InstallLifecycleHook(
+                false, config.enableMainMenuEntry);
+            EvidenceLog::Event("early_menu_attachment", std::format("installed={} activation_ready=false", installed));
+        }
+    }
+
+    void OnDataReady() noexcept
+    {
+        OnEarlyMenus();
+        Runtime::Transition(ProbeEvent::DataReady);
+        const auto& config = Runtime::Config();
+#if defined(ACP_ENABLE_RESEARCH_TOOLS)
+        const auto researchConfig = ResearchSupport::LoadConfig(kConfigPath);
+#endif
+        Interop::OSFUICompatibility::LogStartupState();
 
         if (!config.enableRegistration) {
             MenuApiHost::MarkRuntimeRejected();
@@ -61,13 +84,13 @@ namespace AbsoluteControlPanelResearch::NativeMenuProbe
             return;
         }
 
+        Ui::PauseMenuPresentation::Configure(config.pauseMenuAutoFit, config.pauseMenuPurpleEntry, config.pauseMenuMatchFont);
         if (!Ui::PauseMenuIntegration::InstallLifecycleHook(
-                config.enablePauseMenuEntry)) {
-            MenuApiHost::MarkRuntimeRejected();
-            Runtime::Transition(ProbeEvent::RegistrationFailed);
+                config.enablePauseMenuEntry, config.enableMainMenuEntry)) {
             EvidenceLog::Event(
-                "registration_failed", "menu lifecycle trace callsite rejected runtime");
-            return;
+                "pause_entry_unavailable",
+                "optional lifecycle callsite unavailable; retaining native host, "
+                "provider page opens and configured recovery hotkey");
         }
 
         if (!Ui::ControlPanelMenu::Register(config.menuFlags)) {
@@ -79,7 +102,7 @@ namespace AbsoluteControlPanelResearch::NativeMenuProbe
         }
 
         // The API remains discoverable-but-NotReady until runtime validation,
-        // lifecycle hook installation, and retention of the menu factory (whose
+        // retention of the menu factory (whose
         // CreateMenu path owns the native Scaleform bridge) have all succeeded.
         MenuApiHost::SetOpenRequestWakeCallback(
             &Ui::ControlPanelMenu::RequestOpenFromProvider);
@@ -108,11 +131,13 @@ namespace AbsoluteControlPanelResearch::NativeMenuProbe
 #endif
 
         Runtime::Transition(ProbeEvent::RegistrationEnabled);
+        Ui::PauseMenuIntegration::MarkHostReady();
         EvidenceLog::Event("registration_succeeded", kMenuName);
         Input::StartOpenHotkey(
             config.openHotkey, &Ui::ControlPanelMenu::RequestOpenFromHotkey);
         Input::StartPointerPolling(&Ui::ControlPanelMenu::DispatchPointerPhase);
         Ui::PauseMenuIntegration::LogRegistration(config.enablePauseMenuEntry);
+        Ui::PauseMenuIntegration::AttachExistingMainMenu();
 #if defined(ACP_ENABLE_RESEARCH_TOOLS)
         ResearchSupport::Start(researchConfig);
 #endif
