@@ -14,6 +14,7 @@
 #include <SFSE/SFSE.h>
 
 #include <algorithm>
+#include <atomic>
 #include <charconv>
 #include <chrono>
 #include <cctype>
@@ -95,6 +96,9 @@ namespace AbsoluteControlPanelResearch::ResearchSupport
             std::mutex activeKeyLock;
             std::unordered_map<WORD, DWORD> activeKeys;
             std::shared_ptr<Runtime::CallbackGate> taskGate;
+            // Set once the title Enter reaches key-down; a second Enter would
+            // activate the selected main-menu row.
+            std::atomic<bool> titleEnterSent{};
             Runtime::CooperativeService scheduler;
             Runtime::CooperativeService titleAdvance;
             Runtime::CooperativeService mailbox;
@@ -957,6 +961,100 @@ namespace AbsoluteControlPanelResearch::ResearchSupport
         return config;
     }
 
+    namespace
+    {
+        // Caller holds lifecycleLock and has started the scheduler for a_gate.
+        void StartTitleAdvanceWorker(const Config& a_config,
+            const SFSE::TaskInterface* a_taskInterface,
+            const std::shared_ptr<Runtime::CallbackGate>& a_gate) noexcept
+        {
+            auto requestDirectory = EvidenceLog::Path().parent_path();
+            if (const auto logDirectory = SFSE::log::log_directory()) {
+                requestDirectory = *logDirectory;
+            }
+            const auto advancePath = requestDirectory /
+                std::format("AbsoluteControlPanelResearch.{}.advance", a_config.runId);
+
+            EvidenceLog::Event(
+                "title_advance_service_registered", advancePath.string());
+            const bool started = Services().titleAdvance.Start(
+                [taskInterface = a_taskInterface, gate = a_gate, config = a_config, advancePath](
+                    std::stop_token a_stopToken,
+                    const std::shared_ptr<Runtime::CallbackGate>&) {
+                    const auto deadline = std::chrono::steady_clock::now() +
+                        std::chrono::milliseconds(config.armTimeoutMilliseconds);
+                    while (!std::filesystem::exists(advancePath)) {
+                        if (a_stopToken.stop_requested()) return;
+                        if (std::chrono::steady_clock::now() >= deadline) {
+                            EvidenceLog::Event(
+                                "title_advance_timeout",
+                                std::format("timeout_ms={}", config.armTimeoutMilliseconds));
+                            return;
+                        }
+                        if (!Runtime::InterruptibleWait(
+                                a_stopToken, std::chrono::milliseconds(100))) return;
+                    }
+                    QueueIfActive(taskInterface, gate, [taskInterface, gate]() {
+                        if (Services().titleEnterSent.load(std::memory_order_acquire)) return;
+                        ProbeForeignMenuRoot("MainMenu", 0);
+                        const auto activeWindow = ::GetActiveWindow();
+                        const auto foregroundBefore = ::GetForegroundWindow();
+                        const bool focused = activeWindow != nullptr &&
+                            ::SetForegroundWindow(activeWindow) != FALSE;
+                        constexpr WORD kEnterScanCode = 0x1C;
+                        INPUT keyDown{};
+                        keyDown.type = INPUT_KEYBOARD;
+                        keyDown.ki.wScan = kEnterScanCode;
+                        keyDown.ki.dwFlags = KEYEVENTF_SCANCODE;
+                        ::SetLastError(ERROR_SUCCESS);
+                        const auto sentDown = ::SendInput(1, &keyDown, sizeof(INPUT));
+                        const auto error = ::GetLastError();
+                        if (sentDown == 1) {
+                            Services().titleEnterSent.store(true, std::memory_order_release);
+                            TrackKeyDown(kEnterScanCode, 0);
+                        }
+                        EvidenceLog::Trace(
+                            "title_enter_key_down",
+                            std::format(
+                                "scan_code=0x{:02X} sent={} error={} active=0x{:X} "
+                                "foreground_before=0x{:X} foreground_after=0x{:X} focused={}",
+                                kEnterScanCode, sentDown, error,
+                                reinterpret_cast<std::uintptr_t>(activeWindow),
+                                reinterpret_cast<std::uintptr_t>(foregroundBefore),
+                                reinterpret_cast<std::uintptr_t>(::GetForegroundWindow()),
+                                focused));
+                        const bool releaseScheduled = ScheduleDelayed(
+                            std::chrono::milliseconds(100), [taskInterface, gate]() {
+                                QueueIfActive(taskInterface, gate, []() {
+                                    constexpr WORD kEnterScanCode = 0x1C;
+                                    INPUT keyUp{};
+                                    keyUp.type = INPUT_KEYBOARD;
+                                    keyUp.ki.wScan = kEnterScanCode;
+                                    keyUp.ki.dwFlags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
+                                    ::SetLastError(ERROR_SUCCESS);
+                                    const auto sentUp = ::SendInput(1, &keyUp, sizeof(INPUT));
+                                    const auto error = ::GetLastError();
+                                    TrackKeyUp(kEnterScanCode);
+                                    EvidenceLog::Trace(
+                                        "title_enter_key_up",
+                                        std::format(
+                                            "scan_code=0x{:02X} sent={} error={} foreground=0x{:X}",
+                                            kEnterScanCode, sentUp, error,
+                                            reinterpret_cast<std::uintptr_t>(
+                                                ::GetForegroundWindow())));
+                                });
+                            });
+                        if (!releaseScheduled && sentDown == 1) ReleaseActiveKeys();
+                    });
+                    EvidenceLog::Event("title_advance_queued", advancePath.string());
+                });
+            if (!started) {
+                EvidenceLog::Event(
+                    "title_advance_service_failed", "worker could not start");
+            }
+        }
+    }
+
     void StartTitleAdvance(const Config& a_config) noexcept
     {
         if (!a_config.advanceTitleWithSendInput) return;
@@ -968,91 +1066,12 @@ namespace AbsoluteControlPanelResearch::ResearchSupport
             return;
         }
 
-        auto requestDirectory = EvidenceLog::Path().parent_path();
-        if (const auto logDirectory = SFSE::log::log_directory()) {
-            requestDirectory = *logDirectory;
-        }
-        const auto advancePath = requestDirectory /
-            std::format("AbsoluteControlPanelResearch.{}.advance", a_config.runId);
-
         auto& services = Services();
         const std::scoped_lock lifecycleLock{ services.lifecycleLock };
         auto gate = std::make_shared<Runtime::CallbackGate>();
         services.taskGate = gate;
         StartScheduler();
-        EvidenceLog::Event(
-            "title_advance_service_registered", advancePath.string());
-        const bool started = services.titleAdvance.Start(
-            [taskInterface, gate, config = a_config, advancePath](
-                std::stop_token a_stopToken,
-                const std::shared_ptr<Runtime::CallbackGate>&) {
-                const auto deadline = std::chrono::steady_clock::now() +
-                    std::chrono::milliseconds(config.armTimeoutMilliseconds);
-                while (!std::filesystem::exists(advancePath)) {
-                    if (a_stopToken.stop_requested()) return;
-                    if (std::chrono::steady_clock::now() >= deadline) {
-                        EvidenceLog::Event(
-                            "title_advance_timeout",
-                            std::format("timeout_ms={}", config.armTimeoutMilliseconds));
-                        return;
-                    }
-                    if (!Runtime::InterruptibleWait(
-                            a_stopToken, std::chrono::milliseconds(100))) return;
-                }
-                QueueIfActive(taskInterface, gate, [taskInterface, gate]() {
-                    ProbeForeignMenuRoot("MainMenu", 0);
-                    const auto activeWindow = ::GetActiveWindow();
-                    const auto foregroundBefore = ::GetForegroundWindow();
-                    const bool focused = activeWindow != nullptr &&
-                        ::SetForegroundWindow(activeWindow) != FALSE;
-                    constexpr WORD kEnterScanCode = 0x1C;
-                    INPUT keyDown{};
-                    keyDown.type = INPUT_KEYBOARD;
-                    keyDown.ki.wScan = kEnterScanCode;
-                    keyDown.ki.dwFlags = KEYEVENTF_SCANCODE;
-                    ::SetLastError(ERROR_SUCCESS);
-                    const auto sentDown = ::SendInput(1, &keyDown, sizeof(INPUT));
-                    const auto error = ::GetLastError();
-                    if (sentDown == 1) TrackKeyDown(kEnterScanCode, 0);
-                    EvidenceLog::Trace(
-                        "title_enter_key_down",
-                        std::format(
-                            "scan_code=0x{:02X} sent={} error={} active=0x{:X} "
-                            "foreground_before=0x{:X} foreground_after=0x{:X} focused={}",
-                            kEnterScanCode, sentDown, error,
-                            reinterpret_cast<std::uintptr_t>(activeWindow),
-                            reinterpret_cast<std::uintptr_t>(foregroundBefore),
-                            reinterpret_cast<std::uintptr_t>(::GetForegroundWindow()),
-                            focused));
-                    const bool releaseScheduled = ScheduleDelayed(
-                        std::chrono::milliseconds(100), [taskInterface, gate]() {
-                            QueueIfActive(taskInterface, gate, []() {
-                                constexpr WORD kEnterScanCode = 0x1C;
-                                INPUT keyUp{};
-                                keyUp.type = INPUT_KEYBOARD;
-                                keyUp.ki.wScan = kEnterScanCode;
-                                keyUp.ki.dwFlags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
-                                ::SetLastError(ERROR_SUCCESS);
-                                const auto sentUp = ::SendInput(1, &keyUp, sizeof(INPUT));
-                                const auto error = ::GetLastError();
-                                TrackKeyUp(kEnterScanCode);
-                                EvidenceLog::Trace(
-                                    "title_enter_key_up",
-                                    std::format(
-                                        "scan_code=0x{:02X} sent={} error={} foreground=0x{:X}",
-                                        kEnterScanCode, sentUp, error,
-                                        reinterpret_cast<std::uintptr_t>(
-                                            ::GetForegroundWindow())));
-                            });
-                        });
-                    if (!releaseScheduled && sentDown == 1) ReleaseActiveKeys();
-                });
-                EvidenceLog::Event("title_advance_queued", advancePath.string());
-            });
-        if (!started) {
-            EvidenceLog::Event(
-                "title_advance_service_failed", "worker could not start");
-        }
+        StartTitleAdvanceWorker(a_config, taskInterface, gate);
     }
 
     void Start(const Config& a_config) noexcept
@@ -1063,6 +1082,14 @@ namespace AbsoluteControlPanelResearch::ResearchSupport
         auto gate = std::make_shared<Runtime::CallbackGate>();
         services.taskGate = gate;
         StartScheduler();
+        // Stop() also ended the title watcher started at plugin load. The prompt
+        // is still up after PostDataLoad, so keep watching until Enter is sent.
+        if (a_config.advanceTitleWithSendInput &&
+            !services.titleEnterSent.load(std::memory_order_acquire)) {
+            if (const auto taskInterface = SFSE::GetTaskInterface()) {
+                StartTitleAdvanceWorker(a_config, taskInterface, gate);
+            }
+        }
         StartMailbox(a_config, gate);
         StartExperiment(a_config, gate);
     }
