@@ -28,8 +28,15 @@ powershell -ExecutionPolicy Bypass -File tools\test\Invoke-AbsoluteTests.ps1
 
 - **MO2 and Starfield must be closed.** The runner launches
   `ModOrganizer.exe -p "<profile>" "moshortcut://:<shortcut>"` itself.
-- **Leave the PC alone during a run.** The plugin's key presses go to the foreground window,
-  and the title and Continue steps read screenshots.
+- **Leave the PC alone during a run.** The plugin's key presses go to the foreground window.
+  The runner refocuses the game before each key command and refuses to send one if it can't.
+- Startup is driven by native evidence, not pixels:
+  1. MainMenu inserted, then loading done.
+  2. The plugin presses Enter.
+  3. The title entry is injected once the main panel is interactive.
+  4. `select_continue_entry` natively selects the Continue row.
+  5. `accept`, then the guarded `confirm_continue`.
+  6. `HUDMenu` inserted.
 - `-DryRun` checks config, suite, profile and build without launching. `-KeepGameRunning`
   leaves the game open afterwards. `-Suite <path>` picks another suite.
 - Every run redeploys the test build with a fresh run id, so stale INIs can't answer.
@@ -61,7 +68,8 @@ Mailbox commands, from `src/research/ResearchSupport.cpp`:
 - **Keys:** `menu_up`, `nav_down`, `nav_left`, `nav_right`, `accept`, `confirm_continue`, `pause`,
   `probe_escape`.
 - **Menu:** `show_probe` and `hide_probe` open and close Absolute Control; `open_page:<module>/<page>`;
-  `select_main_entry`; `inject_pause_entry`.
+  `select_main_entry` and `select_continue_entry` select a title-menu row without activating it;
+  `inject_pause_entry`.
 - **Read-only probes:** `probe_pause_root`, `probe_main_root`.
 
 ## Self-test

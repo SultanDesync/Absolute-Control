@@ -6,6 +6,7 @@ Set-StrictMode -Version Latest
 
 $script:Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 $script:CompletionEvents = @('research_input_key_up', 'research_probe_command_dispatched')
+$script:KeyCommands = @('menu_up', 'nav_down', 'nav_left', 'nav_right', 'accept', 'confirm_continue', 'pause', 'probe_escape')
 
 function Import-AbsoluteTestWindow {
     if ('AbsoluteTestWindow' -as [type]) { return }
@@ -428,7 +429,11 @@ function Invoke-GameCommand {
     $id = $Context.NextCommandId
     Update-EvidenceReader $Context.Evidence
     $Context.CommandCursor = $Context.Evidence.Records.Count - 1
-    [void](Set-GameForeground $Context)
+    # Key commands become SendInput in the plugin and land in whatever window is in front,
+    # so never send one unless the game has focus.
+    if ($script:KeyCommands -contains $Command -and -not (Set-GameForeground $Context)) {
+        throw "Refusing to send key command '$Command': Starfield is not the foreground window."
+    }
     Write-MailboxCommand -Path $Context.MailboxPath -Id $id -Command $Command
     $prefix = "id=$id command=$Command"
     $result = Wait-Until -Context $Context -TimeoutSeconds $TimeoutSeconds -Description "command $prefix" -Condition {
@@ -466,39 +471,27 @@ function Start-GameSession {
     [void](Wait-Until -Context $Context -TimeoutSeconds $config.launchTimeoutSeconds -Description 'game window' `
         -PollMilliseconds 500 -Condition { Get-GameWindow $Context })
 
-    # Only the test-hooks build with this run's RunId answers the .advance file, so a
-    # missing or stale deployment fails at the title Enter wait below.
-    $probe = Join-Path $Context.RunDirectory 'title-probe.png'
-    [void](Wait-Until -Context $Context -TimeoutSeconds $config.titleTimeoutSeconds -Description 'title prompt' `
-        -PollMilliseconds 250 -Condition {
-            if (-not (Save-GameScreenshot -Context $Context -Path $probe)) { return $false }
-            [AbsoluteTestWindow]::IsTitlePromptSignal([AbsoluteTestWindow]::AnalyzeBrightFooter($probe))
-        })
-    Write-RunnerEvent $Context 'title_prompt_seen'
+    # Startup is driven by native evidence, not screen pixels (the title prompt's brightness
+    # depends on display settings). Only the test-hooks build with this run's RunId emits
+    # these records, so a missing or stale deployment fails here.
+    [void](Wait-Evidence -Context $Context -Event 'active_menu_insert_completed' -DetailContains 'name=MainMenu ' `
+        -TimeoutSeconds $config.titleTimeoutSeconds)
+    Write-RunnerEvent $Context 'title_screen_seen'
+    [void](Wait-Evidence -Context $Context -Event 'research_input_mailbox_registered' `
+        -DetailContains (Split-Path -Leaf $Context.MailboxPath) -TimeoutSeconds $config.titleTimeoutSeconds)
+    Write-RunnerEvent $Context 'data_loaded'
+    [void](Save-GameScreenshot -Context $Context -Path (Join-Path $Context.RunDirectory 'title.png'))
+    if (-not (Set-GameForeground $Context)) { throw 'Refusing to press Enter at the title: Starfield is not the foreground window.' }
     [System.IO.File]::WriteAllText($Context.AdvancePath, [DateTimeOffset]::UtcNow.ToString('o'), $script:Utf8NoBom)
     $enter = Wait-Evidence -Context $Context -Event 'title_enter_key_up' -TimeoutSeconds 30
     if (-not ([string]$enter.Record.detail).Contains('sent=1 error=0')) { throw "Title Enter failed: $($enter.Record.detail)" }
-    $script:AbsentSamples = 0
-    [void](Wait-Until -Context $Context -TimeoutSeconds 60 -Description 'title prompt cleared' -PollMilliseconds 250 -Condition {
-        if (-not (Save-GameScreenshot -Context $Context -Path $probe)) { return $false }
-        if ([AbsoluteTestWindow]::IsTitlePromptSignal([AbsoluteTestWindow]::AnalyzeBrightFooter($probe))) {
-            $script:AbsentSamples = 0; return $false
-        }
-        $script:AbsentSamples++
-        return $script:AbsentSamples -ge 2
-    })
-    [void](Wait-Evidence -Context $Context -Event 'research_input_mailbox_registered' `
-        -DetailContains (Split-Path -Leaf $Context.MailboxPath) -TimeoutSeconds $config.titleTimeoutSeconds)
-    Write-RunnerEvent $Context 'mailbox_ready'
+    # The title entry is injected only once the main panel is visible and interactive.
+    [void](Wait-Evidence -Context $Context -Event 'main_menu_entry_injected' -DetailContains 'invoked=true' `
+        -AfterIndex $enter.Index -TimeoutSeconds 60)
+    Write-RunnerEvent $Context 'main_menu_ready'
+    [void](Save-GameScreenshot -Context $Context -Path (Join-Path $Context.RunDirectory 'main-menu.png'))
 
-    [void](Invoke-GameCommand -Context $Context -Command 'menu_up')
-    $selection = Join-Path $Context.RunDirectory 'continue-selection.png'
-    [void](Wait-Until -Context $Context -TimeoutSeconds 10 -Description 'Continue row selected' -PollMilliseconds 250 -Condition {
-        if (-not (Save-GameScreenshot -Context $Context -Path $selection)) { return $false }
-        $continue = [AbsoluteTestWindow]::AnalyzeMeanLuminance($selection, 0.220, 0.363, 0.008, 0.009)
-        $newGame = [AbsoluteTestWindow]::AnalyzeMeanLuminance($selection, 0.220, 0.397, 0.008, 0.009)
-        $continue -ge 180 -and ($continue - $newGame) -ge 50
-    })
+    [void](Invoke-GameCommand -Context $Context -Command 'select_continue_entry')
     [void](Invoke-GameCommand -Context $Context -Command 'accept')
     [void](Invoke-GameCommand -Context $Context -Command 'confirm_continue')
     [void](Wait-Evidence -Context $Context -Event 'active_menu_insert_completed' -DetailContains 'name=HUDMenu ' `

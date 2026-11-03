@@ -22,6 +22,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string_view>
 #include <unordered_map>
 #include <utility>
@@ -448,7 +449,16 @@ namespace AbsoluteControlPanelResearch::ResearchSupport
             } catch (...) { return false; }
         }
 
-        bool SelectMainEntry() noexcept
+        double ActionNumber(const RE::Scaleform::GFx::Value& a_value) noexcept
+        {
+            return a_value.IsUInt() ? double(a_value.GetUInt()) :
+                a_value.IsInt() ? double(a_value.GetInt()) : a_value.IsNumber() ? a_value.GetNumber() : -1.0;
+        }
+
+        // Selects the first interactive MainMenu row accepted by a_match. Selection only:
+        // it never invokes an entry action or loads a save.
+        template <class Match>
+        bool SelectMainListRow(Match&& a_match) noexcept
         {
             try {
                 using Value = RE::Scaleform::GFx::Value;
@@ -470,20 +480,40 @@ namespace AbsoluteControlPanelResearch::ResearchSupport
                     value.GetInt() < 1 || value.GetInt() > 128) return false;
                 const auto count = value.GetInt();
                 for (int index = 0; index < count; ++index) {
-                    Value arg(index), row, owner, action;
+                    Value arg(index), row;
                     if (!list.Invoke("GetDataForEntry", &row, &arg, 1) || !row.IsObject()) return false;
-                    if (!row.GetMember(Ui::PauseEntryPolicy::kOwnerMarker, &owner) ||
-                        !owner.IsBoolean() || !owner.GetBoolean()) continue;
-                    if (!row.GetMember("uActionType", &action)) return false;
-                    const auto number = action.IsUInt() ? double(action.GetUInt()) :
-                        action.IsInt() ? double(action.GetInt()) : action.IsNumber() ? action.GetNumber() : -1.0;
-                    if (Ui::PauseEntryPolicy::ParseAction(number) != Ui::PauseEntryPolicy::kAction) return false;
-                    // Selection only: never invoke an entry action or load a save.
+                    const auto match = a_match(row);
+                    if (!match.has_value()) continue;
+                    if (!*match) return false;
                     return list.SetMember("selectedIndex", arg) && list.GetMember("selectedIndex", &value) &&
                         value.IsInt() && value.GetInt() == index;
                 }
             } catch (...) {}
             return false;
+        }
+
+        bool SelectMainEntry() noexcept
+        {
+            // Absolute Control's own row: skip rows without the owner marker, reject a
+            // marked row whose action is not ours.
+            return SelectMainListRow([](const RE::Scaleform::GFx::Value& a_row) -> std::optional<bool> {
+                RE::Scaleform::GFx::Value owner, action;
+                if (!a_row.GetMember(Ui::PauseEntryPolicy::kOwnerMarker, &owner) ||
+                    !owner.IsBoolean() || !owner.GetBoolean()) return std::nullopt;
+                if (!a_row.GetMember("uActionType", &action)) return false;
+                return Ui::PauseEntryPolicy::ParseAction(ActionNumber(action)) == Ui::PauseEntryPolicy::kAction;
+            });
+        }
+
+        bool SelectContinueEntry() noexcept
+        {
+            // The vanilla Continue row (uActionType 1, the action ContinueConfirmationReady
+            // requires). Loading still needs accept plus the guarded confirm_continue.
+            return SelectMainListRow([](const RE::Scaleform::GFx::Value& a_row) -> std::optional<bool> {
+                RE::Scaleform::GFx::Value action, disabled;
+                if (!a_row.GetMember("uActionType", &action) || ActionNumber(action) != 1.0) return std::nullopt;
+                return !(a_row.GetMember("bDisabled", &disabled) && disabled.IsBoolean() && disabled.GetBoolean());
+            });
         }
 
         void QueueScanCodePulse(
@@ -679,12 +709,13 @@ namespace AbsoluteControlPanelResearch::ResearchSupport
                     });
                     return;
                 }
-                if (command == "select_main_entry") {
+                if (command == "select_main_entry" || command == "select_continue_entry") {
                     a_lastCommandId = commandId;
                     EvidenceLog::Event("research_probe_command_queued", std::format("id={} command={}", commandId, command));
                     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
                     QueueIfActive(a_taskInterface, a_gate, [commandId, command, deadline]() {
-                        const bool selected = std::chrono::steady_clock::now() < deadline && SelectMainEntry();
+                        const bool selected = std::chrono::steady_clock::now() < deadline &&
+                            (command == "select_continue_entry" ? SelectContinueEntry() : SelectMainEntry());
                         EvidenceLog::Event(selected ? "research_probe_command_dispatched" : "research_input_rejected",
                             std::format("id={} command={} selected={} activation=false", commandId, command, selected));
                     });
