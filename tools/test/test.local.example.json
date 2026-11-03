@@ -1,0 +1,17 @@
+{
+  "mo2Executable": "D:\\Modding Tools\\ModOrganizer.exe",
+  "mo2BaseDirectory": "D:\\Modlists\\Starfield Testing Baseline",
+  "profile": "HOTAS 5.2.1 test",
+  "mo2Shortcut": "sfse_loader",
+  "testModName": "Absolute Control test-hooks",
+  "processName": "Starfield",
+  "gameDirectory": "D:\\SteamLibrary\\steamapps\\common\\Starfield",
+  "artifactRoot": "",
+  "conflictingModPatterns": [ "Absolute Control*", "AbsoluteControlPanel*" ],
+  "killOnTimeout": true,
+  "launchTimeoutSeconds": 180,
+  "titleTimeoutSeconds": 180,
+  "loadTimeoutSeconds": 150,
+  "shutdownTimeoutSeconds": 45,
+  "commandTimeoutSeconds": 15
+}

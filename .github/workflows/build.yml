@@ -27,3 +27,10 @@ jobs:
 
       - name: Test
         run: xmake test
+
+      - name: Build test-hooks plugin
+        run: xmake build -y AbsoluteControlPanelTestHooks
+
+      - name: In-game runner self-test
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tools/test/tests/Test-AbsoluteTestRunner.ps1

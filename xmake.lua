@@ -146,6 +146,28 @@ target("AbsoluteControlPanel", function()
     })
 end)
 
+-- Test-hooks build of the same plugin, driven by tools/test. It keeps the product
+-- file name so it replaces the installed host in a test profile instead of loading
+-- beside it, and adds the research mailbox, title advance and guarded Continue.
+-- It builds into its own directory and must never be packaged or released.
+local test_hook_sources = {
+    "src/research/PauseMenuDiagnostics.cpp",
+    "src/research/ResearchSupport.cpp"
+}
+
+target("AbsoluteControlPanelTestHooks", function()
+    set_default(false)
+    set_basename("AbsoluteControlPanel")
+    set_targetdir("build/test-hooks/$(mode)")
+    configure_control_panel_plugin(
+        "AbsoluteControlPanel",
+        "Absolute Control TEST HOOKS build - not for release")
+    add_defines("ACP_ENABLE_RESEARCH_TOOLS=1")
+    for _, source in ipairs(test_hook_sources) do
+        add_files(source)
+    end
+end)
+
 -- Internal R2 codec/contract fixtures; no production provider is acquired.
 target("device_lifecycle_test", function()
     set_kind("binary")

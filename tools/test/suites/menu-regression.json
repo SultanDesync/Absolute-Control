@@ -1,0 +1,75 @@
+{
+  "name": "menu-regression",
+  "description": "Native menu presence, open/close stress, HOTAS page switching and a live-telemetry soak.",
+  "tests": [
+    {
+      "id": "title-entry-present",
+      "description": "The ABSOLUTE CONTROL title-screen entry was injected during startup.",
+      "steps": [
+        { "expect": "main_menu_entry_injected", "detail": ["label=ABSOLUTE CONTROL", "invoked=true"], "since": "run", "timeoutSeconds": 2 }
+      ]
+    },
+    {
+      "id": "pause-entry-present",
+      "description": "Opening the pause menu injects the ABSOLUTE CONTROL row, and the pause menu closes again.",
+      "steps": [
+        { "command": "pause" },
+        { "expect": "research_pause_state", "detail": "open=true", "timeoutSeconds": 10 },
+        { "expect": "pause_entry_injected", "detail": ["label=ABSOLUTE CONTROL", "invoked=true"], "timeoutSeconds": 10 },
+        { "screenshot": "pause-menu" },
+        { "command": "pause" },
+        { "expect": "research_pause_state", "detail": "open=false", "timeoutSeconds": 10 }
+      ]
+    },
+    {
+      "id": "menu-open-close",
+      "description": "Open and close the menu 25 times; each open loads the movie and publishes a model.",
+      "repeat": 25,
+      "steps": [
+        { "command": "show_probe" },
+        { "expect": "menu_message_show", "detail": "result=0" },
+        { "expect": "bridge_model_published", "detail": "accepted=true" },
+        { "command": "hide_probe" },
+        { "expect": "menu_message_hide", "detail": "result=0" },
+        { "waitMs": 500 }
+      ]
+    },
+    {
+      "id": "hotas-page-switches",
+      "description": "Switch through six HOTAS pages; each becomes the active published page.",
+      "steps": [
+        { "command": "show_probe" },
+        { "expect": "bridge_model_published", "detail": "accepted=true" },
+        { "command": "open_page:absolute.hotas/hotas-flight-axes" },
+        { "expect": "bridge_page_applied", "detail": ["page=hotas-flight-axes controls=", "active=true"] },
+        { "command": "open_page:absolute.hotas/hotas-throttle" },
+        { "expect": "bridge_page_applied", "detail": ["page=hotas-throttle controls=", "active=true"] },
+        { "command": "open_page:absolute.hotas/hotas-ship-buttons" },
+        { "expect": "bridge_page_applied", "detail": ["page=hotas-ship-buttons controls=", "active=true"] },
+        { "command": "open_page:absolute.hotas/hotas-aiming" },
+        { "expect": "bridge_page_applied", "detail": ["page=hotas-aiming controls=", "active=true"] },
+        { "command": "open_page:absolute.hotas/hotas-devices" },
+        { "expect": "bridge_page_applied", "detail": ["page=hotas-devices controls=", "active=true"] },
+        { "command": "open_page:absolute.hotas/hotas-diagnostics" },
+        { "expect": "bridge_page_applied", "detail": ["page=hotas-diagnostics controls=", "active=true"] },
+        { "screenshot": "diagnostics-page" },
+        { "command": "hide_probe" },
+        { "expect": "menu_message_hide", "detail": "result=0" }
+      ]
+    },
+    {
+      "id": "live-telemetry-soak",
+      "description": "Leave the flight-axes page open for 30 s with live telemetry running (the 2026-11-03 crash scenario).",
+      "steps": [
+        { "command": "show_probe" },
+        { "expect": "bridge_model_published", "detail": "accepted=true" },
+        { "command": "open_page:absolute.hotas/hotas-flight-axes" },
+        { "expect": "bridge_page_applied", "detail": ["page=hotas-flight-axes controls=", "active=true"] },
+        { "waitMs": 30000 },
+        { "screenshot": "flight-axes-after-soak" },
+        { "command": "hide_probe" },
+        { "expect": "menu_message_hide", "detail": "result=0" }
+      ]
+    }
+  ]
+}
