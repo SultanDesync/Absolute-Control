@@ -1,0 +1,29 @@
+name: Build and test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - rewrite
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: Check out recursively
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Set up xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+
+      - name: Configure
+        run: xmake f -y -p windows -a x64 -m releasedbg
+
+      - name: Build
+        run: xmake -y
+
+      - name: Test
+        run: xmake test
