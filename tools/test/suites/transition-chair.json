@@ -1,0 +1,93 @@
+{
+  "name": "transition-chair",
+  "description": "Sitting in and getting up from a chair at a low walk speed. The feature should step aside while seated and return afterwards.",
+  "fixture": "ship-interior-landed-at-chair-v1",
+  "testInput": true,
+  "tests": [
+    {
+      "id": "chair",
+      "description": "Sitting in and getting up from a chair at a low walk speed. The feature should step aside while seated and return afterwards.",
+      "steps": [
+        {
+          "expect": "flight_signal",
+          "detail": "active=1",
+          "since": "run",
+          "timeoutSeconds": 30
+        },
+        {
+          "waitMs": 2000
+        },
+        {
+          "screenshot": "before"
+        },
+        {
+          "command": "ship_probe"
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "test_axis:0:-0.5"
+        },
+        {
+          "expect": "walk_speed",
+          "detail": [
+            "speed=0.25",
+            "source=axis"
+          ],
+          "timeoutSeconds": 2
+        },
+        {
+          "command": "key_hold:12:150"
+        },
+        {
+          "expect": "flight_signal",
+          "detail": "sit=2",
+          "timeoutSeconds": 10
+        },
+        {
+          "expect": "walk_ready",
+          "detail": "ready=0",
+          "timeoutSeconds": 2
+        },
+        {
+          "waitMs": 1500
+        },
+        {
+          "screenshot": "seated"
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:11:800"
+        },
+        {
+          "expect": "flight_signal",
+          "detail": "sit=0",
+          "timeoutSeconds": 15
+        },
+        {
+          "expect": "walk_ready",
+          "detail": "ready=1",
+          "timeoutSeconds": 8
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:1F:500"
+        },
+        {
+          "waitMs": 300
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "screenshot": "after"
+        }
+      ]
+    }
+  ]
+}

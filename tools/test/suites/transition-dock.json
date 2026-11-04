@@ -1,0 +1,89 @@
+{
+  "name": "transition-dock",
+  "description": "Docking with a targeted station, by holding R. It records the signals and doesn't judge them.",
+  "fixture": "pilot-seated-station-targeted-dock-ready-v1",
+  "testInput": true,
+  "tests": [
+    {
+      "id": "dock",
+      "description": "Docking with a targeted station, by holding R. It records the signals and doesn't judge them.",
+      "steps": [
+        {
+          "expect": "flight_signal",
+          "detail": "active=1",
+          "since": "run",
+          "timeoutSeconds": 30
+        },
+        {
+          "waitMs": 2000
+        },
+        {
+          "screenshot": "before"
+        },
+        {
+          "command": "ship_probe"
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:13:1500"
+        },
+        {
+          "waitMs": 1500
+        },
+        {
+          "screenshot": "after-press"
+        },
+        {
+          "waitMs": 10000
+        },
+        {
+          "screenshot": "at-10s"
+        },
+        {
+          "command": "ship_probe"
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "waitMs": 10000
+        },
+        {
+          "screenshot": "at-20s"
+        },
+        {
+          "command": "ship_probe"
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "waitMs": 10000
+        },
+        {
+          "screenshot": "at-30s"
+        },
+        {
+          "command": "ship_probe"
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "waitMs": 10000
+        },
+        {
+          "screenshot": "at-40s"
+        },
+        {
+          "command": "ship_probe"
+        },
+        {
+          "command": "player_probe"
+        }
+      ]
+    }
+  ]
+}

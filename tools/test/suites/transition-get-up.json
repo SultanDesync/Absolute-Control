@@ -1,0 +1,65 @@
+{
+  "name": "transition-get-up",
+  "description": "Getting up from the pilot seat while docked, by holding E. It records the signals and doesn't judge them.",
+  "fixture": "pilot-seated-docked-ready-undock-v1",
+  "testInput": true,
+  "tests": [
+    {
+      "id": "get-up",
+      "description": "Getting up from the pilot seat while docked, by holding E. It records the signals and doesn't judge them.",
+      "steps": [
+        {
+          "expect": "flight_signal",
+          "detail": "active=1",
+          "since": "run",
+          "timeoutSeconds": 30
+        },
+        {
+          "waitMs": 2000
+        },
+        {
+          "screenshot": "before"
+        },
+        {
+          "command": "ship_probe"
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:12:1500"
+        },
+        {
+          "waitMs": 1500
+        },
+        {
+          "screenshot": "after-press"
+        },
+        {
+          "waitMs": 10000
+        },
+        {
+          "screenshot": "at-10s"
+        },
+        {
+          "command": "ship_probe"
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "waitMs": 10000
+        },
+        {
+          "screenshot": "at-20s"
+        },
+        {
+          "command": "ship_probe"
+        },
+        {
+          "command": "player_probe"
+        }
+      ]
+    }
+  ]
+}

@@ -118,6 +118,10 @@ Walk speed has two suites, both for that same profile:
   rewrites your settings and that device polling doesn't stall during play, and leaves real input
   deployed in the profile. Don't touch the controllers while it runs.
 
+The `transition-*` suites each load a save one input before a transition, press it, and record the signals
+through it: ladder, chair, takeoff, dock, undock, board and get-up. Ladder and chair check known behaviour.
+The others only record, so read them from the evidence. Hold prompts need a hold of more than about a second.
+
 Start runs from PowerShell. Launched from the app's Git Bash tool, MO2 fails to start `sfse_loader.exe`
 with access denied and waits on a dialog until the run times out.
 

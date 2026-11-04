@@ -1,0 +1,110 @@
+{
+  "name": "transition-ladder",
+  "description": "Mounting a ladder at a low walk speed. The feature should step aside, so the player can climb and get off as normal. Read the climb from the player_probe heights.",
+  "fixture": "ship-interior-landed-at-ladder-v1",
+  "testInput": true,
+  "tests": [
+    {
+      "id": "ladder",
+      "description": "Mounting a ladder at a low walk speed. The feature should step aside, so the player can climb and get off as normal. Read the climb from the player_probe heights.",
+      "steps": [
+        {
+          "expect": "flight_signal",
+          "detail": "active=1",
+          "since": "run",
+          "timeoutSeconds": 30
+        },
+        {
+          "waitMs": 2000
+        },
+        {
+          "screenshot": "before"
+        },
+        {
+          "command": "ship_probe"
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "test_axis:0:-0.5"
+        },
+        {
+          "expect": "walk_speed",
+          "detail": [
+            "speed=0.25",
+            "source=axis"
+          ],
+          "timeoutSeconds": 2
+        },
+        {
+          "command": "key_hold:12:150"
+        },
+        {
+          "expect": "flight_signal",
+          "detail": "traversal=1",
+          "timeoutSeconds": 6
+        },
+        {
+          "expect": "walk_ready",
+          "detail": "ready=0",
+          "timeoutSeconds": 2
+        },
+        {
+          "waitMs": 1500
+        },
+        {
+          "screenshot": "on-ladder"
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:11:2500"
+        },
+        {
+          "waitMs": 200
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "screenshot": "climbed"
+        },
+        {
+          "command": "key_hold:1F:1500"
+        },
+        {
+          "waitMs": 200
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:1E:600"
+        },
+        {
+          "waitMs": 2000
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "screenshot": "after-side-step"
+        },
+        {
+          "command": "key_hold:11:6000"
+        },
+        {
+          "waitMs": 3000
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "screenshot": "after-top"
+        }
+      ]
+    }
+  ]
+}
