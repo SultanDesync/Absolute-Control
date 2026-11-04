@@ -297,6 +297,7 @@ namespace AbsoluteControlPanelResearch::Ui::WalkSpeedPage
             Api::PageDescriptorV1 page;
             Copy(page.moduleId, kModuleId);
             Copy(page.pageId, kPageId);
+            Copy(page.group, "On Foot");
             Copy(page.displayName, "Walk Speed");
             Copy(page.description, "Set on-foot movement speed with an axis, the wheel or keys.");
             page.readValue = &ReadValue;

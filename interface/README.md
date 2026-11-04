@@ -11,8 +11,8 @@ callback surface, stage listeners, and native command dispatch, while the import
 package owns the separable menu responsibilities:
 
 - `MenuSelectionState` owns selected module/page/control state and viewport normalization;
-- `MenuShellRenderer` owns the persistent mod sidebar, horizontal page tabs, settings rows,
-  help panel, scrollbar, and footer composition;
+- `MenuShellRenderer` owns the sidebar, settings rows, help panel, scrollbar, and footer
+  composition;
 - `ControlWidgets` owns toggle, slider, choice, action, and binding rendering and semantics;
 - `PointerInteraction` owns rendered hit regions, slider drag identity, and wheel regions;
 - `PixelTextRenderer` owns the embedded diagnostic glyph set and text drawing; and
@@ -39,10 +39,19 @@ insertion, and watchdog close.
 The earlier magenta framebuffer sentinel has been removed. Current validation uses bridge model
 acknowledgements, menu lifecycle evidence, and direct inspection during focused runtime passes.
 
-The stable navigation schema is one persistent compact sidebar row per subscriber mod and
-horizontal page tabs across the selected mod's workspace. The source-built component foundation
-renders measured semantic rows for toggles, sliders, choices, actions, and bindings, plus
-selected-setting help and a compact input-aware command footer. Ten ordinary rows fit at 1080p.
+The sidebar lists pages under system headings such as Flight and On Foot. A page names its heading
+with `group` on its descriptor. Known headings come first in a fixed order, and pages without one
+follow. If more than one module is loaded, each gets a row and only the active module's pages show.
+
+The sidebar also splits long pages. If a page has more rows than fit, at least two group headers,
+no composition and no live components, its headers are listed under it and the settings area shows
+one section at a time. Moving through the controls crosses between sections, and clicking a section
+jumps to its first control. No shipped page qualifies yet, so `menu-sections` tests this with a
+test-only page.
+
+The source-built component foundation renders measured semantic rows for toggles, sliders, choices,
+actions, and bindings, plus selected-setting help and a compact input-aware command footer. Thirteen
+ordinary rows fit at 1080p.
 
 Pointer button transitions and coalesced held movement are forwarded to
 `handlePointerDown(stageX, stageY)`, `handlePointerMove(stageX, stageY)`, and
@@ -55,8 +64,8 @@ value, and held movement continuously updates it until release. Starfield does n
 it publishes direction-specific mouse `ButtonEvent`s, `0x800/+120` for up and `0x900/-120` for
 down. Native code
 deduplicates that delivery, samples the cursor, and forwards
-`handlePointerWheel(stageX, stageY, direction)`. The movie still owns region selection and scrolls
-the hovered sidebar, tab strip, or settings viewport without changing values.
+`handlePointerWheel(stageX, stageY, direction)`. The movie still owns region selection: the wheel
+changes page over the sidebar and scrolls over the settings, without changing values.
 
 `src/AbsoluteWalkGauge.as` is a second, separate movie: the walk speed gauge, an overlay using the
 same menu flags as the game's `HUDMessagesMenu`. It reads the speed and opacity from native getters

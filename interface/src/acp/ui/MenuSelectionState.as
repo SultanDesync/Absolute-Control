@@ -5,8 +5,6 @@ package acp.ui
         private var model:Object;
 
         public var activePageIndex:int = 0;
-        public var firstVisibleModule:int = 0;
-        public var firstVisibleTab:int = 0;
         public var selectedRow:int = 0;
         public var firstVisibleRow:int = 0;
         public var focusRegion:int = PanelLayout.FOCUS_CONTROLS;
@@ -90,22 +88,6 @@ package acp.ui
 
         public function normalize():void
         {
-            if (model != null && model.pages != null && model.pages.length > 0) {
-                var starts:Array = modulePageStarts();
-                var modulePosition:int = activeModulePosition(starts);
-                if (modulePosition < firstVisibleModule) firstVisibleModule = modulePosition;
-                if (modulePosition > firstVisibleModule + PanelLayout.VISIBLE_MODULES - 1) {
-                    firstVisibleModule = modulePosition - PanelLayout.VISIBLE_MODULES + 1;
-                }
-
-                var tabs:Array = activeModulePages();
-                var tabPosition:int = activeTabPosition(tabs);
-                if (tabPosition < firstVisibleTab) firstVisibleTab = tabPosition;
-                if (tabPosition > firstVisibleTab + PanelLayout.VISIBLE_TABS - 1) {
-                    firstVisibleTab = tabPosition - PanelLayout.VISIBLE_TABS + 1;
-                }
-            }
-
             var current:Object = page();
             var anchors:Array = semanticAnchors(current);
             if (focusRegion == PanelLayout.FOCUS_ANCHORS) {
@@ -186,7 +168,104 @@ package acp.ui
             return current.controls[selectedRow];
         }
 
+        // What the settings area shows. On a sectioned page that's the section holding the
+        // selected control, so moving through the controls moves through the sections.
         public function controlRows(current:Object):Array
+        {
+            var rows:Array = pageRows(current);
+            var found:Array = sectionsFromRows(current, rows);
+            if (found.length == 0) return rows;
+            var active:Object = found[activeSection(found)];
+            var visible:Array = [];
+            for (var index:int = 0; index < rows.length; ++index) {
+                var first:int = int(rows[index][0]);
+                if (first >= int(active.start) && first < int(active.end)) visible.push(rows[index]);
+            }
+            return visible;
+        }
+
+        public function sections(current:Object):Array
+        {
+            return sectionsFromRows(current, pageRows(current));
+        }
+
+        public function activeSection(found:Array):int
+        {
+            var active:int = 0;
+            for (var index:int = 0; index < found.length; ++index) {
+                if (int(found[index].start) <= selectedRow) active = index;
+            }
+            return active;
+        }
+
+        // A page only gets sections when its rows don't all fit and its headers split it in two
+        // or more. Composed pages and pages with live surfaces lay themselves out.
+        private function sectionsFromRows(current:Object, rows:Array):Array
+        {
+            if (current == null || Boolean(current.compositionEnhanced) ||
+                (current.liveComponents != null && current.liveComponents.length > 0) ||
+                rows.length <= PanelLayout.VISIBLE_ROWS) return [];
+            var result:Array = [];
+            for (var index:int = 0; index < rows.length; ++index) {
+                var first:int = int(rows[index][0]);
+                var control:Object = current.controls[first];
+                if (uint(control.kind) == 7) {
+                    if (result.length > 0) result[result.length - 1].end = first;
+                    result.push({"title":String(control.label), "start":first,
+                        "end":current.controls.length, "firstControl":-1});
+                    continue;
+                }
+                if (result.length == 0) {
+                    result.push({"title":String(current.title), "start":0,
+                        "end":current.controls.length, "firstControl":first});
+                } else if (int(result[result.length - 1].firstControl) < 0) {
+                    result[result.length - 1].firstControl = first;
+                }
+            }
+            return result.length >= 2 ? result : [];
+        }
+
+        // The sidebar, top to bottom. With one module there's no module row. Other modules are
+        // single rows, because the model only carries the active module's pages.
+        public function sidebarItems():Array
+        {
+            var items:Array = [];
+            if (model == null || model.pages == null) return items;
+            var multiple:Boolean = model.modules != null && model.modules.length > 1;
+            var moduleCount:int = multiple ? model.modules.length : 1;
+            for (var position:int = 0; position < moduleCount; ++position) {
+                var active:Boolean = !multiple ||
+                    String(model.modules[position].moduleId) == currentPageModule();
+                if (multiple) {
+                    items.push({"type":"module", "target":model.modules[position], "selected":active});
+                }
+                if (!active) continue;
+                var lastGroup:String = "";
+                for (var pageIndex:int = 0; pageIndex < model.pages.length; ++pageIndex) {
+                    var entry:Object = model.pages[pageIndex];
+                    var group:String = String(entry.group);
+                    if (group.length > 0 && group != lastGroup) {
+                        items.push({"type":"group", "title":group});
+                    }
+                    lastGroup = group;
+                    var isCurrent:Boolean = pageIndex == activePageIndex;
+                    items.push({"type":"page", "target":entry, "selected":isCurrent});
+                    if (!isCurrent) continue;
+                    var found:Array = sections(entry);
+                    var activeIndex:int = activeSection(found);
+                    for (var section:int = 0; section < found.length; ++section) {
+                        items.push({"type":"section", "title":String(found[section].title),
+                            "control":entry.controls[int(found[section].firstControl)],
+                            "index":int(found[section].firstControl),
+                            "selected":section == activeIndex,
+                            "selectable":int(found[section].firstControl) >= 0});
+                    }
+                }
+            }
+            return items;
+        }
+
+        private function pageRows(current:Object):Array
         {
             var rows:Array = [];
             if (current == null || current.controls == null) return rows;

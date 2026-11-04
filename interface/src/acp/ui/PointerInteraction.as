@@ -258,11 +258,6 @@ package acp.ui
             }
             if (stageX >= PanelLayout.WORKSPACE_X &&
                 stageX <= PanelLayout.WORKSPACE_X + PanelLayout.WORKSPACE_WIDTH &&
-                stageY >= PanelLayout.TABS_Y && stageY <= PanelLayout.TABS_Y + 48) {
-                return "tabs";
-            }
-            if (stageX >= PanelLayout.WORKSPACE_X &&
-                stageX <= PanelLayout.WORKSPACE_X + PanelLayout.WORKSPACE_WIDTH &&
                 stageY >= PanelLayout.ROWS_Y && stageY < PanelLayout.ROWS_BOTTOM) {
                 return "rows";
             }

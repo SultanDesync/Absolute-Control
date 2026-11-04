@@ -400,8 +400,7 @@ int main()
     CHECK(semanticAnchorInput.find("FOCUS_ANCHORS") != std::string::npos);
     CHECK(selection.find("model.modules[int(starts[i])].moduleId") !=
         std::string::npos);
-    CHECK(shell.find("addModuleButton(model.modules[moduleIndex]") !=
-        std::string::npos);
+    CHECK(shell.find("addModuleButton(item.target") != std::string::npos);
     CHECK(shell.find("drawFooter") != std::string::npos);
     CHECK(shell.find("drawChoicePopup") != std::string::npos);
     CHECK(shell.find("drawRecordCollectionPopup") != std::string::npos);
@@ -435,9 +434,11 @@ int main()
     CHECK(actionScript.find("sendSelectPage") != std::string::npos);
     CHECK(actionScript.find("A D COLUMN") == std::string::npos);
     CHECK(actionScript.find("addModuleButton") != std::string::npos);
-    CHECK(actionScript.find("addPageTab") != std::string::npos);
+    CHECK(actionScript.find("addSidebarPage") != std::string::npos);
+    CHECK(actionScript.find("addSidebarSection") != std::string::npos);
     CHECK(actionScript.find("activeModulePages") != std::string::npos);
-    CHECK(actionScript.find("INSTALLED MODULES") != std::string::npos);
+    CHECK(actionScript.find("INSTALLED MODULES") == std::string::npos);
+    CHECK(actionScript.find("addPageTab") == std::string::npos);
     CHECK(actionScript.find("MOUSE_WHEEL") != std::string::npos);
     CHECK(actionScript.find("ChoiceInputRouter") != std::string::npos);
     CHECK(actionScript.find("handlePointerClick") != std::string::npos);
@@ -485,7 +486,7 @@ int main()
     CHECK(vectorText.find("$MainFont") == std::string::npos);
     CHECK(layout.find("SAFE_MARGIN:Number = 56") != std::string::npos);
     CHECK(layout.find("WORKSPACE_WIDTH:Number = 1448") != std::string::npos);
-    CHECK(layout.find("VISIBLE_ROWS:int = 12") != std::string::npos);
+    CHECK(layout.find("VISIBLE_ROWS:int = 13") != std::string::npos);
     for (const auto forbidden : std::array{
              "toggle" "Feature", "increment" "Level", "decrement" "Level",
              "response" "Level" }) {

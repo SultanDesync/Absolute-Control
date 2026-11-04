@@ -1163,6 +1163,7 @@ namespace AbsoluteControlPanelResearch::Scaleform
                         SetString(page, "moduleId", source.moduleId) &&
                         SetString(page, "moduleTitle", source.moduleTitle) &&
                         SetString(page, "pageId", source.pageId) &&
+                        SetString(page, "group", source.group) &&
                         SetString(page, "title", source.title) && SetString(page, "description", source.description);
                     for (std::uint32_t controlIndex = 0; populated && controlIndex < source.controls.size(); ++controlIndex) {
                         RE::Scaleform::GFx::Value control;

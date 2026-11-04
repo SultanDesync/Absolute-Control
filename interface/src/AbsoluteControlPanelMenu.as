@@ -280,11 +280,7 @@ package
             }
             var region:String = pointer.wheelRegion(stageX, stageY);
             if (region == "modules") {
-                navigateModule(direction);
-                return true;
-            }
-            if (region == "tabs") {
-                navigatePage(direction, PanelLayout.FOCUS_CONTROLS);
+                navigatePage(direction, PanelLayout.FOCUS_MODULES);
                 return true;
             }
             var current:Object = selection.page();

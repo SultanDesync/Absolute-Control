@@ -206,6 +206,9 @@ namespace AbsoluteControlPanelApi
         ReassignBindingCallback reassignBinding{};
         // Optional appended v1 selected-record/list-detail capability.
         ReadRecordItemsCallback readRecordItems{};
+        // Optional appended v1 sidebar heading, such as "Flight". Pages without one are listed
+        // after the known groups, with no heading.
+        char group[kLabelCapacity]{};
     };
 
     inline constexpr std::uint32_t kPageDescriptorV1BaseSize =

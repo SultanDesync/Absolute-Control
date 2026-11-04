@@ -619,7 +619,8 @@ function Write-MailboxCommand {
 function Test-KeyCommand {
     param([Parameter(Mandatory = $true)][string]$Command)
     return ($script:KeyCommands -contains $Command) -or $Command.StartsWith('key_hold:') -or
-        $Command.StartsWith('key_press:') -or $Command.StartsWith('test_wheel:')
+        $Command.StartsWith('key_press:') -or $Command.StartsWith('test_wheel:') -or
+        $Command.StartsWith('test_pointer:') -or $Command -eq 'test_click'
 }
 
 function Invoke-GameCommand {

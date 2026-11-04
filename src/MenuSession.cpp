@@ -420,7 +420,7 @@ namespace AbsoluteControlPanelResearch::MenuSession
         model.pages.reserve(catalog.pages.size());
         for (const auto& source : catalog.pages) {
             Page page{ source.moduleId, source.moduleDisplayName, source.pageId,
-                source.displayName, source.description };
+                source.displayName, source.description, source.group };
             page.controls.reserve(source.controls.size());
             for (const auto& descriptor : source.controls) {
                 Control control{ descriptor };

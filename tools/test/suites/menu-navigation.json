@@ -1,0 +1,40 @@
+{
+  "name": "menu-navigation",
+  "description": "The sidebar: pages grouped by system, walked with the keys a player would use, with no top tabs. Read the layout from the screenshots.",
+  "fixture": "on-foot-ship-technician",
+  "testInput": true,
+  "tests": [
+    {
+      "id": "sidebar",
+      "description": "Opens on a page, moves focus to the sidebar, walks its pages, and moves back into the settings.",
+      "steps": [
+        { "command": "show_probe" },
+        { "expect": "menu_message_show", "detail": "result=0", "timeoutSeconds": 5 },
+        { "command": "open_page:absolute.control/walk-speed" },
+        { "expect": "bridge_page_applied", "detail": ["page=walk-speed", "active=true"], "timeoutSeconds": 5 },
+        { "waitMs": 400 },
+        { "screenshot": "walk-speed" },
+        { "command": "nav_left" },
+        { "waitMs": 200 },
+        { "screenshot": "sidebar-focused" },
+        { "command": "nav_down" },
+        { "expect": "bridge_page_applied", "detail": ["page=menu", "active=true"], "timeoutSeconds": 5 },
+        { "waitMs": 300 },
+        { "screenshot": "menu-page" },
+        { "command": "nav_down" },
+        { "expect": "bridge_page_applied", "detail": ["page=registry", "active=true"], "timeoutSeconds": 5 },
+        { "waitMs": 300 },
+        { "screenshot": "registry-page" },
+        { "command": "nav_down" },
+        { "expect": "bridge_page_applied", "detail": ["page=walk-speed", "active=true"], "timeoutSeconds": 5 },
+        { "command": "nav_right" },
+        { "waitMs": 200 },
+        { "command": "nav_down" },
+        { "waitMs": 200 },
+        { "screenshot": "back-in-settings" },
+        { "command": "hide_probe" },
+        { "expect": "menu_destructor_entered", "timeoutSeconds": 5 }
+      ]
+    }
+  ]
+}

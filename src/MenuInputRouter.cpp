@@ -547,14 +547,25 @@ namespace AbsoluteControlPanelResearch::MenuInputRouter
         }
 
         if (result.focus.region == FocusRegion::Modules) {
-            if ((IsUp(a_keyCode) || IsDown(a_keyCode)) &&
-                !a_model.modules.empty()) {
-                const auto moduleCount = a_model.modules.size();
-                const auto modulePosition = ActiveModuleIndex(a_model);
-                const auto target = IsUp(a_keyCode) ?
-                    (modulePosition + moduleCount - 1) % moduleCount :
-                    (modulePosition + 1) % moduleCount;
-                result.command = ModuleCommand(a_model.modules[target]);
+            if (IsUp(a_keyCode) || IsDown(a_keyCode)) {
+                // The sidebar walks the active module's pages, then moves on to the next module.
+                const auto pageCount = a_model.pages.size();
+                const bool leavesModule = IsUp(a_keyCode) ?
+                    pageIndex == 0 : pageIndex + 1 == pageCount;
+                if (leavesModule && a_model.modules.size() > 1) {
+                    const auto moduleCount = a_model.modules.size();
+                    const auto modulePosition = ActiveModuleIndex(a_model);
+                    const auto target = IsUp(a_keyCode) ?
+                        (modulePosition + moduleCount - 1) % moduleCount :
+                        (modulePosition + 1) % moduleCount;
+                    result.command = ModuleCommand(a_model.modules[target]);
+                } else {
+                    const auto target = IsUp(a_keyCode) ?
+                        (pageIndex + pageCount - 1) % pageCount :
+                        (pageIndex + 1) % pageCount;
+                    result.command = PageCommand(
+                        MenuSession::CommandKind::SelectPage, a_model.pages[target]);
+                }
             }
             return result;
         }

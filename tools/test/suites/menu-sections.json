@@ -1,0 +1,51 @@
+{
+  "name": "menu-sections",
+  "description": "A long page splits into sections in the sidebar and shows one at a time, and moving through the controls crosses between them. Uses a test-only page. Read the layout from the screenshots.",
+  "fixture": "on-foot-ship-technician",
+  "testInput": true,
+  "tests": [
+    {
+      "id": "sections",
+      "description": "Opens the long page, then walks down far enough to reach the second and third sections, and back up across the first boundary.",
+      "steps": [
+        { "expect": "test_menu_page_registered", "since": "run" },
+        { "command": "show_probe" },
+        { "expect": "menu_message_show", "detail": "result=0", "timeoutSeconds": 5 },
+        { "command": "open_page:absolute.control/test-sections" },
+        { "expect": "bridge_page_applied", "detail": ["page=test-sections", "active=true"], "timeoutSeconds": 5 },
+        { "waitMs": 400 },
+        { "screenshot": "first-section" },
+        { "command": "nav_down" }, { "waitMs": 100 },
+        { "command": "nav_down" }, { "waitMs": 100 },
+        { "command": "nav_down" }, { "waitMs": 100 },
+        { "command": "nav_down" }, { "waitMs": 100 },
+        { "command": "nav_down" }, { "waitMs": 100 },
+        { "command": "nav_down" }, { "waitMs": 300 },
+        { "screenshot": "second-section" },
+        { "command": "nav_down" }, { "waitMs": 100 },
+        { "command": "nav_down" }, { "waitMs": 100 },
+        { "command": "nav_down" }, { "waitMs": 100 },
+        { "command": "nav_down" }, { "waitMs": 100 },
+        { "command": "nav_down" }, { "waitMs": 100 },
+        { "command": "nav_down" }, { "waitMs": 300 },
+        { "screenshot": "third-section" },
+        { "command": "accept" }, { "waitMs": 200 },
+        { "screenshot": "third-toggled" },
+        { "command": "menu_up" }, { "waitMs": 300 },
+        { "screenshot": "back-to-second" },
+        { "command": "test_pointer:220,225" }, { "waitMs": 200 },
+        { "command": "test_click" },
+        { "expect": "pointer_down_hit", "timeoutSeconds": 3 },
+        { "waitMs": 300 },
+        { "screenshot": "clicked-first" },
+        { "command": "test_pointer:220,301" }, { "waitMs": 200 },
+        { "command": "test_click" },
+        { "expect": "pointer_down_hit", "timeoutSeconds": 3 },
+        { "waitMs": 300 },
+        { "screenshot": "clicked-third" },
+        { "command": "hide_probe" },
+        { "expect": "menu_destructor_entered", "timeoutSeconds": 5 }
+      ]
+    }
+  ]
+}

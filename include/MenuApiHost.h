@@ -66,6 +66,7 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
         std::string pageId;
         std::string displayName;
         std::string description;
+        std::string group;
         std::vector<Control> controls;
         bool canInvokeAction{};
         bool canApply{};

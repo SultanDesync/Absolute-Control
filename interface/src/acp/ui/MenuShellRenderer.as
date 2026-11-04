@@ -9,7 +9,6 @@ package acp.ui
         private var host:MovieClip;
         private var hits:PointerInteraction;
         private var moduleLayer:Sprite;
-        private var tabLayer:Sprite;
         private var rowLayer:Sprite;
         private var liveLayer:Sprite;
         private var liveHitLayer:Sprite;
@@ -86,7 +85,6 @@ package acp.ui
                 PanelLayout.WORKSPACE_WIDTH - 20, 28);
 
             moduleLayer = createLayer(PanelLayout.SIDEBAR_X, PanelLayout.SIDEBAR_Y);
-            tabLayer = createLayer(PanelLayout.WORKSPACE_X, PanelLayout.TABS_Y);
             rowLayer = createLayer(PanelLayout.WORKSPACE_X, PanelLayout.ROWS_Y);
             liveLayer = createLayer(PanelLayout.WORKSPACE_X, PanelLayout.ROWS_Y);
             liveHitLayer = createLayer(PanelLayout.WORKSPACE_X, PanelLayout.ROWS_Y);
@@ -96,14 +94,12 @@ package acp.ui
             footerLayer = createLayer(PanelLayout.FOOTER_X, PanelLayout.FOOTER_Y);
             overlayLayer = createLayer(0, 0);
             tooltipLayer = createLayer(0, 0);
-            VectorTextRenderer.addText(host, "INSTALLED MODULES", 76, 130, 14,
-                PanelTheme.DIM_TEXT, true);
         }
 
         public function redraw(model:Object, state:MenuSelectionState,
             inputMode:String, dirtyDecisionCursor:int = 0):void
         {
-            if (statusField == null || moduleLayer == null || tabLayer == null ||
+            if (statusField == null || moduleLayer == null ||
                 rowLayer == null || liveLayer == null || liveHitLayer == null ||
                 scrollLayer == null ||
                 helpLayer == null ||
@@ -118,7 +114,6 @@ package acp.ui
             livePlacements = [];
             clearLayer(scrollLayer, true);
             clearLayer(moduleLayer, false);
-            clearLayer(tabLayer, false);
             clearLayer(helpLayer, false);
             clearLayer(footerLayer, false);
             clearLayer(overlayLayer, true);
@@ -137,7 +132,8 @@ package acp.ui
             selectedGridColumnId = model == null ? "" :
                 String(model.selectedGridColumnId);
             var title:String = current == null ? "NO REGISTERED PAGES" :
-                String(current.moduleTitle) + "  " + String(current.title);
+                (String(current.group).length > 0 ? String(current.group) :
+                    String(current.moduleTitle)) + "  " + String(current.title);
             var error:String = model != null && String(model.error).length > 0 ?
                 "  " + String(model.error) : "";
             statusField.graphics.clear();
@@ -147,8 +143,7 @@ package acp.ui
                 PanelLayout.WORKSPACE_WIDTH - 20, 28);
             if (current == null) return;
 
-            drawModules(model, state);
-            drawTabs(model, state);
+            drawSidebar(state);
             VectorTextRenderer.addText(rowLayer, String(current.title), 0, -38, 19,
                 PanelTheme.TEXT, true);
             var pinnedHeight:Number = drawPinnedContext(model, state, current);
@@ -2573,27 +2568,40 @@ package acp.ui
             if (clearGraphics) layer.graphics.clear();
         }
 
-        private function drawModules(model:Object, state:MenuSelectionState):void
+        private function sidebarItemHeight(item:Object):Number
         {
-            var starts:Array = state.modulePageStarts();
-            var visibleModules:int = Math.min(PanelLayout.VISIBLE_MODULES,
-                starts.length - state.firstVisibleModule);
-            for (var moduleRow:int = 0; moduleRow < visibleModules; ++moduleRow) {
-                var moduleIndex:int = int(starts[state.firstVisibleModule + moduleRow]);
-                addModuleButton(model.modules[moduleIndex], state,
-                    moduleRow * (PanelLayout.MODULE_HEIGHT + PanelLayout.MODULE_GAP));
-            }
+            var type:String = String(item.type);
+            return type == "group" ? PanelLayout.SIDEBAR_GROUP_HEIGHT :
+                type == "module" ? PanelLayout.SIDEBAR_MODULE_HEIGHT :
+                type == "section" ? PanelLayout.SIDEBAR_SECTION_HEIGHT :
+                PanelLayout.SIDEBAR_PAGE_HEIGHT;
         }
 
-        private function drawTabs(model:Object, state:MenuSelectionState):void
+        private function drawSidebar(state:MenuSelectionState):void
         {
-            var tabs:Array = state.activeModulePages();
-            var visibleTabs:int = Math.min(PanelLayout.VISIBLE_TABS,
-                tabs.length - state.firstVisibleTab);
-            for (var tab:int = 0; tab < visibleTabs; ++tab) {
-                var tabPageIndex:int = int(tabs[state.firstVisibleTab + tab]);
-                addPageTab(model.pages[tabPageIndex], tabPageIndex, state,
-                    tab * PanelLayout.TAB_STEP);
+            var items:Array = state.sidebarItems();
+            // If it doesn't all fit, slide it up just enough to keep the active page's last
+            // section on screen.
+            var yPosition:Number = 0;
+            var activeBottom:Number = 0;
+            for (var measure:int = 0; measure < items.length; ++measure) {
+                var measured:Number = sidebarItemHeight(items[measure]);
+                if (Boolean(items[measure].selected)) activeBottom = yPosition + measured;
+                yPosition += measured + PanelLayout.SIDEBAR_GAP;
+            }
+            var offset:Number = Math.max(0, activeBottom - PanelLayout.SIDEBAR_HEIGHT);
+            yPosition = -offset;
+            for (var index:int = 0; index < items.length; ++index) {
+                var item:Object = items[index];
+                var height:Number = sidebarItemHeight(item);
+                if (yPosition >= 0 && yPosition + height <= PanelLayout.SIDEBAR_HEIGHT) {
+                    var type:String = String(item.type);
+                    if (type == "module") addModuleButton(item.target, state, yPosition);
+                    else if (type == "group") addSidebarGroup(String(item.title), yPosition);
+                    else if (type == "page") addSidebarPage(item, state, yPosition);
+                    else addSidebarSection(item, yPosition);
+                }
+                yPosition += height + PanelLayout.SIDEBAR_GAP;
             }
         }
 
@@ -2602,38 +2610,68 @@ package acp.ui
         {
             var button:Sprite = new Sprite();
             var selected:Boolean = String(target.moduleId) == state.currentPageModule();
-            var focused:Boolean = selected && state.focusRegion == PanelLayout.FOCUS_MODULES;
-            button.graphics.lineStyle(focused ? 2 : 1,
-                focused ? PanelTheme.CYAN : (selected ? PanelTheme.CYAN : PanelTheme.BORDER));
-            button.graphics.beginFill(selected ? PanelTheme.SELECTED_FILL : PanelTheme.BUTTON_FILL);
+            button.graphics.lineStyle(1, selected ? PanelTheme.BORDER : PanelTheme.ROW_BORDER);
+            button.graphics.beginFill(PanelTheme.BUTTON_FILL);
             button.graphics.drawRect(0, 0, PanelLayout.SIDEBAR_WIDTH,
-                PanelLayout.MODULE_HEIGHT);
+                PanelLayout.SIDEBAR_MODULE_HEIGHT);
             button.graphics.endFill();
             button.y = yPosition;
             button.buttonMode = true;
             VectorTextRenderer.addText(button,
-                VectorTextRenderer.fit(String(target.moduleTitle), 28), 14, 12, 17,
+                VectorTextRenderer.fit(String(target.moduleTitle), 28), 14, 11, 17,
                 selected ? PanelTheme.TEXT : PanelTheme.MUTED_TEXT, selected);
             moduleLayer.addChild(button);
             hits.register(button, "page", target, PanelLayout.FOCUS_MODULES);
         }
 
-        private function addPageTab(target:Object, index:int, state:MenuSelectionState,
-            xPosition:Number):void
+        private function addSidebarGroup(title:String, yPosition:Number):void
+        {
+            VectorTextRenderer.addText(moduleLayer,
+                VectorTextRenderer.fit(title.toUpperCase(), 30), 14, yPosition + 12, 14,
+                PanelTheme.DIM_TEXT, true);
+        }
+
+        private function addSidebarPage(item:Object, state:MenuSelectionState,
+            yPosition:Number):void
         {
             var button:Sprite = new Sprite();
-            var selected:Boolean = index == state.activePageIndex;
-            button.graphics.lineStyle(1, selected ? PanelTheme.CYAN : PanelTheme.BORDER);
+            var selected:Boolean = Boolean(item.selected);
+            var focused:Boolean = selected && state.focusRegion == PanelLayout.FOCUS_MODULES;
+            button.graphics.lineStyle(focused ? 2 : 1,
+                selected ? PanelTheme.CYAN : PanelTheme.BORDER);
             button.graphics.beginFill(selected ? PanelTheme.SELECTED_FILL : PanelTheme.BUTTON_FILL);
-            button.graphics.drawRect(0, 0, PanelLayout.TAB_WIDTH, 42);
+            button.graphics.drawRect(0, 0, PanelLayout.SIDEBAR_WIDTH,
+                PanelLayout.SIDEBAR_PAGE_HEIGHT);
             button.graphics.endFill();
-            button.x = xPosition;
+            button.y = yPosition;
             button.buttonMode = true;
             VectorTextRenderer.addText(button,
-                VectorTextRenderer.fit(String(target.title), 22), 12, 9, 16,
+                VectorTextRenderer.fit(String(item.target.title), 28), 14, 10, 17,
                 selected ? PanelTheme.TEXT : PanelTheme.MUTED_TEXT, selected);
-            tabLayer.addChild(button);
-            hits.register(button, "page", target, PanelLayout.FOCUS_CONTROLS);
+            moduleLayer.addChild(button);
+            hits.register(button, "page", item.target, PanelLayout.FOCUS_MODULES);
+        }
+
+        private function addSidebarSection(item:Object, yPosition:Number):void
+        {
+            var button:Sprite = new Sprite();
+            var selected:Boolean = Boolean(item.selected);
+            button.graphics.beginFill(selected ? PanelTheme.BUTTON_FILL : PanelTheme.PANEL, 1.0);
+            button.graphics.drawRect(16, 0, PanelLayout.SIDEBAR_WIDTH - 16,
+                PanelLayout.SIDEBAR_SECTION_HEIGHT);
+            button.graphics.endFill();
+            button.graphics.beginFill(selected ? PanelTheme.CYAN : PanelTheme.BORDER, 1.0);
+            button.graphics.drawRect(16, 0, 3, PanelLayout.SIDEBAR_SECTION_HEIGHT);
+            button.graphics.endFill();
+            button.y = yPosition;
+            VectorTextRenderer.addText(button,
+                VectorTextRenderer.fit(String(item.title), 26), 34, 8, 15,
+                selected ? PanelTheme.CYAN : PanelTheme.MUTED_TEXT, selected);
+            moduleLayer.addChild(button);
+            if (Boolean(item.selectable)) {
+                button.buttonMode = true;
+                hits.register(button, "select", item.control, int(item.index));
+            }
         }
 
         private function addRow(model:Object, state:MenuSelectionState, control:Object,

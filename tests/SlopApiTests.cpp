@@ -578,9 +578,24 @@ int main()
     routed = MenuInputRouter::Route(model, MenuInputRouter::kLeft, routed.focus);
     CHECK(routed.handled && !routed.command &&
         routed.focus.region == MenuInputRouter::FocusRegion::Modules);
+    // The sidebar walks the active module's pages, then moves on to the next module.
+    const MenuInputRouter::FocusState sidebarFocus{ .region = MenuInputRouter::FocusRegion::Modules };
     routed = MenuInputRouter::Route(navigationModel, MenuInputRouter::kDown, routed.focus);
     CHECK(routed.command && routed.command->kind == CommandKind::SelectPage &&
+        routed.command->moduleId == "test.module" && routed.command->pageId == "bindings");
+    auto lastPageModel = navigationModel;
+    lastPageModel.activePageId = "bindings";
+    routed = MenuInputRouter::Route(lastPageModel, MenuInputRouter::kDown, sidebarFocus);
+    CHECK(routed.command && routed.command->kind == CommandKind::SelectPage &&
         routed.command->moduleId == "other.module" && routed.command->pageId == "other");
+    routed = MenuInputRouter::Route(lastPageModel, MenuInputRouter::kUp, sidebarFocus);
+    CHECK(routed.command && routed.command->pageId == "general");
+    // With one module it wraps round its own pages.
+    auto oneModuleModel = model;
+    oneModuleModel.modules.resize(1);
+    routed = MenuInputRouter::Route(oneModuleModel, MenuInputRouter::kUp, sidebarFocus);
+    CHECK(routed.command && routed.command->moduleId == "test.module" &&
+        routed.command->pageId == "bindings");
     model.selectedControlId = "broken";
     CHECK(!MenuInputRouter::Route(model, MenuInputRouter::kAccept).command);
     model.selectedControlId = "enabled";
@@ -896,6 +911,33 @@ int main()
     oversized.controlCount =
         static_cast<std::uint32_t>(MenuApiHost::kMaximumControlsPerPage + 1);
     CHECK(api->registerPage(&oversized) == Result::CapacityExceeded);
+
+    // Pages are listed by system. Registration order holds inside a group, and pages with
+    // no group, or one the host does not know, come after the known ones.
+    ModuleDescriptorV1 groupedModule;
+    strcpy_s(groupedModule.moduleId, "grouped.module");
+    strcpy_s(groupedModule.displayName, "Grouped");
+    CHECK(api->registerModule(&groupedModule) == Result::Ok);
+    const auto addGroupedPage = [&](const char* a_pageId, const char* a_group) {
+        PageDescriptorV1 page = bindings;
+        strcpy_s(page.moduleId, "grouped.module");
+        strcpy_s(page.pageId, a_pageId);
+        strcpy_s(page.group, a_group);
+        return api->registerPage(&page) == Result::Ok;
+    };
+    CHECK(addGroupedPage("no-group", ""));
+    CHECK(addGroupedPage("setup", "Setup"));
+    CHECK(addGroupedPage("walk", "On Foot"));
+    CHECK(addGroupedPage("axes", "Flight"));
+    CHECK(addGroupedPage("throttle", "Flight"));
+    {
+        const auto catalog = MenuApiHost::SnapshotCatalog("grouped.module", "axes");
+        CHECK(catalog.pages.size() == 5 && catalog.pages[0].pageId == "axes" &&
+            catalog.pages[1].pageId == "throttle" && catalog.pages[2].pageId == "walk" &&
+            catalog.pages[3].pageId == "setup" && catalog.pages[4].pageId == "no-group");
+        CHECK(catalog.pages[2].group == "On Foot" && catalog.pages[4].group.empty());
+    }
+    CHECK(api->unregisterModule("grouped.module") == Result::Ok);
 
     auto invalidFlagControl = MakeDescriptor(ControlKind::Toggle, "invalid.flag");
     invalidFlagControl.flags = 1U << 31;

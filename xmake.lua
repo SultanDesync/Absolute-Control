@@ -166,7 +166,8 @@ end)
 local test_hook_sources = {
     "src/research/PauseMenuDiagnostics.cpp",
     "src/research/ResearchSupport.cpp",
-    "src/research/TestInputProvider.cpp"
+    "src/research/TestInputProvider.cpp",
+    "src/research/TestMenuPage.cpp"
 }
 
 target("AbsoluteControlPanelTestHooks", function()

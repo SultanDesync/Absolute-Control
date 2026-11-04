@@ -309,6 +309,13 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
                 page.pageId = a_descriptor->pageId;
                 page.displayName = a_descriptor->displayName;
                 page.description = a_descriptor->description;
+                constexpr auto groupEnd =
+                    offsetof(AbsoluteControlPanelApi::PageDescriptorV1, group) +
+                    sizeof(AbsoluteControlPanelApi::PageDescriptorV1::group);
+                if (a_descriptor->structSize >= groupEnd) {
+                    if (!IsTerminated(a_descriptor->group)) return Api::InvalidArgument;
+                    page.group = a_descriptor->group;
+                }
                 page.controls.reserve(a_descriptor->controlCount);
 
                 bool needsRead{};
@@ -733,6 +740,7 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
                 page.pageId = source->pageId;
                 page.displayName = source->displayName;
                 page.description = source->description;
+                page.group = source->group;
                 page.canInvokeAction = source->canInvokeAction;
                 page.canApply = source->canApply;
                 page.canCancel = source->canCancel;
@@ -743,6 +751,12 @@ namespace AbsoluteControlPanelResearch::MenuApiHost
                 }
                 result.pages.push_back(std::move(page));
             }
+            // The order the sidebar lists systems in. Registration order holds within a group.
+            std::ranges::stable_sort(result.pages, {}, [](const Page& page) {
+                constexpr std::array<std::string_view, 4> kGroupOrder{
+                    "Flight", "Look and Aim", "On Foot", "Setup" };
+                return std::ranges::find(kGroupOrder, std::string_view{ page.group }) - kGroupOrder.begin();
+            });
             const auto controlModule = [](const ModuleSummary& module) {
                 return module.moduleId == "absolute.control";
             };

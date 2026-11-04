@@ -9,6 +9,7 @@
 #include "EvidenceLog.h"
 #include "research/ResearchSupport.h"
 #include "research/TestInputProvider.h"
+#include "research/TestMenuPage.h"
 #endif
 
 namespace
@@ -76,6 +77,9 @@ namespace
                     "Data/SFSE/Plugins/AbsoluteControlWalkSpeed.ini");
                 AbsoluteControlPanelResearch::Ui::WalkSpeedPage::Register();
                 AbsoluteControlPanelResearch::Ui::WalkGaugeMenu::Register();
+#if defined(ACP_ENABLE_RESEARCH_TOOLS)
+                if (testInput) AbsoluteControlPanelResearch::TestMenuPage::Register();
+#endif
                 AbsoluteControl::Runtime::StartShipControlLoop(ShipBindingFiles());
             }
         }

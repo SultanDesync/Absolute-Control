@@ -15,26 +15,24 @@ package acp.ui
 
         public static const SIDEBAR_X:Number = SAFE_MARGIN;
         public static const SIDEBAR_HEADER_Y:Number = 116;
-        public static const SIDEBAR_Y:Number = 172;
+        public static const SIDEBAR_Y:Number = 124;
         public static const SIDEBAR_WIDTH:Number = 340;
-        public static const MODULE_HEIGHT:Number = 48;
-        public static const MODULE_GAP:Number = 4;
-        public static const VISIBLE_MODULES:int = 15;
+        public static const SIDEBAR_HEIGHT:Number = 836;
+        public static const SIDEBAR_GROUP_HEIGHT:Number = 34;
+        public static const SIDEBAR_MODULE_HEIGHT:Number = 44;
+        public static const SIDEBAR_PAGE_HEIGHT:Number = 42;
+        public static const SIDEBAR_SECTION_HEIGHT:Number = 34;
+        public static const SIDEBAR_GAP:Number = 4;
 
         public static const WORKSPACE_X:Number = 416;
         public static const WORKSPACE_WIDTH:Number = 1448;
         public static const SCROLL_RAIL_WIDTH:Number = 52;
         public static const CONTROL_ROW_WIDTH:Number =
             WORKSPACE_WIDTH - SCROLL_RAIL_WIDTH;
-        public static const TABS_Y:Number = 116;
-        public static const TAB_WIDTH:Number = 214;
-        public static const TAB_STEP:Number = 222;
-        public static const VISIBLE_TABS:int = 6;
 
-        public static const WORKSPACE_Y:Number = 172;
-        public static const ROWS_Y:Number = 220;
+        public static const ROWS_Y:Number = 164;
         public static const ROW_HEIGHT:Number = 52;
-        public static const VISIBLE_ROWS:int = 12;
+        public static const VISIBLE_ROWS:int = 13;
         public static const ROWS_BOTTOM:Number = 856;
         public static const HELP_Y:Number = 864;
         public static const HELP_HEIGHT:Number = 104;

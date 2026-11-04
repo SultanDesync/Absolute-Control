@@ -122,6 +122,17 @@ The `transition-*` suites each load a save one input before a transition, press 
 through it: ladder, chair, takeoff, dock, undock, board and get-up. Ladder and chair check known behaviour.
 The others only record, so read them from the evidence. Hold prompts need a hold of more than about a second.
 
+Four suites cover the menu. Read the layout from the screenshots, because the checks can't see it:
+
+- `menu-lifecycle` checks that closing the panel really destroys it, including when it reopens straight
+  away. It needs a profile without AbsoluteHOTAS.
+- `menu-navigation` walks the sidebar's pages with the keys and moves back into the settings.
+- `menu-sections` walks across the sections of a long page with the keys and clicks them with the real
+  mouse. No shipped page qualifies for sections yet, so it uses a page that exists only in test input
+  runs (`src/research/TestMenuPage.cpp`).
+- `menu-regression` runs in the HOTAS profile: the title entry, open and close stress, page switching and
+  a live telemetry soak.
+
 Start runs from PowerShell. Launched from the app's Git Bash tool, MO2 fails to start `sfse_loader.exe`
 with access denied and waits on a dialog until the run times out.
 
@@ -142,7 +153,9 @@ Mailbox commands, from `src/research/ResearchSupport.cpp`:
 - **Keys:** `menu_up`, `nav_down`, `nav_left`, `nav_right`, `accept`, `confirm_continue`, `pause`,
   `probe_escape`, `key_hold:<hex scan code>:<milliseconds>` for any other key or a longer hold, and
   `key_press:<hex scan code>:<0 or 1>` to hold a key across other commands.
-- **Mouse:** `test_wheel:<delta>` scrolls, where one notch is 120.
+- **Mouse:** `test_wheel:<delta>` scrolls, where one notch is 120. `test_pointer:<x>,<y>` moves the
+  real cursor to a point on the panel's 1920 by 1080 stage, and `test_click` clicks there. Leave a
+  short wait between them, because the panel reads the cursor on a poll.
 - **Fake device** (`"testInput": true`): `test_button:<n>:<0 or 1>` and `test_axis:<n>:<-1 to 1>`.
 - **Menu:** `show_probe` and `hide_probe` open and close Absolute Control; `open_page:<module>/<page>`;
   `select_main_entry` and `select_continue_entry` select a title-menu row without activating it;

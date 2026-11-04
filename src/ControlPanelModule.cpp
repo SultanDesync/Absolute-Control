@@ -505,6 +505,7 @@ namespace AbsoluteControlPanelResearch::ControlPanelModule
             std::array<Api::PageDescriptorV1, 2> pages{};
             for (auto& page : pages) {
                 Copy(page.moduleId, kModuleId);
+                Copy(page.group, "Setup");
                 page.context = &g_state;
                 page.readValue = &ReadValue;
                 page.writeDraft = &WriteDraft;

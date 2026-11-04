@@ -861,6 +861,47 @@ namespace AbsoluteControlPanelResearch::ResearchSupport
                         std::format("id={} command={} sent={}", commandId, command, sent));
                     return;
                 }
+                // Moves the real cursor to a point on the panel's stage: test_pointer:<x>,<y>,
+                // out of 1920 by 1080. The inverse of Input::ResolvePointerStage.
+                if (command.starts_with("test_pointer:")) {
+                    a_lastCommandId = commandId;
+                    const auto text = std::string_view{ command }.substr(13);
+                    const auto comma = text.find(',');
+                    std::int32_t x{};
+                    std::int32_t y{};
+                    const bool parsed = comma != std::string_view::npos &&
+                        std::from_chars(text.data(), text.data() + comma, x).ec == std::errc{} &&
+                        std::from_chars(text.data() + comma + 1, text.data() + text.size(), y).ec == std::errc{};
+                    const auto window = ::GetForegroundWindow();
+                    RECT client{};
+                    bool moved = false;
+                    if (parsed && window && ::GetClientRect(window, &client)) {
+                        const auto width = static_cast<double>(client.right - client.left);
+                        const auto height = static_cast<double>(client.bottom - client.top);
+                        const auto scale = (std::min)(width / 1920.0, height / 1080.0);
+                        POINT point{
+                            static_cast<LONG>((width - 1920.0 * scale) * 0.5 + x * scale),
+                            static_cast<LONG>((height - 1080.0 * scale) * 0.5 + y * scale)
+                        };
+                        moved = ::ClientToScreen(window, &point) && ::SetCursorPos(point.x, point.y);
+                    }
+                    EvidenceLog::Event(moved ? "research_probe_command_dispatched" : "research_input_rejected",
+                        std::format("id={} command={} moved={}", commandId, command, moved));
+                    return;
+                }
+                // Clicks the real left mouse button wherever the cursor is.
+                if (command == "test_click") {
+                    a_lastCommandId = commandId;
+                    INPUT inputs[2]{};
+                    inputs[0].type = INPUT_MOUSE;
+                    inputs[0].mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+                    inputs[1].type = INPUT_MOUSE;
+                    inputs[1].mi.dwFlags = MOUSEEVENTF_LEFTUP;
+                    const auto sent = ::SendInput(2, inputs, sizeof(INPUT));
+                    EvidenceLog::Event(sent == 2 ? "research_probe_command_dispatched" : "research_input_rejected",
+                        std::format("id={} command={} sent={}", commandId, command, sent));
+                    return;
+                }
                 // Reports the player's position, for measuring how far a key moved them.
                 if (command == "player_probe") {
                     a_lastCommandId = commandId;

@@ -56,6 +56,7 @@ namespace AbsoluteControlPanelResearch::MenuSession
         std::string pageId;
         std::string title;
         std::string description;
+        std::string group;
         std::vector<Control> controls;
         struct LiveComponent
         {
