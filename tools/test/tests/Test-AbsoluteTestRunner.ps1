@@ -68,7 +68,7 @@ try {
     Write-Host 'Deploy'
     $repo = Join-Path $root 'repo'
     foreach ($file in @('build\test-hooks\releasedbg\AbsoluteControlPanel.dll', 'build\test-hooks\releasedbg\AbsoluteControlPanel.pdb',
-            'interface\dist\AbsoluteControlPanelMenu.swf')) {
+            'interface\dist\AbsoluteControlPanelMenu.swf', 'interface\dist\AbsoluteWalkGauge.swf')) {
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent (Join-Path $repo $file)) | Out-Null
         [System.IO.File]::WriteAllText((Join-Path $repo $file), $file, $utf8)
     }
@@ -77,12 +77,12 @@ try {
     $deployed = Publish-TestHooksBuild -Config $config -RepoRoot $repo -RunId 'run-42'
     $deployedIni = [System.IO.File]::ReadAllLines((Join-Path (Get-TestModDirectory $config) 'SFSE\Plugins\AbsoluteControlPanel.ini'))
     Check ($deployedIni -contains 'RunId=run-42' -and $deployedIni -contains 'AdvanceTitleWithSendInput=true') 'deployed INI carries the run id and title advance'
-    Check ($deployed.Count -eq 4) 'DLL, PDB, SWF and INI are deployed and hashed'
+    Check ($deployed.Count -eq 5) 'DLL, PDB, both SWFs and INI are deployed and hashed'
     Check (Test-Path (Join-Path (Get-TestModDirectory $config) 'meta.ini')) 'meta.ini is created for MO2'
     Check ($deployedIni -contains 'UseTestInput=false') 'normal runs use real input'
     $testBindings = Join-Path (Get-TestModDirectory $config) 'SFSE\Plugins\AbsoluteControlTestBindings.ini'
     $deployedTest = Publish-TestHooksBuild -Config $config -RepoRoot $repo -RunId 'run-43' -TestInput
-    Check (($deployedTest.Count -eq 5) -and (Test-Path $testBindings)) 'test input deploys its bindings'
+    Check (($deployedTest.Count -eq 7) -and (Test-Path $testBindings)) 'test input deploys its bindings and walk speed settings'
     Check ([System.IO.File]::ReadAllLines((Join-Path (Get-TestModDirectory $config) 'SFSE\Plugins\AbsoluteControlPanel.ini')) -contains 'UseTestInput=true') 'test input turns on the fake device'
     [void](Publish-TestHooksBuild -Config $config -RepoRoot $repo -RunId 'run-44')
     Check (-not (Test-Path $testBindings)) 'a normal run removes the test bindings'

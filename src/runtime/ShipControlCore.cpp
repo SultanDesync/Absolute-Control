@@ -37,6 +37,48 @@ namespace AbsoluteControl::Runtime
         samples_(config_.bindings.size()), buffer_(DeviceStore::kChannelLimit)
     {}
 
+    void ShipControlCore::SetAxisBinding(ConfiguredBinding binding)
+    {
+        axisBinding_ = std::move(binding);
+        axisResolved_ = {};
+        axisValue_.reset();
+        reconciled_ = false;
+    }
+
+    ShipControlCore::Resolved ShipControlCore::Resolve(const ConfiguredBinding& binding, const DeviceSnapshot& snapshot)
+    {
+        Resolved next{ binding.status };
+        if (next.status != BindingStatus::Bound) return next;
+        const DeviceDescription* match{};
+        std::size_t matches{};
+        for (const auto& description : snapshot.devices) {
+            const bool same = binding.devicePhysicalId ?
+                binding.device == description.device.physical :
+                SameName(binding.device, description.device.displayName);
+            if (same) {
+                match = &description;
+                ++matches;
+            }
+        }
+        if (matches == 0) next.status = BindingStatus::DeviceMissing;
+        else if (matches > 1) next.status = BindingStatus::DeviceAmbiguous;
+        else {
+            const auto channel = std::ranges::find_if(match->channels, [&](const D::Channel& candidate) {
+                return binding.channel == candidate.identity.channel;
+            });
+            if (channel == match->channels.end()) next.status = BindingStatus::ChannelMissing;
+            else {
+                next.channelIndex = static_cast<std::size_t>(channel - match->channels.begin());
+                const auto slot = std::ranges::find_if(slots_, [&](const D::Device& device) {
+                    return !std::strcmp(device.physical, match->device.physical);
+                });
+                next.deviceSlot = static_cast<std::size_t>(slot - slots_.begin());
+                if (slot == slots_.end()) slots_.push_back(match->device);
+            }
+        }
+        return next;
+    }
+
     void ShipControlCore::Reconcile(const DeviceStore& devices)
     {
         const auto snapshot = devices.Snapshot();
@@ -52,36 +94,7 @@ namespace AbsoluteControl::Runtime
         std::size_t bound{}, problems{};
         for (std::size_t index = 0; index < config_.bindings.size(); ++index) {
             const auto& binding = config_.bindings[index];
-            Resolved next{ config_.enabled ? binding.status : BindingStatus::Unbound };
-            if (next.status == BindingStatus::Bound) {
-                const DeviceDescription* match{};
-                std::size_t matches{};
-                for (const auto& description : snapshot.devices) {
-                    const bool same = binding.devicePhysicalId ?
-                        binding.device == description.device.physical :
-                        SameName(binding.device, description.device.displayName);
-                    if (same) {
-                        match = &description;
-                        ++matches;
-                    }
-                }
-                if (matches == 0) next.status = BindingStatus::DeviceMissing;
-                else if (matches > 1) next.status = BindingStatus::DeviceAmbiguous;
-                else {
-                    const auto channel = std::ranges::find_if(match->channels, [&](const D::Channel& candidate) {
-                        return binding.channel == candidate.identity.channel;
-                    });
-                    if (channel == match->channels.end()) next.status = BindingStatus::ChannelMissing;
-                    else {
-                        next.channelIndex = static_cast<std::size_t>(channel - match->channels.begin());
-                        const auto slot = std::ranges::find_if(slots_, [&](const D::Device& device) {
-                            return !std::strcmp(device.physical, match->device.physical);
-                        });
-                        next.deviceSlot = static_cast<std::size_t>(slot - slots_.begin());
-                        if (slot == slots_.end()) slots_.push_back(match->device);
-                    }
-                }
-            }
+            const Resolved next = config_.enabled ? Resolve(binding, snapshot) : Resolved{};
             if (next.status == BindingStatus::Bound) ++bound;
             else if (next.status != BindingStatus::Unbound) ++problems;
             if (next.status != resolved_[index].status) {
@@ -92,11 +105,18 @@ namespace AbsoluteControl::Runtime
         }
         log_("ship_bindings_resolved", std::format("enabled={} bound={} problems={} devices={}",
             config_.enabled ? 1 : 0, bound, problems, snapshot.devices.size()));
+
+        const auto axis = Resolve(axisBinding_, snapshot);
+        if (axis.status != axisResolved_.status) {
+            log_("walk_axis", std::format("status={} token={}", ToString(axis.status), axisBinding_.token));
+        }
+        axisResolved_ = axis;
     }
 
     void ShipControlCore::SampleButtons(const DeviceStore& devices, std::uint64_t now)
     {
         std::ranges::fill(samples_, ButtonSample{});
+        axisValue_.reset();
         for (std::size_t slot = 0; slot < slots_.size(); ++slot) {
             D::Frame frame;
             std::uint32_t required{};
@@ -110,6 +130,14 @@ namespace AbsoluteControl::Runtime
                 const auto& sample = buffer_[entry.channelIndex];
                 if (sample.validity != D::Validity::Valid || config_.bindings[index].channel != sample.channel) continue;
                 samples_[index] = { true, sample.value[0] != 0, sample.pressCount };
+            }
+            if (axisResolved_.status == BindingStatus::Bound && axisResolved_.deviceSlot == slot &&
+                axisResolved_.channelIndex < required) {
+                const auto& sample = buffer_[axisResolved_.channelIndex];
+                if (sample.validity == D::Validity::Valid && sample.shape == D::Shape::Scalar &&
+                    (sample.flags & D::kCalibrationRangeKnown) && axisBinding_.channel == sample.channel) {
+                    axisValue_ = sample.value[0];
+                }
             }
         }
     }

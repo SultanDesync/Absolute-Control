@@ -41,5 +41,7 @@ namespace AbsoluteControl::Runtime
     // Reads Device Name@N, {GUID}@button:N and guid:{GUID}@N. Old #index@N and bare N
     // tokens depend on enumeration order or a default device, so they stay Unsupported.
     [[nodiscard]] ConfiguredBinding ParseShipBinding(std::string_view actionId, std::string_view token);
+    // The same forms for an axis: Device Name@0x32, {GUID}@axis:0x32 and guid:{GUID}@0x32.
+    [[nodiscard]] ConfiguredBinding ParseAxisBinding(std::string_view actionId, std::string_view token);
     [[nodiscard]] ShipBindingConfig LoadShipBindings(const IniValues& ini);
 }

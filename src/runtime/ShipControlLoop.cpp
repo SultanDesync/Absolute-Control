@@ -5,6 +5,7 @@
 #include "runtime/CooperativeService.h"
 #include "runtime/FlightSignals.h"
 #include "runtime/ShipControlCore.h"
+#include "runtime/WalkSpeedRuntime.h"
 
 #include <fstream>
 #include <iterator>
@@ -51,14 +52,22 @@ namespace AbsoluteControl::Runtime
             const bool started = service->Start(
                 [core](std::stop_token stop, const std::shared_ptr<CallbackGate>&) {
                     const auto& devices = NativeBackend().Devices();
+                    std::string axisToken;
                     while (!stop.stop_requested()) {
+                        if (auto token = WalkSpeedRuntime::AxisToken(); token != axisToken) {
+                            axisToken = std::move(token);
+                            core->SetAxisBinding(ParseAxisBinding("WalkSpeed", axisToken));
+                        }
+                        const auto now = BackendRuntime::Now();
+                        const auto signals = ReadFlightSignals();
                         PilotObservation observation;
-                        if (const auto signals = ReadFlightSignals()) {
+                        if (signals) {
                             observation.seated = signals->flag != 0;
                             observation.targeting = signals->tm != 0;
                             observation.inputActive = signals->active != 0;
                         }
-                        core->Tick(devices, observation, BackendRuntime::Now());
+                        core->Tick(devices, observation, now);
+                        WalkSpeedRuntime::Tick(signals, core->AxisValue(), now);
                         if (!InterruptibleWait(stop, kTickInterval)) return;
                     }
                 });

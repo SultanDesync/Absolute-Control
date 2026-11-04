@@ -1,0 +1,238 @@
+{
+  "name": "walk-speed",
+  "description": "Analog walk speed on foot, driven by the fake test device: the axis sets how far a movement key moves the player, and Alt + wheel and the speed keys adjust it. Needs a profile without AbsoluteHOTAS.",
+  "fixture": "on-foot-ship-technician",
+  "testInput": true,
+  "tests": [
+    {
+      "id": "ready-on-foot",
+      "description": "The hook is installed, the axis resolves, and the feature is ready on foot.",
+      "steps": [
+        { "expect": "walk_hook_installed", "since": "run" },
+        { "expect": "walk_page_registered", "since": "run" },
+        { "expect": "walk_axis", "detail": "status=bound", "since": "run" },
+        { "expect": "walk_ready", "detail": "ready=1", "since": "run", "timeoutSeconds": 15 }
+      ]
+    },
+    {
+      "id": "gauge-fades",
+      "description": "A speed change shows the gauge without taking input from the game, a further change keeps it up, and it goes away once the speed holds steady.",
+      "steps": [
+        { "command": "test_axis:0:-0.5" },
+        { "expect": "walk_gauge", "detail": "shown=1", "timeoutSeconds": 2 },
+        { "expect": "walk_gauge_loaded", "timeoutSeconds": 3 },
+        { "waitMs": 400 },
+        { "screenshot": "gauge-25" },
+        { "absent": "walk_ready", "detail": "ready=0" },
+        { "command": "test_axis:0:0.5" },
+        { "waitMs": 400 },
+        { "screenshot": "gauge-75" },
+        { "absent": "walk_ready", "detail": "ready=0" },
+        { "expect": "walk_gauge", "detail": "shown=0", "timeoutSeconds": 6 },
+        { "waitMs": 300 },
+        { "screenshot": "gauge-gone" },
+        { "absent": "walk_ready", "detail": "ready=0" }
+      ]
+    },
+    {
+      "id": "speed-zero",
+      "description": "With the axis at its low end, a movement key leaves the player standing still.",
+      "steps": [
+        { "command": "test_axis:0:-1" },
+        { "expect": "walk_speed", "detail": ["speed=0.00", "source=axis"], "timeoutSeconds": 2 },
+        { "command": "player_probe" },
+        { "command": "key_hold:1F:500" },
+        { "waitMs": 700 },
+        { "command": "player_probe" }
+      ]
+    },
+    {
+      "id": "speed-quarter",
+      "description": "A quarter of the axis travel moves the player a short way.",
+      "steps": [
+        { "command": "test_axis:0:-0.5" },
+        { "expect": "walk_speed", "detail": ["speed=0.25", "source=axis"], "timeoutSeconds": 2 },
+        { "command": "player_probe" },
+        { "command": "key_hold:1F:500" },
+        { "waitMs": 700 },
+        { "command": "player_probe" },
+        { "command": "key_hold:11:500" },
+        { "waitMs": 700 },
+        { "command": "player_probe" }
+      ]
+    },
+    {
+      "id": "speed-half",
+      "description": "Half the axis travel moves the player further.",
+      "steps": [
+        { "command": "test_axis:0:0" },
+        { "expect": "walk_speed", "detail": ["speed=0.50", "source=axis"], "timeoutSeconds": 2 },
+        { "command": "player_probe" },
+        { "command": "key_hold:1F:500" },
+        { "waitMs": 700 },
+        { "command": "player_probe" },
+        { "command": "key_hold:11:500" },
+        { "waitMs": 700 },
+        { "command": "player_probe" }
+      ]
+    },
+    {
+      "id": "speed-three-quarters",
+      "description": "Measures the curve between half and full speed.",
+      "steps": [
+        { "command": "test_axis:0:0.5" },
+        { "expect": "walk_speed", "detail": ["speed=0.75", "source=axis"], "timeoutSeconds": 2 },
+        { "command": "player_probe" },
+        { "command": "key_hold:1F:500" },
+        { "waitMs": 700 },
+        { "command": "player_probe" },
+        { "command": "key_hold:11:500" },
+        { "waitMs": 700 },
+        { "command": "player_probe" }
+      ]
+    },
+    {
+      "id": "speed-ninety",
+      "description": "Measures the top of the curve, just below the game's own key handling.",
+      "steps": [
+        { "command": "test_axis:0:0.8" },
+        { "expect": "walk_speed", "detail": ["speed=0.90", "source=axis"], "timeoutSeconds": 2 },
+        { "command": "player_probe" },
+        { "command": "key_hold:1F:500" },
+        { "waitMs": 700 },
+        { "command": "player_probe" },
+        { "command": "key_hold:11:500" },
+        { "waitMs": 700 },
+        { "command": "player_probe" }
+      ]
+    },
+    {
+      "id": "speed-full",
+      "description": "At full speed the game's own key handling runs, as if the feature were off.",
+      "steps": [
+        { "command": "test_axis:0:1" },
+        { "expect": "walk_speed", "detail": ["speed=1.00", "source=axis"], "timeoutSeconds": 2 },
+        { "command": "player_probe" },
+        { "command": "key_hold:1F:500" },
+        { "waitMs": 700 },
+        { "command": "player_probe" },
+        { "command": "key_hold:11:500" },
+        { "waitMs": 700 },
+        { "command": "player_probe" }
+      ]
+    },
+    {
+      "id": "alt-wheel",
+      "description": "Alt + wheel takes over from the parked axis, and the scroll doesn't reach the camera.",
+      "steps": [
+        { "command": "key_press:38:1" },
+        { "waitMs": 50 },
+        { "command": "test_wheel:-120" },
+        { "expect": "walk_zoom_skipped", "detail": "ZoomOut", "timeoutSeconds": 2 },
+        { "command": "test_wheel:-120" },
+        { "waitMs": 100 },
+        { "expect": "walk_speed", "detail": ["speed=0.80", "source=virtual"], "timeoutSeconds": 2 },
+        { "command": "key_press:38:0" },
+        { "waitMs": 500 },
+        { "absent": "flight_signal", "detail": "cam=0x14", "since": "run" },
+        { "screenshot": "after-alt-wheel" }
+      ]
+    },
+    {
+      "id": "speed-keys",
+      "description": "Numpad + and - each move the speed one step.",
+      "steps": [
+        { "command": "key_hold:4E:60" },
+        { "expect": "walk_speed", "detail": ["speed=0.90", "source=virtual"], "timeoutSeconds": 2 },
+        { "command": "key_hold:4A:60" },
+        { "expect": "walk_speed", "detail": ["speed=0.80", "source=virtual"], "timeoutSeconds": 2 },
+        { "expect": "walk_settings_saved", "detail": "speed=0.80", "timeoutSeconds": 5 }
+      ]
+    },
+    {
+      "id": "axis-takes-back",
+      "description": "Moving the axis takes charge again.",
+      "steps": [
+        { "command": "test_axis:0:0" },
+        { "expect": "walk_speed", "detail": ["speed=0.50", "source=axis"], "timeoutSeconds": 2 }
+      ]
+    },
+    {
+      "id": "wheel-alone-is-untouched",
+      "description": "Scrolling without Alt leaves the speed alone and zooms the camera as normal.",
+      "steps": [
+        { "command": "test_wheel:-120" },
+        { "expect": "flight_signal", "detail": "cam=0x14", "timeoutSeconds": 3 },
+        { "waitMs": 500 },
+        { "absent": "walk_speed" },
+        { "screenshot": "after-plain-wheel" }
+      ]
+    },
+    {
+      "id": "menu-page",
+      "description": "The Walk Speed page opens in the menu.",
+      "steps": [
+        { "command": "show_probe" },
+        { "expect": "menu_message_show", "detail": "result=0", "timeoutSeconds": 5 },
+        { "command": "open_page:absolute.control/walk-speed" },
+        { "expect": "bridge_page_applied", "detail": ["page=walk-speed", "active=true"], "timeoutSeconds": 5 },
+        { "waitMs": 500 },
+        { "screenshot": "walk-speed-page" },
+        { "command": "hide_probe" },
+        { "expect": "panel_viewport_restored", "timeoutSeconds": 3 },
+        { "waitMs": 500 },
+        { "screenshot": "after-panel-closed" }
+      ]
+    },
+    {
+      "id": "gauge-toggle-off",
+      "description": "Turning the gauge off in the menu, with the keys a player would use, stops it appearing.",
+      "steps": [
+        { "waitMs": 3500 },
+        { "command": "show_probe" },
+        { "expect": "menu_message_show", "detail": "result=0", "timeoutSeconds": 5 },
+        { "command": "open_page:absolute.control/walk-speed" },
+        { "expect": "bridge_page_applied", "detail": ["page=walk-speed", "active=true"], "timeoutSeconds": 5 },
+        { "waitMs": 300 },
+        { "command": "nav_down" },
+        { "waitMs": 150 },
+        { "command": "accept" },
+        { "waitMs": 300 },
+        { "screenshot": "gauge-switched-off" },
+        { "command": "key_hold:21:100" },
+        { "expect": "walk_settings_saved", "timeoutSeconds": 3 },
+        { "command": "hide_probe" },
+        { "waitMs": 500 },
+        { "command": "test_axis:0:-0.6" },
+        { "expect": "walk_speed", "detail": ["speed=0.20", "source=axis"], "timeoutSeconds": 2 },
+        { "waitMs": 500 },
+        { "absent": "walk_gauge", "detail": "shown=1" },
+        { "screenshot": "gauge-stays-hidden" }
+      ]
+    },
+    {
+      "id": "gauge-toggle-on",
+      "description": "Turning it back on brings it back.",
+      "steps": [
+        { "command": "show_probe" },
+        { "expect": "menu_message_show", "detail": "result=0", "timeoutSeconds": 5 },
+        { "command": "open_page:absolute.control/walk-speed" },
+        { "expect": "bridge_page_applied", "detail": ["page=walk-speed", "active=true"], "timeoutSeconds": 5 },
+        { "waitMs": 300 },
+        { "command": "nav_down" },
+        { "waitMs": 150 },
+        { "command": "accept" },
+        { "waitMs": 300 },
+        { "command": "key_hold:21:100" },
+        { "expect": "walk_settings_saved", "timeoutSeconds": 3 },
+        { "command": "hide_probe" },
+        { "waitMs": 500 },
+        { "command": "test_axis:0:0.2" },
+        { "expect": "walk_gauge", "detail": "shown=1", "timeoutSeconds": 2 },
+        { "waitMs": 400 },
+        { "screenshot": "gauge-back-on" },
+        { "absent": "walk_gauge_loaded" }
+      ]
+    }
+  ]
+}

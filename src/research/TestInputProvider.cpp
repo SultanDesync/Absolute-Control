@@ -24,6 +24,7 @@ namespace AbsoluteControlPanelResearch::TestInput
         constexpr auto kName = "Absolute Test Stick";
 
         std::array<std::atomic_bool, kButtonCount> g_buttons{};
+        std::array<std::atomic<double>, kAxisCount> g_axes{};
 
         template <std::size_t N> void Copy(char (&output)[N], const std::string& input)
         {
@@ -42,7 +43,19 @@ namespace AbsoluteControlPanelResearch::TestInput
                 Copy(device.displayName, kName);
                 device.providerEpoch = device.enumerationRevision = device.connectionEpoch = 1;
                 device.validity = D::Validity::Valid;
-                device.channelCount = kButtonCount;
+                device.channelCount = kButtonCount + kAxisCount;
+                for (std::uint32_t index = 0; index < kAxisCount; ++index) {
+                    D::Channel channel;
+                    channel.shape = D::Shape::Scalar;
+                    Copy(channel.identity.provider, kProvider);
+                    Copy(channel.identity.physical, kPhysical);
+                    Copy(channel.identity.channel, std::format("axis/{}", index));
+                    Copy(channel.displayName, std::format("Axis {}", index + 1));
+                    channel.rawUnits = D::Units::ProviderDefined;
+                    channel.valueUnits = D::Units::Unitless;
+                    channel.components = 1;
+                    description_.channels.push_back(channel);
+                }
                 for (std::uint32_t index = 0; index < kButtonCount; ++index) {
                     D::Channel channel;
                     channel.shape = D::Shape::Button;
@@ -75,6 +88,18 @@ namespace AbsoluteControlPanelResearch::TestInput
                 frame.sampledAt = frame.receivedAt = BackendRuntime::Now();
                 frame.clock = D::Clock::CoreMonotonicNanoseconds;
                 frame.validity = D::Validity::Valid;
+                for (std::uint32_t index = 0; index < kAxisCount; ++index) {
+                    D::Sample sample;
+                    Copy(sample.channel, std::format("axis/{}", index));
+                    sample.shape = D::Shape::Scalar;
+                    sample.validity = D::Validity::Valid;
+                    sample.components = 1;
+                    sample.flags = D::kCalibrationRangeKnown;
+                    sample.calibrationMinimum[0] = -1;
+                    sample.calibrationMaximum[0] = 1;
+                    sample.raw[0] = sample.value[0] = g_axes[index].load(std::memory_order_acquire);
+                    output.samples.push_back(sample);
+                }
                 for (std::uint32_t index = 0; index < kButtonCount; ++index) {
                     const bool down = g_buttons[index].load(std::memory_order_acquire);
                     states_[index].Observe(down, false);
@@ -89,12 +114,13 @@ namespace AbsoluteControlPanelResearch::TestInput
                     sample.raw[0] = sample.value[0] = down ? 1 : 0;
                     output.samples.push_back(sample);
                 }
-                frame.sampleCount = kButtonCount;
+                frame.sampleCount = kButtonCount + kAxisCount;
                 if (store.Publish(output) != D::Result::Ok) throw std::runtime_error("test input frame rejected");
             }
 
         private:
             DeviceDescription description_;
+            // Indexed by button. Axes come first in each frame.
             std::array<DigitalSampleState, kButtonCount> states_{};
             std::uint64_t sequence_{};
             bool published_{};
@@ -110,6 +136,13 @@ namespace AbsoluteControlPanelResearch::TestInput
     {
         if (button < 1 || button > kButtonCount) return false;
         g_buttons[button - 1].store(down, std::memory_order_release);
+        return true;
+    }
+
+    bool SetAxis(std::uint32_t axis, double value) noexcept
+    {
+        if (axis >= kAxisCount || !(value >= -1.0 && value <= 1.0)) return false;
+        g_axes[axis].store(value, std::memory_order_release);
         return true;
     }
 }

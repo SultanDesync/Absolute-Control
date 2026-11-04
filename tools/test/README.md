@@ -106,6 +106,18 @@ powershell -ExecutionPolicy Bypass -File tools\test\Invoke-AbsoluteTests.ps1 -Co
 
 Either way, buttons only produce `ship_action_intent` log events for now. Nothing reaches the game.
 
+Walk speed has two suites, both for that same profile:
+
+- `walk-speed` needs no hardware. It measures how far a movement key moves the player at each axis
+  position, and tests Alt + wheel, the speed keys, saving, the gauge and its menu toggle. Test runs
+  read `test-walk-speed.ini` and save to a separate file, which ends up in the run's folder, so your
+  real settings aren't touched.
+- `walk-speed-devices` opens the page with real controllers connected. It changes nothing, and leaves
+  real input deployed in the profile.
+
+Start runs from PowerShell. Launched from the app's Git Bash tool, MO2 fails to start `sfse_loader.exe`
+with access denied and waits on a dialog until the run times out.
+
 ## Writing suites
 
 A suite is JSON: `name`, `description`, an optional `fixture`, an optional `testInput`, and `tests`. Each
@@ -121,12 +133,16 @@ test has an `id`, a `description`, an optional `repeat`, and `steps`, each with 
 
 Mailbox commands, from `src/research/ResearchSupport.cpp`:
 - **Keys:** `menu_up`, `nav_down`, `nav_left`, `nav_right`, `accept`, `confirm_continue`, `pause`,
-  `probe_escape`, and `key_hold:<hex scan code>:<milliseconds>` for any other key or a longer hold.
+  `probe_escape`, `key_hold:<hex scan code>:<milliseconds>` for any other key or a longer hold, and
+  `key_press:<hex scan code>:<0 or 1>` to hold a key across other commands.
+- **Mouse:** `test_wheel:<delta>` scrolls, where one notch is 120.
+- **Fake device** (`"testInput": true`): `test_button:<n>:<0 or 1>` and `test_axis:<n>:<-1 to 1>`.
 - **Menu:** `show_probe` and `hide_probe` open and close Absolute Control; `open_page:<module>/<page>`;
   `select_main_entry` and `select_continue_entry` select a title-menu row without activating it;
   `inject_pause_entry`.
-- **Read-only probes:** `probe_pause_root`, `probe_main_root`, `list_saves:<folder>`, and `ship_probe`,
-  which reports the ship, whether `GetSpaceshipPilot` returns the player, and landed and docked state.
+- **Read-only probes:** `probe_pause_root`, `probe_main_root`, `list_saves:<folder>`, `player_probe`,
+  which reports the player's position, and `ship_probe`, which reports the ship, whether
+  `GetSpaceshipPilot` returns the player, and landed and docked state.
 
 The test build also logs a `flight_signal` evidence event on every change to the pilot and flight
 state in `flight-model-map.md`, and once a second with the moving values. The `signals-*` suites check

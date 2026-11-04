@@ -97,12 +97,16 @@ local release_sources = {
     "src/runtime/ShipBindings.cpp",
     "src/runtime/ShipControlCore.cpp",
     "src/runtime/ShipControlLoop.cpp",
+    "src/runtime/WalkSpeed.cpp",
+    "src/runtime/WalkSpeedRuntime.cpp",
     "src/scaleform/ScaleformMenuBridge.cpp",
     "src/ui/ControlPanelMenu.cpp",
     "src/ui/MenuAudioIntegration.cpp",
     "src/ui/MenuMessaging.cpp",
     "src/ui/PauseMenuIntegration.cpp",
-    "src/ui/PauseMenuPresentation.cpp"
+    "src/ui/PauseMenuPresentation.cpp",
+    "src/ui/WalkGaugeMenu.cpp",
+    "src/ui/WalkSpeedPage.cpp"
 }
 
 local function add_control_panel_core_sources()
@@ -144,6 +148,9 @@ target("AbsoluteControlPanel", function()
         "Native in-game flight-control menu and input runtime for Starfield")
 
     add_installfiles("interface/dist/AbsoluteControlPanelMenu.swf", {
+        prefixdir = "Interface"
+    })
+    add_installfiles("interface/dist/AbsoluteWalkGauge.swf", {
         prefixdir = "Interface"
     })
     add_installfiles("config/AbsoluteControlPanel.ini", {
@@ -208,6 +215,16 @@ target("ship_control_test", function()
     add_files("src/runtime/DeviceStore.cpp", "src/runtime/LegacyHotasToken.cpp",
         "src/runtime/ShipBindings.cpp", "src/runtime/ShipControlCore.cpp",
         "tests/ShipControlTests.cpp")
+end)
+
+target("walk_speed_test", function()
+    set_kind("binary")
+    set_default(false)
+    add_tests("axis_tokens_selection_and_settings")
+    add_includedirs("include")
+    add_files("src/runtime/DeviceStore.cpp", "src/runtime/LegacyHotasToken.cpp",
+        "src/runtime/ShipBindings.cpp", "src/runtime/ShipControlCore.cpp",
+        "src/runtime/WalkSpeed.cpp", "tests/WalkSpeedTests.cpp")
 end)
 
 -- Internal R0/R1 harness only; this source is not in either plugin target.

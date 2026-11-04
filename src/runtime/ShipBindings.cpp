@@ -59,10 +59,59 @@ namespace AbsoluteControl::Runtime
             return {};
         }
 
-        std::optional<std::string> ButtonChannel(const LegacyHotas::Binding& binding)
+        // HOTAS axis values are HID usages: 0x30-0x37 are axes 0-7.
+        std::optional<std::string> AxisChannelForValue(std::uint32_t value)
         {
-            if (binding.kind == LegacyHotas::Kind::Axis) return {};
-            return LegacyHotas::ChannelId(binding);
+            if (value >= 0x30 && value <= 0x37) return std::format("axis/{}", value - 0x30);
+            return {};
+        }
+
+        ConfiguredBinding ParseBinding(std::string_view actionId, std::string_view token, bool axis)
+        {
+            ConfiguredBinding result;
+            result.actionId = std::string(actionId);
+            result.token = std::string(token);
+            const auto text = Trim(token);
+            if (text.empty() || text == "-1") return result;
+            const auto separator = text.rfind('@');
+            if (separator == std::string_view::npos) {
+                result.status = BindingStatus::Unsupported;
+                return result;
+            }
+            const auto device = Trim(text.substr(0, separator));
+            const auto control = Trim(text.substr(separator + 1));
+            result.status = BindingStatus::Invalid;
+            if (device.empty() || control.empty()) return result;
+            if (device.front() == '#') {
+                result.status = BindingStatus::Unsupported;
+                return result;
+            }
+            if (device.front() == '{') {
+                const auto decoded = LegacyHotas::Decode(text, LegacyHotas::Dialect::Unspecified);
+                const bool rightKind = decoded.binding && (decoded.binding->kind == LegacyHotas::Kind::Axis) == axis;
+                const auto channel = rightKind ? LegacyHotas::ChannelId(*decoded.binding) : std::nullopt;
+                if (!channel) return result;
+                result.status = BindingStatus::Bound;
+                result.devicePhysicalId = true;
+                result.device = decoded.binding->physicalId;
+                result.channel = *channel;
+                return result;
+            }
+            const auto value = ParseNumber(control);
+            const auto channel = !value ? std::nullopt : axis ? AxisChannelForValue(*value) : ChannelForValue(*value);
+            if (!channel) return result;
+            if (device.starts_with("guid:")) {
+                const auto id = std::string(Trim(device.substr(5)));
+                const auto decoded = LegacyHotas::Decode(id + "@button:1", LegacyHotas::Dialect::HotasCapture);
+                if (!decoded.binding) return result;
+                result.devicePhysicalId = true;
+                result.device = decoded.binding->physicalId;
+            } else {
+                result.device = std::string(device);
+            }
+            result.status = BindingStatus::Bound;
+            result.channel = *channel;
+            return result;
         }
     }
 
@@ -108,49 +157,12 @@ namespace AbsoluteControl::Runtime
 
     ConfiguredBinding ParseShipBinding(std::string_view actionId, std::string_view token)
     {
-        ConfiguredBinding result;
-        result.actionId = std::string(actionId);
-        result.token = std::string(token);
-        const auto text = Trim(token);
-        if (text.empty() || text == "-1") return result;
-        const auto separator = text.rfind('@');
-        if (separator == std::string_view::npos) {
-            result.status = BindingStatus::Unsupported;
-            return result;
-        }
-        const auto device = Trim(text.substr(0, separator));
-        const auto control = Trim(text.substr(separator + 1));
-        result.status = BindingStatus::Invalid;
-        if (device.empty() || control.empty()) return result;
-        if (device.front() == '#') {
-            result.status = BindingStatus::Unsupported;
-            return result;
-        }
-        if (device.front() == '{') {
-            const auto decoded = LegacyHotas::Decode(text, LegacyHotas::Dialect::Unspecified);
-            const auto channel = decoded.binding ? ButtonChannel(*decoded.binding) : std::nullopt;
-            if (!channel) return result;
-            result.status = BindingStatus::Bound;
-            result.devicePhysicalId = true;
-            result.device = decoded.binding->physicalId;
-            result.channel = *channel;
-            return result;
-        }
-        const auto value = ParseNumber(control);
-        const auto channel = value ? ChannelForValue(*value) : std::nullopt;
-        if (!channel) return result;
-        if (device.starts_with("guid:")) {
-            const auto id = std::string(Trim(device.substr(5)));
-            const auto decoded = LegacyHotas::Decode(id + "@button:1", LegacyHotas::Dialect::HotasCapture);
-            if (!decoded.binding) return result;
-            result.devicePhysicalId = true;
-            result.device = decoded.binding->physicalId;
-        } else {
-            result.device = std::string(device);
-        }
-        result.status = BindingStatus::Bound;
-        result.channel = *channel;
-        return result;
+        return ParseBinding(actionId, token, false);
+    }
+
+    ConfiguredBinding ParseAxisBinding(std::string_view actionId, std::string_view token)
+    {
+        return ParseBinding(actionId, token, true);
     }
 
     ShipBindingConfig LoadShipBindings(const IniValues& ini)

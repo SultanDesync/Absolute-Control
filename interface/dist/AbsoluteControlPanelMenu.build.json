@@ -4,11 +4,15 @@
     "swfVersion":  18,
     "playerGlobalCommit":  "fef560243029214656d83fc673be0267a1ea0816",
     "sourceSha256":  "E7B4987D9A7859192C525EC4850E21695E7AD56BAF753B52EFBE4A6C3BEA02D9",
-    "sourceTreeSha256":  "E8218387393BE8C39191472D76015BA23C7F82D7DFD1418F842C85C69034442F",
+    "sourceTreeSha256":  "ECB0563063E2161AED41D0A83F86B8B1E9B2EC778883C76679C6E794C300ACAF",
     "sources":  [
                     {
                         "path":  "AbsoluteControlPanelMenu.as",
                         "sha256":  "E7B4987D9A7859192C525EC4850E21695E7AD56BAF753B52EFBE4A6C3BEA02D9"
+                    },
+                    {
+                        "path":  "AbsoluteWalkGauge.as",
+                        "sha256":  "A13DFEC7C2AB49E3863478FE5BD32532F6AD743E4A07827B58906613321CDD70"
                     },
                     {
                         "path":  "acp/ui/ActionConfirmationDialog.as",
@@ -95,5 +99,5 @@
                         "sha256":  "9F7365D85F6249B7E75F18E4B55C90D806CC0B905BA12FFC86351A38A902290E"
                     }
                 ],
-    "outputSha256":  "163B7823BAD03417A635E575B70AC389981B4A8F3E516821BC8C561CF34FABB3"
+    "outputSha256":  "4F387DE38DBCFF5E364AF48446682DF0EFFE11E946E934D9A53628F257E83A11"
 }

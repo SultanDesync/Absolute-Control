@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -28,6 +29,11 @@ namespace AbsoluteControl::Runtime
         void Tick(const DeviceStore& devices, const PilotObservation& observation, std::uint64_t now);
         [[nodiscard]] bool GateOpen() const noexcept { return gateOpen_; }
 
+        // One extra axis read off the bus each tick. Nothing is read when it's unbound.
+        void SetAxisBinding(ConfiguredBinding binding);
+        // -1 to 1, or nothing if the axis is unbound, missing, stale or has no known range.
+        [[nodiscard]] std::optional<double> AxisValue() const noexcept { return axisValue_; }
+
     private:
         struct Resolved
         {
@@ -35,9 +41,13 @@ namespace AbsoluteControl::Runtime
             std::size_t deviceSlot{};
             std::size_t channelIndex{};
         };
+        [[nodiscard]] Resolved Resolve(const ConfiguredBinding& binding, const DeviceSnapshot& snapshot);
         void Reconcile(const DeviceStore& devices);
         void SampleButtons(const DeviceStore& devices, std::uint64_t now);
 
+        ConfiguredBinding axisBinding_;
+        Resolved axisResolved_;
+        std::optional<double> axisValue_;
         ShipBindingConfig config_;
         ActionSink sink_;
         ControlLog log_;

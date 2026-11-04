@@ -1,6 +1,9 @@
 #include "NativeMenuProbe.h"
 #include "runtime/BackendRuntime.h"
 #include "runtime/ShipControlLoop.h"
+#include "runtime/WalkSpeedRuntime.h"
+#include "ui/WalkGaugeMenu.h"
+#include "ui/WalkSpeedPage.h"
 
 #if defined(ACP_ENABLE_RESEARCH_TOOLS)
 #include "EvidenceLog.h"
@@ -62,7 +65,19 @@ namespace
             AbsoluteControlPanelResearch::NativeMenuProbe::OnEarlyMenus();
         } else if (a_message->type == SFSE::MessagingInterface::kPostDataLoad) {
             AbsoluteControlPanelResearch::NativeMenuProbe::OnDataReady();
-            if (g_backendRunning) AbsoluteControl::Runtime::StartShipControlLoop(ShipBindingFiles());
+            if (g_backendRunning) {
+                // Test runs read fixed settings and save elsewhere. A saved copy in MO2's
+                // overwrite folder would hide the fixed file, and real settings stay untouched.
+                const bool testInput = UseTestInput();
+                AbsoluteControl::Runtime::WalkSpeedRuntime::Install(testInput ?
+                    "Data/SFSE/Plugins/AbsoluteControlTestWalkSpeed.ini" :
+                    "Data/SFSE/Plugins/AbsoluteControlWalkSpeed.ini", testInput ?
+                    "Data/SFSE/Plugins/AbsoluteControlTestWalkSpeed.saved.ini" :
+                    "Data/SFSE/Plugins/AbsoluteControlWalkSpeed.ini");
+                AbsoluteControlPanelResearch::Ui::WalkSpeedPage::Register();
+                AbsoluteControlPanelResearch::Ui::WalkGaugeMenu::Register();
+                AbsoluteControl::Runtime::StartShipControlLoop(ShipBindingFiles());
+            }
         }
     }
 }

@@ -198,6 +198,7 @@ function Publish-TestHooksBuild {
         'SFSE\Plugins\AbsoluteControlPanel.dll' = Join-Path $build 'AbsoluteControlPanel.dll'
         'SFSE\Plugins\AbsoluteControlPanel.pdb' = Join-Path $build 'AbsoluteControlPanel.pdb'
         'Interface\AbsoluteControlPanelMenu.swf' = Join-Path $RepoRoot 'interface\dist\AbsoluteControlPanelMenu.swf'
+        'Interface\AbsoluteWalkGauge.swf' = Join-Path $RepoRoot 'interface\dist\AbsoluteWalkGauge.swf'
     }
     foreach ($source in $sources.Values) {
         if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
@@ -220,12 +221,15 @@ function Publish-TestHooksBuild {
     $iniPath = Join-Path $mod 'SFSE\Plugins\AbsoluteControlPanel.ini'
     [System.IO.File]::WriteAllLines($iniPath, $iniLines, $script:Utf8NoBom)
     $deployed['SFSE\Plugins\AbsoluteControlPanel.ini'] = Get-Sha256 $iniPath
-    $testBindings = Join-Path $mod 'SFSE\Plugins\AbsoluteControlTestBindings.ini'
-    if ($TestInput) {
-        Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'test-bindings.ini') -Destination $testBindings -Force
-        $deployed['SFSE\Plugins\AbsoluteControlTestBindings.ini'] = Get-Sha256 $testBindings
-    } elseif (Test-Path -LiteralPath $testBindings) {
-        Remove-Item -LiteralPath $testBindings
+    foreach ($testFile in @(@('test-bindings.ini', 'SFSE\Plugins\AbsoluteControlTestBindings.ini'),
+            @('test-walk-speed.ini', 'SFSE\Plugins\AbsoluteControlTestWalkSpeed.ini'))) {
+        $target = Join-Path $mod $testFile[1]
+        if ($TestInput) {
+            Copy-Item -LiteralPath (Join-Path $PSScriptRoot $testFile[0]) -Destination $target -Force
+            $deployed[$testFile[1]] = Get-Sha256 $target
+        } elseif (Test-Path -LiteralPath $target) {
+            Remove-Item -LiteralPath $target
+        }
     }
     $meta = Join-Path $mod 'meta.ini'
     if (-not (Test-Path -LiteralPath $meta)) {
@@ -600,12 +604,22 @@ function Write-MailboxCommand {
     param([Parameter(Mandatory = $true)][string]$Path, [uint32]$Id, [Parameter(Mandatory = $true)][string]$Command)
     $temporary = "$Path.tmp"
     [System.IO.File]::WriteAllLines($temporary, [string[]]@("id=$Id", "command=$Command"), $script:Utf8NoBom)
-    Move-Item -LiteralPath $temporary -Destination $Path -Force
+    # The plugin polls this file, and can have the last command open at just this moment.
+    for ($attempt = 1; ; $attempt++) {
+        try {
+            Move-Item -LiteralPath $temporary -Destination $Path -Force -ErrorAction Stop
+            return
+        } catch [System.IO.IOException] {
+            if ($attempt -ge 20) { throw }
+            Start-Sleep -Milliseconds 25
+        }
+    }
 }
 
 function Test-KeyCommand {
     param([Parameter(Mandatory = $true)][string]$Command)
-    return ($script:KeyCommands -contains $Command) -or $Command.StartsWith('key_hold:')
+    return ($script:KeyCommands -contains $Command) -or $Command.StartsWith('key_hold:') -or
+        $Command.StartsWith('key_press:') -or $Command.StartsWith('test_wheel:')
 }
 
 function Invoke-GameCommand {
@@ -827,6 +841,11 @@ function Save-RunArtifacts {
         $target = Join-Path $Context.RunDirectory (Split-Path -Leaf $dump)
         Move-Item -LiteralPath $dump -Destination $target -Force
         $moved += $target
+    }
+    # A test run's saved walk speed settings show the save worked through MO2's virtual files.
+    $savedSettings = Join-Path $Context.Config.mo2BaseDirectory 'overwrite\SFSE\Plugins\AbsoluteControlTestWalkSpeed.saved.ini'
+    if (Test-Path -LiteralPath $savedSettings) {
+        Move-Item -LiteralPath $savedSettings -Destination $Context.RunDirectory -Force
     }
     return $moved
 }

@@ -804,6 +804,77 @@ namespace AbsoluteControlPanelResearch::ResearchSupport
                         std::format("id={} command={}", commandId, command));
                     return;
                 }
+                // Moves an axis on the fake test device: test_axis:<number>:<-1 to 1>.
+                if (command.starts_with("test_axis:")) {
+                    a_lastCommandId = commandId;
+                    const auto arguments = std::string_view{ command }.substr(10);
+                    const auto colon = arguments.find(':');
+                    std::uint32_t axis{};
+                    double value{};
+                    const bool parsed = colon != std::string_view::npos &&
+                        std::from_chars(arguments.data(), arguments.data() + colon, axis).ec == std::errc{} &&
+                        std::from_chars(arguments.data() + colon + 1, arguments.data() + arguments.size(), value).ec == std::errc{};
+                    const bool applied = parsed && TestInput::SetAxis(axis, value);
+                    EvidenceLog::Event(applied ? "research_probe_command_dispatched" : "research_input_rejected",
+                        std::format("id={} command={}", commandId, command));
+                    return;
+                }
+                // Holds a key across later commands: key_press:<hex scan code>:<0 or 1>.
+                if (command.starts_with("key_press:")) {
+                    a_lastCommandId = commandId;
+                    const auto arguments = std::string_view{ command }.substr(10);
+                    const auto colon = arguments.find(':');
+                    std::uint32_t code{};
+                    const bool parsed = colon != std::string_view::npos &&
+                        std::from_chars(arguments.data(), arguments.data() + colon, code, 16).ec == std::errc{} &&
+                        code > 0 && code <= 0xFF &&
+                        (arguments.substr(colon + 1) == "0" || arguments.substr(colon + 1) == "1");
+                    if (!parsed) {
+                        EvidenceLog::Event("research_input_rejected",
+                            std::format("id={} command={} reason=malformed_key_press", commandId, command));
+                        return;
+                    }
+                    const bool down = arguments.substr(colon + 1) == "1";
+                    INPUT input{};
+                    input.type = INPUT_KEYBOARD;
+                    input.ki.wScan = static_cast<WORD>(code);
+                    input.ki.dwFlags = KEYEVENTF_SCANCODE | (down ? 0 : KEYEVENTF_KEYUP);
+                    const auto sent = ::SendInput(1, &input, sizeof(INPUT));
+                    if (down && sent == 1) TrackKeyDown(static_cast<WORD>(code), 0);
+                    if (!down) TrackKeyUp(static_cast<WORD>(code));
+                    EvidenceLog::Event(sent == 1 ? "research_probe_command_dispatched" : "research_input_rejected",
+                        std::format("id={} command={} sent={}", commandId, command, sent));
+                    return;
+                }
+                // Scrolls the real mouse wheel: test_wheel:<delta>, where one notch is 120.
+                if (command.starts_with("test_wheel:")) {
+                    a_lastCommandId = commandId;
+                    const auto text = std::string_view{ command }.substr(11);
+                    std::int32_t delta{};
+                    const bool parsed = std::from_chars(text.data(), text.data() + text.size(), delta).ec == std::errc{};
+                    INPUT input{};
+                    input.type = INPUT_MOUSE;
+                    input.mi.dwFlags = MOUSEEVENTF_WHEEL;
+                    input.mi.mouseData = static_cast<DWORD>(delta);
+                    const auto sent = parsed ? ::SendInput(1, &input, sizeof(INPUT)) : 0;
+                    EvidenceLog::Event(sent == 1 ? "research_probe_command_dispatched" : "research_input_rejected",
+                        std::format("id={} command={} sent={}", commandId, command, sent));
+                    return;
+                }
+                // Reports the player's position, for measuring how far a key moved them.
+                if (command == "player_probe") {
+                    a_lastCommandId = commandId;
+                    EvidenceLog::Event("research_probe_command_queued",
+                        std::format("id={} command={}", commandId, command));
+                    QueueIfActive(a_taskInterface, a_gate, [commandId, command]() {
+                        const auto* player = RE::PlayerCharacter::GetSingleton();
+                        EvidenceLog::Event("research_probe_command_dispatched", std::format(
+                            "id={} command={} x={:.4f} y={:.4f} z={:.4f}", commandId, command,
+                            player ? player->GetPositionX() : 0.0F, player ? player->GetPositionY() : 0.0F,
+                            player ? player->GetPositionZ() : 0.0F));
+                    });
+                    return;
+                }
                 // Asks the game about the player's ship, on the game thread because
                 // GetSpaceship resolves handles.
                 if (command == "ship_probe") {
