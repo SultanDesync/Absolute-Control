@@ -1,0 +1,23 @@
+{
+  "name": "signals-sit-down",
+  "description": "Map check L1: the seat flag rises when the player sits. The save's state comes from its name only.",
+  "fixture": "pilot-seat-ready",
+  "tests": [
+    {
+      "id": "sit-down",
+      "description": "From a clear flag, E sits in the pilot seat and sets the flag.",
+      "steps": [
+        { "waitMs": 3000 },
+        { "command": "ship_probe" },
+        { "expect": "flight_signal", "detail": ["flag=0", "tm=0"], "timeoutSeconds": 3 },
+        { "screenshot": "before-sitting" },
+        { "command": "accept" },
+        { "expect": "flight_signal", "detail": ["flag=1", "tm=0"], "timeoutSeconds": 10 },
+        { "waitMs": 2000 },
+        { "command": "ship_probe" },
+        { "expect": "research_probe_command_dispatched", "detail": ["ship=1", "pilot_is_player=1"] },
+        { "screenshot": "after-sitting" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "name": "signals-on-foot",
+  "description": "Map check L6, negative control: the seat flag is clear after loading an on-foot save.",
+  "fixture": "on-foot-ship-technician",
+  "tests": [
+    {
+      "id": "not-seated-after-load",
+      "description": "The seat flag is clear and GetSpaceshipPilot doesn't return the player.",
+      "steps": [
+        { "waitMs": 3000 },
+        { "command": "ship_probe" },
+        { "expect": "research_probe_command_dispatched", "detail": ["pilot_is_player=0"] },
+        { "expect": "flight_signal", "detail": ["flag=0", "tm=0"], "timeoutSeconds": 3 },
+        { "screenshot": "on-foot" }
+      ]
+    }
+  ]
+}

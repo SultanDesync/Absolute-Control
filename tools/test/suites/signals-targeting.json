@@ -1,0 +1,32 @@
+{
+  "name": "signals-targeting",
+  "description": "Map check L4: Targeting Mode clears the seat flag and sets its own state, and leaving it restores the flag. R is tapped as soon as input is live, because a shorter tap 2 s later did nothing.",
+  "fixture": "pilot-targeting-mode-ready-disabled-engines-v1",
+  "tests": [
+    {
+      "id": "enter-targeting",
+      "description": "A 120 ms R tap enters Targeting Mode, which clears the seat flag while the player stays seated.",
+      "steps": [
+        { "expect": "flight_signal", "detail": ["flag=1", "tm=0", "active=1"], "since": "run", "timeoutSeconds": 15 },
+        { "command": "key_hold:13:120" },
+        { "expect": "flight_signal", "detail": ["flag=0"], "timeoutSeconds": 5 },
+        { "waitMs": 2000 },
+        { "command": "ship_probe" },
+        { "expect": "research_probe_command_dispatched", "detail": ["ship=1"] },
+        { "screenshot": "targeting" }
+      ]
+    },
+    {
+      "id": "leave-targeting",
+      "description": "Esc leaves Targeting Mode, which restores the seat flag.",
+      "steps": [
+        { "command": "key_hold:01:120" },
+        { "expect": "flight_signal", "detail": ["flag=1", "tm=0"], "timeoutSeconds": 8 },
+        { "waitMs": 2000 },
+        { "command": "ship_probe" },
+        { "expect": "research_probe_command_dispatched", "detail": ["ship=1", "pilot_is_player=1"] },
+        { "screenshot": "after-targeting" }
+      ]
+    }
+  ]
+}

@@ -595,6 +595,11 @@ function Write-MailboxCommand {
     Move-Item -LiteralPath $temporary -Destination $Path -Force
 }
 
+function Test-KeyCommand {
+    param([Parameter(Mandatory = $true)][string]$Command)
+    return ($script:KeyCommands -contains $Command) -or $Command.StartsWith('key_hold:')
+}
+
 function Invoke-GameCommand {
     # Sends one mailbox command and waits for the plugin to complete or reject it.
     param([hashtable]$Context, [Parameter(Mandatory = $true)][string]$Command, [int]$TimeoutSeconds = 0)
@@ -605,7 +610,7 @@ function Invoke-GameCommand {
     $Context.CommandCursor = $Context.Evidence.Records.Count - 1
     # Key commands become SendInput in the plugin and land in whatever window is in front,
     # so never send one unless the game has focus.
-    if ($script:KeyCommands -contains $Command -and -not (Set-GameForeground $Context)) {
+    if ((Test-KeyCommand $Command) -and -not (Set-GameForeground $Context)) {
         throw "Refusing to send key command '$Command': Starfield is not the foreground window."
     }
     Write-MailboxCommand -Path $Context.MailboxPath -Id $id -Command $Command

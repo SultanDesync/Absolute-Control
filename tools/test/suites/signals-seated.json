@@ -1,0 +1,31 @@
+{
+  "name": "signals-seated",
+  "description": "Map checks L6 and L1: the seat flag is set after loading a seated save and clears when getting up.",
+  "fixture": "pilot-seated-control-v2",
+  "tests": [
+    {
+      "id": "seated-after-load",
+      "description": "The seat flag is set, and GetSpaceshipPilot returns the player.",
+      "steps": [
+        { "waitMs": 3000 },
+        { "command": "ship_probe" },
+        { "expect": "research_probe_command_dispatched", "detail": ["ship=1", "pilot_is_player=1"] },
+        { "expect": "flight_signal", "detail": ["flag=1", "tm=0"], "timeoutSeconds": 3 },
+        { "screenshot": "seated" }
+      ]
+    },
+    {
+      "id": "get-up",
+      "description": "Holding E to get up clears the seat flag, and GetSpaceshipPilot stops returning the player.",
+      "steps": [
+        { "command": "key_hold:12:1500" },
+        { "expect": "flight_signal", "detail": ["flag=0", "tm=0"], "timeoutSeconds": 8 },
+        { "waitMs": 6000 },
+        { "command": "ship_probe" },
+        { "expect": "research_probe_command_dispatched", "detail": ["ship=1", "pilot_is_player=0"] },
+        { "expect": "flight_signal", "detail": ["flag=0"], "timeoutSeconds": 3 },
+        { "screenshot": "standing" }
+      ]
+    }
+  ]
+}

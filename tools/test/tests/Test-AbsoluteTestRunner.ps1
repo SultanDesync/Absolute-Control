@@ -33,7 +33,9 @@ try {
     [System.IO.File]::WriteAllText($bad, '{"name":"x","tests":[{"id":"a","steps":[]},{"id":"a","steps":[]}]}', $utf8)
     Check (Throws { Read-TestSuite $bad }) 'duplicate test ids are rejected'
     Check ($suite.fixture -eq 'pilot-seated-control-v2') 'menu-regression pins its save'
-    Check ((Read-TestSuite (Join-Path $PSScriptRoot '..\suites\save-load.json')).name -eq 'save-load') 'save-load suite parses'
+    $suiteFiles = @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot '..\suites') -Filter '*.json')
+    foreach ($file in $suiteFiles) { Check ((Read-TestSuite $file.FullName).name -eq $file.BaseName) "$($file.Name) parses and its name matches its file" }
+    Check ((Test-KeyCommand 'key_hold:12:1500') -and (Test-KeyCommand 'accept') -and -not (Test-KeyCommand 'ship_probe')) 'key commands that need game focus are recognised'
 
     Write-Host 'INI rewriting'
     $ini = Set-IniValues -Lines @('; header', '[ControlPanel]', 'RunId=old', 'EnableMainMenuEntry=true', '[Other]', 'RunId=keep') `

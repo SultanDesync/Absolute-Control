@@ -101,11 +101,16 @@ A suite is JSON: `name`, `description`, an optional `fixture` and `tests`. Each 
 
 Mailbox commands, from `src/research/ResearchSupport.cpp`:
 - **Keys:** `menu_up`, `nav_down`, `nav_left`, `nav_right`, `accept`, `confirm_continue`, `pause`,
-  `probe_escape`.
+  `probe_escape`, and `key_hold:<hex scan code>:<milliseconds>` for any other key or a longer hold.
 - **Menu:** `show_probe` and `hide_probe` open and close Absolute Control; `open_page:<module>/<page>`;
   `select_main_entry` and `select_continue_entry` select a title-menu row without activating it;
   `inject_pause_entry`.
-- **Read-only probes:** `probe_pause_root`, `probe_main_root`, `list_saves:<folder>`.
+- **Read-only probes:** `probe_pause_root`, `probe_main_root`, `list_saves:<folder>`, and `ship_probe`,
+  which reports the ship, whether `GetSpaceshipPilot` returns the player, and landed and docked state.
+
+The test build also logs a `flight_signal` evidence event on every change to the pilot and flight
+state in `flight-model-map.md`, and once a second with the moving values. The `signals-*` suites check
+those claims against saved contexts.
 
 ## Self-test
 

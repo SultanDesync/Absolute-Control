@@ -1,0 +1,16 @@
+{
+  "name": "signals-record",
+  "description": "Map check L7: records the signals in a context the map leaves open, without judging them. Pick the save with -Fixture.",
+  "tests": [
+    {
+      "id": "record",
+      "description": "Reaches the HUD, then records the ship probe, signals and a screenshot.",
+      "steps": [
+        { "waitMs": 3000 },
+        { "command": "ship_probe" },
+        { "waitMs": 3000 },
+        { "screenshot": "scene" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "name": "signals-hail",
+  "description": "Map check L5: hailing uses the targeting camera without Targeting Mode, so the old camera check gives the wrong answer here.",
+  "fixture": "pilot-friendly-ship-hail-ready-v1",
+  "tests": [
+    {
+      "id": "hail-camera",
+      "description": "Holding E hails the ship: camera state 0xB, Targeting Mode off, seat flag still set.",
+      "steps": [
+        { "waitMs": 3000 },
+        { "command": "key_hold:12:1500" },
+        { "expect": "flight_signal", "detail": ["flag=1", "tm=0", "cam=0xB"], "timeoutSeconds": 10 },
+        { "waitMs": 2000 },
+        { "command": "ship_probe" },
+        { "expect": "research_probe_command_dispatched", "detail": ["ship=1", "pilot_is_player=1"] },
+        { "screenshot": "hail" }
+      ]
+    }
+  ]
+}
