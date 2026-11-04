@@ -1,3 +1,4 @@
+#include "EvidenceLog.h"
 #include "runtime/BackendRuntime.h"
 #include "runtime/DeviceSamplePolicy.h"
 
@@ -12,12 +13,19 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstring>
 #include <format>
+#include <mutex>
 #include <numbers>
+#include <optional>
 #include <stdexcept>
+#include <stop_token>
 #include <string>
+#include <thread>
+#include <utility>
 
 namespace AbsoluteControl::Runtime
 {
@@ -174,14 +182,33 @@ namespace AbsoluteControl::Runtime
             }
             void Stop() noexcept override
             {
+                if (enumerator_.joinable()) {
+                    enumerator_.request_stop();
+                    enumerator_.join();
+                }
                 for (auto& c : controllers_) if (c.device) c.device->Unacquire();
                 controllers_.clear(); input_.Reset();
             }
             void Poll(DeviceStore& store, std::uint64_t now) override
             {
-                if (now >= nextEnumeration_) {
-                    nextEnumeration_ = now + 1'000'000'000;
-                    Refresh();
+                // Every device on the bus waits while this thread is stuck, so a gap is worth knowing about.
+                if (now - pollGapLogWindowAt_ >= 15'000'000'000) {
+                    pollGapLogWindowAt_ = now;
+                    pollGapsLogged_ = 0;
+                }
+                if (lastPollAt_ && now - lastPollAt_ >= kPollGapNanoseconds && pollGapsLogged_ < 8) {
+                    ++pollGapsLogged_;
+                    AbsoluteControlPanelResearch::EvidenceLog::Event("input_poll_gap",
+                        std::format("ms={}", (now - lastPollAt_) / 1'000'000));
+                }
+                lastPollAt_ = now;
+
+                if (!enumerator_.joinable()) {
+                    // The first list is needed straight away. After that, polling never waits for one.
+                    Refresh(EnumerateDevices(input_.Get()));
+                    enumerator_ = std::jthread([this](std::stop_token stop) { EnumerateLoop(stop); });
+                } else if (auto found = TakeEnumeration()) {
+                    Refresh(*found);
                 }
                 ++sequence_;
                 std::vector<DeviceFrame> frames;
@@ -291,10 +318,48 @@ namespace AbsoluteControl::Runtime
                 c.descriptor.channelCount = static_cast<std::uint32_t>(c.controls.size());
                 c.device->Acquire();
             }
-            void Refresh()
+            [[nodiscard]] static Enumerated EnumerateDevices(IDirectInput8W* input)
             {
                 Enumerated found;
-                if (FAILED(input_->EnumDevices(DI8DEVCLASS_GAMECTRL, &Enumerate, &found, DIEDFL_ATTACHEDONLY)) || found.failed)
+                if (FAILED(input->EnumDevices(DI8DEVCLASS_GAMECTRL, &Enumerate, &found, DIEDFL_ATTACHEDONLY))) found.failed = true;
+                return found;
+            }
+            // EnumDevices took 250-400 ms with this hardware, so it runs here, once a second, with
+            // its own DirectInput object. Polling only picks up the finished list.
+            void EnumerateLoop(std::stop_token stop) noexcept
+            {
+                try {
+                    ComPtr<IDirectInput8W> input;
+                    const bool created = SUCCEEDED(DirectInput8Create(GetModuleHandleW(nullptr), DIRECTINPUT_VERSION,
+                        IID_IDirectInput8W, reinterpret_cast<void**>(input.GetAddressOf()), nullptr));
+                    std::mutex waitMutex;
+                    std::condition_variable_any waiter;
+                    while (!stop.stop_requested()) {
+                        {
+                            std::unique_lock waitLock{ waitMutex };
+                            waiter.wait_for(waitLock, stop, std::chrono::seconds(1), [] { return false; });
+                        }
+                        if (stop.stop_requested()) return;
+                        Enumerated found;
+                        if (created) found = EnumerateDevices(input.Get());
+                        else found.failed = true;
+                        const std::scoped_lock lock{ enumerationMutex_ };
+                        enumeration_ = std::move(found);
+                    }
+                } catch (...) {
+                    const std::scoped_lock lock{ enumerationMutex_ };
+                    enumeration_ = Enumerated{};
+                    enumeration_->failed = true;
+                }
+            }
+            [[nodiscard]] std::optional<Enumerated> TakeEnumeration()
+            {
+                const std::scoped_lock lock{ enumerationMutex_ };
+                return std::exchange(enumeration_, std::nullopt);
+            }
+            void Refresh(Enumerated found)
+            {
+                if (found.failed)
                     throw std::runtime_error("DirectInput inventory failed or exceeded 16 devices");
                 std::sort(found.devices.begin(), found.devices.end(), [](const auto& a, const auto& b) {
                     return Guid(a.guidInstance) < Guid(b.guidInstance);
@@ -330,8 +395,13 @@ namespace AbsoluteControl::Runtime
             ComPtr<IDirectInput8W> input_;
             std::vector<Controller> controllers_;
             std::vector<std::string> attached_;
-            std::uint64_t epoch_{}, revision_{ 1 }, sequence_{}, nextEnumeration_{};
+            static constexpr std::uint64_t kPollGapNanoseconds = 50'000'000;
+            std::uint64_t epoch_{}, revision_{ 1 }, sequence_{}, lastPollAt_{}, pollGapLogWindowAt_{};
+            std::uint32_t pollGapsLogged_{};
             bool inventoryDirty_{ true };
+            std::mutex enumerationMutex_;
+            std::optional<Enumerated> enumeration_;
+            std::jthread enumerator_; // Declared last, so it stops before what it uses is destroyed.
         };
     }
 
