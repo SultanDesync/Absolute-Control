@@ -91,7 +91,12 @@ local release_sources = {
     "src/runtime/BackendRuntime.cpp",
     "src/runtime/DeviceStore.cpp",
     "src/runtime/DirectInputProvider.cpp",
+    "src/runtime/FlightSignals.cpp",
+    "src/runtime/LegacyHotasToken.cpp",
     "src/runtime/RuntimeCompatibility.cpp",
+    "src/runtime/ShipBindings.cpp",
+    "src/runtime/ShipControlCore.cpp",
+    "src/runtime/ShipControlLoop.cpp",
     "src/scaleform/ScaleformMenuBridge.cpp",
     "src/ui/ControlPanelMenu.cpp",
     "src/ui/MenuAudioIntegration.cpp",
@@ -152,7 +157,8 @@ end)
 -- It builds into its own directory and must never be packaged or released.
 local test_hook_sources = {
     "src/research/PauseMenuDiagnostics.cpp",
-    "src/research/ResearchSupport.cpp"
+    "src/research/ResearchSupport.cpp",
+    "src/research/TestInputProvider.cpp"
 }
 
 target("AbsoluteControlPanelTestHooks", function()
@@ -192,6 +198,16 @@ target("legacy_hotas_token_test", function()
     add_tests("round_trip_and_dialect_ambiguity")
     add_includedirs("include")
     add_files("src/runtime/LegacyHotasToken.cpp", "tests/LegacyHotasTokenTests.cpp")
+end)
+
+target("ship_control_test", function()
+    set_kind("binary")
+    set_default(false)
+    add_tests("bindings_pilot_signal_and_routing")
+    add_includedirs("include")
+    add_files("src/runtime/DeviceStore.cpp", "src/runtime/LegacyHotasToken.cpp",
+        "src/runtime/ShipBindings.cpp", "src/runtime/ShipControlCore.cpp",
+        "tests/ShipControlTests.cpp")
 end)
 
 -- Internal R0/R1 harness only; this source is not in either plugin target.

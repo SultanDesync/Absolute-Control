@@ -46,7 +46,7 @@ if (-not (Test-Path -LiteralPath $buildDll -PathType Leaf)) {
     $problems.Add("Test-hooks build missing: $buildDll. Run: xmake build -y AbsoluteControlPanelTestHooks")
 }
 $profileProblems = @(Test-ProfileReadiness $config)
-if ($profileProblems.Count -gt 0 -and $PrepareProfile -and -not $DryRun -and
+if ($profileProblems.Count -gt 0 -and $PrepareProfile -and
     -not (Get-Process -Name ModOrganizer -ErrorAction SilentlyContinue)) {
     $changes = Set-ProfileForTesting -Config $config -BackupDirectory $runDirectory
     Write-RunnerEvent $context 'profile_prepared' ($changes -join '; ')
@@ -102,7 +102,8 @@ if (Test-Path -LiteralPath $saveStatePath) {
     $recovered = Exit-SaveStage -StatePath $saveStatePath -ProcessName $config.processName
     Write-RunnerEvent $context 'save_stage_recovered' ("restored={0} stage={1}" -f $recovered.restored, $recovered.stage)
 }
-$deployed = Publish-TestHooksBuild -Config $config -RepoRoot $repoRoot -RunId $runId -Mode $Mode
+$useTestInput = ($suiteDefinition.PSObject.Properties.Name -contains 'testInput') -and [bool]$suiteDefinition.testInput
+$deployed = Publish-TestHooksBuild -Config $config -RepoRoot $repoRoot -RunId $runId -Mode $Mode -TestInput:$useTestInput
 Write-RunnerEvent $context 'deployed' ("dll={0}" -f $deployed['SFSE\Plugins\AbsoluteControlPanel.dll'])
 $results = @()
 $fatal = ''

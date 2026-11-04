@@ -1,13 +1,41 @@
 #include "NativeMenuProbe.h"
 #include "runtime/BackendRuntime.h"
+#include "runtime/ShipControlLoop.h"
 
 #if defined(ACP_ENABLE_RESEARCH_TOOLS)
 #include "EvidenceLog.h"
 #include "research/ResearchSupport.h"
+#include "research/TestInputProvider.h"
 #endif
 
 namespace
 {
+    bool g_backendRunning = false;
+
+    [[nodiscard]] bool UseTestInput()
+    {
+#if defined(ACP_ENABLE_RESEARCH_TOOLS)
+        return AbsoluteControlPanelResearch::ResearchSupport::LoadConfig(
+            AbsoluteControlPanelResearch::NativeMenuProbe::kConfigPath).useTestInput;
+#else
+        return false;
+#endif
+    }
+
+    [[nodiscard]] std::unique_ptr<AbsoluteControl::Runtime::InputProvider> MakeInputProvider()
+    {
+#if defined(ACP_ENABLE_RESEARCH_TOOLS)
+        if (UseTestInput()) return AbsoluteControlPanelResearch::TestInput::MakeProvider();
+#endif
+        return AbsoluteControl::Runtime::MakeDirectInputProvider();
+    }
+
+    [[nodiscard]] std::vector<std::filesystem::path> ShipBindingFiles()
+    {
+        if (UseTestInput()) return { "Data/SFSE/Plugins/AbsoluteControlTestBindings.ini" };
+        return { "Data/SFSE/Plugins/AbsoluteHOTAS.ini", "Data/SFSE/Plugins/AbsoluteHOTAS_Custom.ini" };
+    }
+
     void OnSfseMessage(SFSE::MessagingInterface::Message* a_message)
     {
         if (!a_message) {
@@ -24,16 +52,17 @@ namespace
                     REX::ERROR("AC native device backend unavailable: both product and research hosts are loaded.");
                 } else if (GetModuleHandleW(L"AbsoluteHOTAS.dll")) {
                     REX::ERROR("AC native device backend unavailable: unadapted AbsoluteHOTAS.dll loaded. Use the native development cohort; no legacy fallback is selected.");
-                } else if (!AbsoluteControl::Runtime::NativeBackend().Start(
-                        AbsoluteControl::Runtime::MakeDirectInputProvider())) {
+                } else if (!AbsoluteControl::Runtime::NativeBackend().Start(MakeInputProvider())) {
                     REX::ERROR("AC native device worker failed to start.");
                 } else {
+                    g_backendRunning = true;
                     REX::INFO("AC native device worker starting independently of presentation.");
                 }
             }
             AbsoluteControlPanelResearch::NativeMenuProbe::OnEarlyMenus();
         } else if (a_message->type == SFSE::MessagingInterface::kPostDataLoad) {
             AbsoluteControlPanelResearch::NativeMenuProbe::OnDataReady();
+            if (g_backendRunning) AbsoluteControl::Runtime::StartShipControlLoop(ShipBindingFiles());
         }
     }
 }

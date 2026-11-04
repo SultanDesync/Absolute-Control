@@ -87,15 +87,35 @@ To add a save, copy it somewhere permanent, get its hash with `Get-FileHash`, an
 `id`, `file`, `sha256` and `description`. Give a changed save a new id. State labels record what
 someone saw when the save was made; they aren't proof of game state.
 
+## Testing the ship control loop
+
+The input bus won't start while `AbsoluteHOTAS.dll` is loaded, so these runs need an MO2 profile
+without HOTAS. Copy your test profile's folder (an empty `saves` folder is fine), copy
+`test.local.json` to `test.rewrite.local.json`, point its `profile` at the copy, add `AbsoluteHOTAS*`
+to `conflictingModPatterns`, and prepare it once:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\test\Invoke-AbsoluteTests.ps1 -ConfigPath tools\test\test.rewrite.local.json -Suite tools\test\suites\ship-loop.json -PrepareProfile -DryRun
+```
+
+- `ship-loop` needs no hardware. With `"testInput": true`, the run swaps DirectInput for a fake device,
+  **Absolute Test Stick**, and uses the bindings in `test-bindings.ini`. `test_button:<n>:<0 or 1>`
+  presses its buttons.
+- `ship-loop-devices` uses real controllers and your saved bindings from `AbsoluteHOTAS.ini` and
+  `AbsoluteHOTAS_Custom.ini`, which are only read. Press bound buttons during its 25 second wait.
+
+Either way, buttons only produce `ship_action_intent` log events for now. Nothing reaches the game.
+
 ## Writing suites
 
-A suite is JSON: `name`, `description`, an optional `fixture` and `tests`. Each test has an `id`, a
-`description`, an optional `repeat`, and `steps`, each with exactly one of:
+A suite is JSON: `name`, `description`, an optional `fixture`, an optional `testInput`, and `tests`. Each
+test has an `id`, a `description`, an optional `repeat`, and `steps`, each with exactly one of:
 
 | Step | Meaning |
 |---|---|
 | `{"command": "<name>"}` | Send a mailbox command and wait until the plugin completes it (or fail if rejected). |
 | `{"expect": "<event>", "detail": "..." \| [...], "timeoutSeconds": 10, "since": "run"}` | Wait for an evidence event whose detail contains every listed substring. By default only events after the latest command count; `"since": "run"` searches the whole run. |
+| `{"absent": "<event>", "detail": "...", "since": "run"}` | Fail if that event has already appeared, with the same matching rules as `expect`. |
 | `{"waitMs": 30000}` | Wait, still watching for crashes. |
 | `{"screenshot": "<label>"}` | Save a window capture. |
 

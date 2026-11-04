@@ -192,7 +192,7 @@ function Get-Sha256 {
 
 function Publish-TestHooksBuild {
     param($Config, [Parameter(Mandatory = $true)][string]$RepoRoot, [Parameter(Mandatory = $true)][string]$RunId,
-        [string]$Mode = 'releasedbg')
+        [string]$Mode = 'releasedbg', [switch]$TestInput)
     $build = Join-Path $RepoRoot "build\test-hooks\$Mode"
     $sources = [ordered]@{
         'SFSE\Plugins\AbsoluteControlPanel.dll' = Join-Path $build 'AbsoluteControlPanel.dll'
@@ -215,10 +215,18 @@ function Publish-TestHooksBuild {
     $iniLines = [System.IO.File]::ReadAllLines((Join-Path $RepoRoot 'config\AbsoluteControlPanel.ini'))
     $iniLines = Set-IniValues -Lines $iniLines -Section 'ControlPanel' -Values @{
         RunId = $RunId; AutoOpen = 'false'; RequireArm = 'false'; AdvanceTitleWithSendInput = 'true'
+        UseTestInput = $(if ($TestInput) { 'true' } else { 'false' })
     }
     $iniPath = Join-Path $mod 'SFSE\Plugins\AbsoluteControlPanel.ini'
     [System.IO.File]::WriteAllLines($iniPath, $iniLines, $script:Utf8NoBom)
     $deployed['SFSE\Plugins\AbsoluteControlPanel.ini'] = Get-Sha256 $iniPath
+    $testBindings = Join-Path $mod 'SFSE\Plugins\AbsoluteControlTestBindings.ini'
+    if ($TestInput) {
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'test-bindings.ini') -Destination $testBindings -Force
+        $deployed['SFSE\Plugins\AbsoluteControlTestBindings.ini'] = Get-Sha256 $testBindings
+    } elseif (Test-Path -LiteralPath $testBindings) {
+        Remove-Item -LiteralPath $testBindings
+    }
     $meta = Join-Path $mod 'meta.ini'
     if (-not (Test-Path -LiteralPath $meta)) {
         [System.IO.File]::WriteAllLines($meta, [string[]]@('[General]', 'gameName=Starfield',
@@ -721,8 +729,8 @@ function Read-TestSuite {
         if ($ids.ContainsKey($test.id)) { throw "Duplicate test id '$($test.id)' in $Path." }
         $ids[$test.id] = $true
         foreach ($step in @($test.steps)) {
-            $kinds = @($step.PSObject.Properties.Name | Where-Object { $_ -in @('command', 'expect', 'waitMs', 'screenshot') })
-            if ($kinds.Count -ne 1) { throw "Test '$($test.id)' has a step without exactly one of command/expect/waitMs/screenshot." }
+            $kinds = @($step.PSObject.Properties.Name | Where-Object { $_ -in @('command', 'expect', 'absent', 'waitMs', 'screenshot') })
+            if ($kinds.Count -ne 1) { throw "Test '$($test.id)' has a step without exactly one of command/expect/absent/waitMs/screenshot." }
         }
     }
     return $suite
@@ -742,6 +750,16 @@ function Invoke-TestStep {
         if ($Step.PSObject.Properties.Name -contains 'since' -and $Step.since -eq 'run') { $after = -1 }
         [void](Wait-Evidence -Context $Context -Event ([string]$Step.expect) -DetailContains $detail `
             -AfterIndex $after -TimeoutSeconds $timeout)
+        return
+    }
+    if ($Step.PSObject.Properties.Name -contains 'absent') {
+        # Fails if the event has already happened, with the same detail and since rules as expect.
+        $detail = if ($Step.PSObject.Properties.Name -contains 'detail') { [string[]]@($Step.detail) } else { [string[]]@() }
+        $after = $Context.CommandCursor
+        if ($Step.PSObject.Properties.Name -contains 'since' -and $Step.since -eq 'run') { $after = -1 }
+        Update-EvidenceReader $Context.Evidence
+        $found = Find-EvidenceRecord -Reader $Context.Evidence -Event ([string]$Step.absent) -DetailContains $detail -AfterIndex $after
+        if ($found) { throw "Evidence $($Step.absent) should not have appeared: $($found.Record.detail)" }
         return
     }
     if ($Step.PSObject.Properties.Name -contains 'waitMs') {

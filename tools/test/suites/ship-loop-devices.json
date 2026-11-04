@@ -1,0 +1,19 @@
+{
+  "name": "ship-loop-devices",
+  "description": "The ship control loop with real controllers and your saved bindings. Press bound buttons during the wait: the report's evidence shows each intent. Nothing reaches the game. Needs a profile without AbsoluteHOTAS.",
+  "fixture": "pilot-seated-control-v2",
+  "tests": [
+    {
+      "id": "real-devices",
+      "description": "The loop starts over DirectInput, and the gate opens while seated. Then a 25 second window for pressing buttons.",
+      "steps": [
+        { "expect": "control_loop_started", "since": "run" },
+        { "expect": "ship_bindings_resolved", "since": "run" },
+        { "expect": "ship_binding", "detail": "status=bound", "since": "run" },
+        { "expect": "ship_gate", "detail": "open=1", "since": "run", "timeoutSeconds": 15 },
+        { "waitMs": 25000 },
+        { "screenshot": "scene" }
+      ]
+    }
+  ]
+}

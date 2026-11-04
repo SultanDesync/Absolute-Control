@@ -79,6 +79,13 @@ try {
     Check ($deployedIni -contains 'RunId=run-42' -and $deployedIni -contains 'AdvanceTitleWithSendInput=true') 'deployed INI carries the run id and title advance'
     Check ($deployed.Count -eq 4) 'DLL, PDB, SWF and INI are deployed and hashed'
     Check (Test-Path (Join-Path (Get-TestModDirectory $config) 'meta.ini')) 'meta.ini is created for MO2'
+    Check ($deployedIni -contains 'UseTestInput=false') 'normal runs use real input'
+    $testBindings = Join-Path (Get-TestModDirectory $config) 'SFSE\Plugins\AbsoluteControlTestBindings.ini'
+    $deployedTest = Publish-TestHooksBuild -Config $config -RepoRoot $repo -RunId 'run-43' -TestInput
+    Check (($deployedTest.Count -eq 5) -and (Test-Path $testBindings)) 'test input deploys its bindings'
+    Check ([System.IO.File]::ReadAllLines((Join-Path (Get-TestModDirectory $config) 'SFSE\Plugins\AbsoluteControlPanel.ini')) -contains 'UseTestInput=true') 'test input turns on the fake device'
+    [void](Publish-TestHooksBuild -Config $config -RepoRoot $repo -RunId 'run-44')
+    Check (-not (Test-Path $testBindings)) 'a normal run removes the test bindings'
 
     Write-Host 'Save fixtures'
     $noGame = 'absolute-test-no-such-process'
@@ -212,6 +219,13 @@ try {
     Check ($results[0].status -eq 'passed') 'an expectation present in the evidence passes'
     Check ($results[1].status -eq 'failed' -and $results[1].message -like '*Timed out*') 'a missing event fails with a timeout'
     Check ($results[2].status -eq 'passed') 'a wait step passes'
+    $absent = [pscustomobject]@{ name = 'fake'; tests = @(
+        [pscustomobject]@{ id = 'never-seen'; steps = @([pscustomobject]@{ absent = 'never_emitted'; since = 'run' }) },
+        [pscustomobject]@{ id = 'other-detail'; steps = @([pscustomobject]@{ absent = 'menu_message_show'; detail = 'result=99'; since = 'run' }) },
+        [pscustomobject]@{ id = 'seen'; steps = @([pscustomobject]@{ absent = 'menu_message_show'; detail = 'result=0'; since = 'run' }) }) }
+    $results = @(Invoke-TestSuite -Context $context -Suite $absent)
+    Check ($results[0].status -eq 'passed' -and $results[1].status -eq 'passed') 'an absent step passes when the event never happened'
+    Check ($results[2].status -eq 'failed' -and $results[2].message -like '*should not have appeared*') 'an absent step fails when the event happened'
     $dumpDir = Join-Path $base 'overwrite\Root'
     New-Item -ItemType Directory -Force -Path $dumpDir | Out-Null
     $context.DumpBaseline = Get-DumpSnapshot $context

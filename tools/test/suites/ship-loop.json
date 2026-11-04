@@ -1,0 +1,44 @@
+{
+  "name": "ship-loop",
+  "description": "The ship control loop on the input bus, driven by the fake test device: bindings resolve, buttons report intents while seated, and getting up closes the gate. Needs a profile without AbsoluteHOTAS.",
+  "fixture": "pilot-seated-control-v2",
+  "testInput": true,
+  "tests": [
+    {
+      "id": "bus-and-bindings",
+      "description": "The loop starts, sees the test device, and reports the one binding it can't resolve.",
+      "steps": [
+        { "expect": "control_loop_started", "since": "run" },
+        { "expect": "input_device", "detail": "name=Absolute Test Stick", "since": "run" },
+        { "expect": "ship_bindings_resolved", "detail": ["enabled=1", "bound=2", "problems=1"], "since": "run" },
+        { "expect": "ship_binding", "detail": ["action=Repair", "status=device_missing"], "since": "run" }
+      ]
+    },
+    {
+      "id": "button-while-seated",
+      "description": "With the gate open, a button reports held and released intents for its action.",
+      "steps": [
+        { "expect": "ship_gate", "detail": "open=1", "since": "run", "timeoutSeconds": 15 },
+        { "command": "test_button:18:1" },
+        { "expect": "ship_action_intent", "detail": ["action=ShipAction1", "held=1"], "timeoutSeconds": 2 },
+        { "waitMs": 300 },
+        { "command": "test_button:18:0" },
+        { "expect": "ship_action_intent", "detail": ["action=ShipAction1", "held=0"], "timeoutSeconds": 2 }
+      ]
+    },
+    {
+      "id": "gate-closes-on-get-up",
+      "description": "Getting up closes the gate, and a button press then reports nothing.",
+      "steps": [
+        { "command": "key_hold:12:1500" },
+        { "expect": "ship_gate", "detail": "open=0", "timeoutSeconds": 8 },
+        { "command": "test_button:1:1" },
+        { "waitMs": 300 },
+        { "command": "test_button:1:0" },
+        { "waitMs": 300 },
+        { "absent": "ship_action_intent", "detail": "action=FireWeapon0", "since": "run" },
+        { "screenshot": "after-get-up" }
+      ]
+    }
+  ]
+}

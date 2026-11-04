@@ -12,6 +12,7 @@ namespace AbsoluteControlPanelResearch::ResearchSupport
         bool autoOpen{};
         bool requireArm{};
         bool advanceTitleWithSendInput{};
+        bool useTestInput{};
         std::uint32_t armTimeoutMilliseconds{ 180000 };
         std::uint32_t openDelayMilliseconds{ 15000 };
         std::uint32_t visibleMilliseconds{ 12000 };

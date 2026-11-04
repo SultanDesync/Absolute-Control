@@ -1,9 +1,11 @@
 #include "research/ResearchSupport.h"
 #include "research/ContinueConfirmationPolicy.h"
+#include "research/TestInputProvider.h"
 
 #include "EvidenceLog.h"
 #include "AbsoluteControlPanelAPI.h"
 #include "NativeMenuProbe.h"
+#include "runtime/FlightSignals.h"
 #include "runtime/ProbeRuntimeState.h"
 #include "runtime/CooperativeService.h"
 #include "ui/MenuMessaging.h"
@@ -788,6 +790,20 @@ namespace AbsoluteControlPanelResearch::ResearchSupport
                     return;
                 }
 
+                // Presses a button on the fake test device: test_button:<number>:<0 or 1>.
+                if (command.starts_with("test_button:")) {
+                    a_lastCommandId = commandId;
+                    const auto arguments = std::string_view{ command }.substr(12);
+                    const auto colon = arguments.find(':');
+                    std::uint32_t button{};
+                    const bool parsed = colon != std::string_view::npos &&
+                        std::from_chars(arguments.data(), arguments.data() + colon, button).ec == std::errc{} &&
+                        (arguments.substr(colon + 1) == "0" || arguments.substr(colon + 1) == "1");
+                    const bool applied = parsed && TestInput::SetButton(button, arguments.substr(colon + 1) == "1");
+                    EvidenceLog::Event(applied ? "research_probe_command_dispatched" : "research_input_rejected",
+                        std::format("id={} command={}", commandId, command));
+                    return;
+                }
                 // Asks the game about the player's ship, on the game thread because
                 // GetSpaceship resolves handles.
                 if (command == "ship_probe") {
@@ -854,98 +870,26 @@ namespace AbsoluteControlPanelResearch::ResearchSupport
             }
         }
 
-        // Read-only view of the pilot and flight state named by the static flight map
-        // (analysis\starfield-flight-model\flight-model-map.md), for checking it live. These are
-        // aligned field reads with no call or lock, sampled off the game thread on purpose: the
-        // rewrite's control loop would read them the same way.
-        struct FlightSignalRoots
-        {
-            std::uintptr_t player{};
-            std::uintptr_t targetingMode{};
-            std::uintptr_t manager{};
-            std::uintptr_t camera{};
-        };
-
-        struct FlightSignals
-        {
-            std::uint32_t flag{};       // PlayerCharacter+0x37C bit 4: pilot seat
-            std::uint32_t sit{};        // PlayerCharacter+0xFC bits 11-12
-            std::int32_t tm{};          // Spaceship::TargetingMode+0x54
-            std::uint32_t active{};     // PlayerControls::Manager+0x1D4: input processed this frame
-            std::uint32_t cam{ 0xFF };  // PlayerCamera current state id, 0xFF with no state
-            std::uint32_t cluster{};    // FlightMovementHandler present, Manager+0x208
-            std::uint32_t engine{};     // cluster+0x7C
-            std::uint32_t boost{};      // cluster+0x7D
-            std::uint32_t drift{};      // cluster+0x7E
-            std::uint32_t mode{};       // cluster+0x94
-            float manual{};             // cluster+0x68
-            float effective{};          // cluster+0x6C
-            float speed{};              // cluster+0x70
-        };
-
-        template <class T>
-        T ReadField(const char* a_base, std::ptrdiff_t a_offset)
-        {
-            return *reinterpret_cast<const volatile T*>(a_base + a_offset);
-        }
-
-        // Objects can be freed under this thread, so a fault only skips the sample.
-        bool ReadFlightSignals(const FlightSignalRoots& a_roots, FlightSignals& a_signals)
-        {
-            __try {
-                if (const auto* player = *reinterpret_cast<const char* const*>(a_roots.player)) {
-                    a_signals.flag = (ReadField<std::uint32_t>(player, 0x37C) & 0x10) ? 1 : 0;
-                    a_signals.sit = (ReadField<std::uint32_t>(player, 0xFC) >> 11) & 3;
-                }
-                if (const auto* targeting = *reinterpret_cast<const char* const*>(a_roots.targetingMode)) {
-                    a_signals.tm = ReadField<std::int32_t>(targeting, 0x54);
-                }
-                if (const auto* camera = *reinterpret_cast<const char* const*>(a_roots.camera)) {
-                    if (const auto* state = ReadField<const char*>(camera, 0x10)) {
-                        a_signals.cam = ReadField<std::uint8_t>(state, 0x50);
-                    }
-                }
-                if (const auto* manager = *reinterpret_cast<const char* const*>(a_roots.manager)) {
-                    a_signals.active = ReadField<std::uint8_t>(manager, 0x1D4);
-                    if (const auto* cluster = ReadField<const char*>(manager, 0x208)) {
-                        a_signals.cluster = 1;
-                        a_signals.manual = ReadField<float>(cluster, 0x68);
-                        a_signals.effective = ReadField<float>(cluster, 0x6C);
-                        a_signals.speed = ReadField<float>(cluster, 0x70);
-                        a_signals.engine = ReadField<std::uint8_t>(cluster, 0x7C);
-                        a_signals.boost = ReadField<std::uint8_t>(cluster, 0x7D);
-                        a_signals.drift = ReadField<std::uint8_t>(cluster, 0x7E);
-                        a_signals.mode = ReadField<std::uint32_t>(cluster, 0x94);
-                    }
-                }
-                return true;
-            } __except (EXCEPTION_EXECUTE_HANDLER) {
-                return false;
-            }
-        }
-
+        // Logs the flight map's signals for checking them live: every change at 20 Hz, plus the
+        // moving values once a second.
         void StartFlightSignals() noexcept
         {
-            const FlightSignalRoots roots{ REL::ID(922868).address(), REL::ID(937526).address(),
-                REL::ID(938464).address(), REL::ID(937788).address() };
             const bool started = Services().flightSignals.Start(
-                [roots](std::stop_token a_stopToken, const std::shared_ptr<Runtime::CallbackGate>&) {
-                    // Logs every change at 20 Hz, plus the moving values once a second.
+                [](std::stop_token a_stopToken, const std::shared_ptr<Runtime::CallbackGate>&) {
                     std::string last;
                     auto lastLogged = std::chrono::steady_clock::time_point{};
                     std::uint32_t faults{};
                     while (!a_stopToken.stop_requested()) {
-                        FlightSignals signals{};
-                        if (ReadFlightSignals(roots, signals)) {
+                        if (const auto signals = AbsoluteControl::Runtime::ReadFlightSignals()) {
                             auto discrete = std::format(
                                 "flag={} tm={} sit={} active={} cam=0x{:X} cluster={} engine={} boost={} drift={} mode={}",
-                                signals.flag, signals.tm, signals.sit, signals.active, signals.cam, signals.cluster,
-                                signals.engine, signals.boost, signals.drift, signals.mode);
+                                signals->flag, signals->tm, signals->sit, signals->active, signals->cam, signals->cluster,
+                                signals->engine, signals->boost, signals->drift, signals->mode);
                             const auto now = std::chrono::steady_clock::now();
                             if (discrete != last || now - lastLogged >= std::chrono::seconds(1)) {
                                 EvidenceLog::Event("flight_signal", std::format(
                                     "{} manual={:.2f} effective={:.2f} speed={:.1f} faults={}",
-                                    discrete, signals.manual, signals.effective, signals.speed, faults));
+                                    discrete, signals->manual, signals->effective, signals->speed, faults));
                                 last = std::move(discrete);
                                 lastLogged = now;
                             }
@@ -1110,6 +1054,9 @@ namespace AbsoluteControlPanelResearch::ResearchSupport
             else if (key == "AdvanceTitleWithSendInput") {
                 config.advanceTitleWithSendInput =
                     ParseBool(value, config.advanceTitleWithSendInput);
+            }
+            else if (key == "UseTestInput") {
+                config.useTestInput = ParseBool(value, config.useTestInput);
             } else if (key == "ArmTimeoutMilliseconds") {
                 config.armTimeoutMilliseconds =
                     ParseUnsigned(value, config.armTimeoutMilliseconds);
