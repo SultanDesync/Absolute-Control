@@ -36,6 +36,44 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
         constexpr auto kRootPath = NativeMenuProbe::kRootPath;
         std::uint32_t g_menuFlags{};
 
+        // Menus with flag 0x08000000 hold the game's view at 16:9, and the game's IMenu
+        // destructor lifts that once no other such menu is open. This menu's destructor doesn't
+        // run when it closes, so with no PauseMenu underneath to do it, do the same here. It has
+        // to wait for the UI to take this menu off its active list, which takes a frame or two.
+        void RestoreViewportAfterClose(std::uint32_t a_framesLeft = 60) noexcept
+        {
+            const auto* tasks = SFSE::GetTaskInterface();
+            if (!tasks) {
+                return;
+            }
+            tasks->AddTask([a_framesLeft]() {
+                using held_t = bool (*)(RE::UI*);
+                using recompute_t = void (*)(std::uint8_t*);
+                static REL::Relocation<held_t> anyMenuHoldsViewport{ REL::ID(130442) };
+                static REL::Relocation<recompute_t> recomputeViewport{ REL::ID(128499) };
+                static REL::Relocation<std::uint8_t**> viewportOwner{ REL::ID(937583) };
+
+                auto* const ui = RE::UI::GetSingleton();
+                auto* const owner = *viewportOwner;
+                if (!ui || !owner) {
+                    return;
+                }
+                if (anyMenuHoldsViewport(ui)) {
+                    if (a_framesLeft > 0) {
+                        RestoreViewportAfterClose(a_framesLeft - 1);
+                    } else {
+                        // Another menu opened, and its own destructor will lift this.
+                        EvidenceLog::Event("panel_viewport_left", "another menu holds 16:9");
+                    }
+                    return;
+                }
+                auto* const viewport = owner + 0x10;
+                viewport[0x41] = 0;
+                recomputeViewport(viewport);
+                EvidenceLog::Event("panel_viewport_restored");
+            });
+        }
+
         class AbsoluteControlPanelMenu final : public RE::GameMenuBase
         {
         public:
@@ -321,6 +359,8 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
                                 "control_panel_return_missing",
                                 "target=MainMenu source=preload-close; no recovery Show");
                         }
+                    } else {
+                        RestoreViewportAfterClose();
                     }
                 }
                 return result;

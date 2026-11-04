@@ -41,6 +41,9 @@ namespace AbsoluteControlPanelResearch::Runtime
             VerifiedRelocation{
                 "IMenu::ProcessEvent(UpdateSceneRectEvent)", 130642, 0x02554370 },
             VerifiedRelocation{ "UI::IsMenuOpen", 130475, 0x02544EC0 },
+            VerifiedRelocation{ "UI::AnyMenuHoldsViewport", 130442, 0x0253F580 },
+            VerifiedRelocation{ "Viewport owner", 937583, 0x05FD9B78 },
+            VerifiedRelocation{ "Viewport recompute", 128499, 0x02497B00 },
             VerifiedRelocation{ "MenuAudioMode::Acquire", 82727, 0x012EE410 },
             VerifiedRelocation{ "MenuAudioMode::Release", 82728, 0x012EE4A0 }
         };
