@@ -339,8 +339,10 @@ namespace AbsoluteControl::Runtime::WalkSpeedRuntime
             settings = g_settings;
         }
 
-        const bool onFoot = signals && signals->flag == 0 && signals->sit == 0 && signals->tm == 0 &&
-            signals->active != 0 && IsOnFootCamera(signals->cam) && IsGameForeground();
+        // Ladders read the stick directly and need more than 0.5 to climb or step off, so a low
+        // speed would strand the player. The game's own key handling runs there instead.
+        const bool onFoot = signals && signals->flag == 0 && signals->sit == 0 && signals->traversal == 0 &&
+            signals->tm == 0 && signals->active != 0 && IsOnFootCamera(signals->cam) && IsGameForeground();
         const auto input = onFoot ? ReadInputFlags() : InputFlags{};
         const bool ready = settings.enabled && onFoot && input.move;
 
@@ -348,7 +350,9 @@ namespace AbsoluteControl::Runtime::WalkSpeedRuntime
         g_wheelKey.store(WheelKey(settings.wheelModifier), std::memory_order_release);
         g_wheelAllowed.store(ready && input.wheel, std::memory_order_release);
 
-        selector.ObserveAxis(axisValue ? std::optional{ AxisToSpeed(*axisValue, settings.invertAxis) } : std::nullopt);
+        static AxisDropoutFilter axisFilter;
+        const auto axis = axisFilter.Filter(axisValue, now);
+        selector.ObserveAxis(axis ? std::optional{ AxisToSpeed(*axis, settings.invertAxis) } : std::nullopt);
         if (const auto wheel = g_pendingWheel.exchange(0, std::memory_order_acq_rel)) {
             selector.Nudge(wheel / static_cast<double>(WHEEL_DELTA) * settings.step);
         }

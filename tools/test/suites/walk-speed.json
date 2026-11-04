@@ -11,7 +11,9 @@
         { "expect": "walk_hook_installed", "since": "run" },
         { "expect": "walk_page_registered", "since": "run" },
         { "expect": "walk_axis", "detail": "status=bound", "since": "run" },
-        { "expect": "walk_ready", "detail": "ready=1", "since": "run", "timeoutSeconds": 15 }
+        { "expect": "walk_ready", "detail": "ready=1", "since": "run", "timeoutSeconds": 15 },
+        { "expect": "flight_signal", "detail": ["active=1", "traversal=0"], "since": "run", "timeoutSeconds": 3 },
+        { "absent": "flight_signal", "detail": "traversal=1", "since": "run" }
       ]
     },
     {
@@ -232,6 +234,42 @@
         { "waitMs": 400 },
         { "screenshot": "gauge-back-on" },
         { "absent": "walk_gauge_loaded" }
+      ]
+    },
+    {
+      "id": "axis-capture",
+      "description": "The Speed axis row records whichever axis moves: a small wobble doesn't count, a real move binds that axis, and it then sets the speed.",
+      "steps": [
+        { "command": "show_probe" },
+        { "expect": "menu_message_show", "detail": "result=0", "timeoutSeconds": 5 },
+        { "command": "open_page:absolute.control/walk-speed" },
+        { "expect": "bridge_page_applied", "detail": ["page=walk-speed", "active=true"], "timeoutSeconds": 5 },
+        { "waitMs": 300 },
+        { "command": "nav_down" },
+        { "waitMs": 100 },
+        { "command": "nav_down" },
+        { "waitMs": 100 },
+        { "command": "nav_down" },
+        { "waitMs": 200 },
+        { "screenshot": "axis-row" },
+        { "command": "accept" },
+        { "expect": "walk_axis_capture", "detail": "started", "timeoutSeconds": 2 },
+        { "waitMs": 200 },
+        { "screenshot": "axis-capture-waiting" },
+        { "command": "test_axis:0:0.3" },
+        { "waitMs": 300 },
+        { "absent": "walk_axis_capture", "detail": "captured" },
+        { "command": "test_axis:1:0.9" },
+        { "expect": "walk_axis_capture", "detail": ["captured", "Absolute Test Stick@0x31"], "timeoutSeconds": 2 },
+        { "waitMs": 300 },
+        { "screenshot": "axis-captured" },
+        { "command": "key_hold:21:100" },
+        { "expect": "walk_settings_saved", "timeoutSeconds": 3 },
+        { "expect": "walk_axis", "detail": ["status=bound", "Absolute Test Stick@0x31"], "timeoutSeconds": 2 },
+        { "command": "hide_probe" },
+        { "waitMs": 500 },
+        { "command": "test_axis:1:-1" },
+        { "expect": "walk_speed", "detail": ["speed=0.00", "source=axis"], "timeoutSeconds": 2 }
       ]
     }
   ]

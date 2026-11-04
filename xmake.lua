@@ -97,6 +97,7 @@ local release_sources = {
     "src/runtime/ShipBindings.cpp",
     "src/runtime/ShipControlCore.cpp",
     "src/runtime/ShipControlLoop.cpp",
+    "src/runtime/AxisCapture.cpp",
     "src/runtime/WalkSpeed.cpp",
     "src/runtime/WalkSpeedRuntime.cpp",
     "src/scaleform/ScaleformMenuBridge.cpp",
@@ -222,9 +223,9 @@ target("walk_speed_test", function()
     set_default(false)
     add_tests("axis_tokens_selection_and_settings")
     add_includedirs("include")
-    add_files("src/runtime/DeviceStore.cpp", "src/runtime/LegacyHotasToken.cpp",
-        "src/runtime/ShipBindings.cpp", "src/runtime/ShipControlCore.cpp",
-        "src/runtime/WalkSpeed.cpp", "tests/WalkSpeedTests.cpp")
+    add_files("src/runtime/AxisCapture.cpp", "src/runtime/DeviceStore.cpp",
+        "src/runtime/LegacyHotasToken.cpp", "src/runtime/ShipBindings.cpp",
+        "src/runtime/ShipControlCore.cpp", "src/runtime/WalkSpeed.cpp", "tests/WalkSpeedTests.cpp")
 end)
 
 -- Internal R0/R1 harness only; this source is not in either plugin target.

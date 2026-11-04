@@ -953,9 +953,9 @@ namespace AbsoluteControlPanelResearch::ResearchSupport
                     while (!a_stopToken.stop_requested()) {
                         if (const auto signals = AbsoluteControl::Runtime::ReadFlightSignals()) {
                             auto discrete = std::format(
-                                "flag={} tm={} sit={} active={} cam=0x{:X} cluster={} engine={} boost={} drift={} mode={}",
+                                "flag={} tm={} sit={} active={} cam=0x{:X} cluster={} engine={} boost={} drift={} mode={} traversal={}",
                                 signals->flag, signals->tm, signals->sit, signals->active, signals->cam, signals->cluster,
-                                signals->engine, signals->boost, signals->drift, signals->mode);
+                                signals->engine, signals->boost, signals->drift, signals->mode, signals->traversal);
                             const auto now = std::chrono::steady_clock::now();
                             if (discrete != last || now - lastLogged >= std::chrono::seconds(1)) {
                                 EvidenceLog::Event("flight_signal", std::format(

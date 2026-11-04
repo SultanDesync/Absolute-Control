@@ -1,3 +1,4 @@
+#include "runtime/AxisCapture.h"
 #include "runtime/ShipControlCore.h"
 #include "runtime/WalkSpeed.h"
 
@@ -122,6 +123,49 @@ namespace
         CHECK(Near(selector.Speed(), 1));
         selector.SetVirtual(0.3);
         CHECK(selector.Source() == WalkSpeedSource::Virtual && Near(selector.Virtual(), 0.3));
+        return true;
+    }
+
+    bool TestAxisDropouts()
+    {
+        AxisDropoutFilter filter;
+        WalkSpeedSelector selector(1.0);
+        std::uint64_t now = 1000 * kMs;
+        const auto observe = [&](std::optional<double> axis, std::uint64_t milliseconds) {
+            now += milliseconds * kMs;
+            selector.ObserveAxis(filter.Filter(axis, now));
+        };
+
+        // No axis stays no axis.
+        observe(std::nullopt, 8);
+        CHECK(selector.Source() == WalkSpeedSource::Virtual);
+
+        // The axis takes charge, then the wheel takes over from it while it's parked.
+        observe(0.5, 8);
+        CHECK(selector.Source() == WalkSpeedSource::Axis && Near(selector.Speed(), 0.5));
+        selector.Nudge(0.1);
+        CHECK(selector.Source() == WalkSpeedSource::Virtual && Near(selector.Speed(), 0.6));
+
+        // A regular short gap in the readings doesn't hand it back.
+        for (int second = 0; second < 5; ++second) {
+            observe(std::nullopt, 8);
+            observe(std::nullopt, 200);
+            CHECK(selector.Source() == WalkSpeedSource::Virtual && Near(selector.Speed(), 0.6));
+            observe(0.5, 8);
+            CHECK(selector.Source() == WalkSpeedSource::Virtual && Near(selector.Speed(), 0.6));
+            observe(0.5, 780);
+        }
+
+        // Moving the axis still does, and a gap then keeps its value without touching the virtual one.
+        observe(0.8, 8);
+        CHECK(selector.Source() == WalkSpeedSource::Axis && Near(selector.Speed(), 0.8));
+        const auto saved = selector.Virtual();
+        observe(std::nullopt, 200);
+        CHECK(selector.Source() == WalkSpeedSource::Axis && Near(selector.Speed(), 0.8) && Near(selector.Virtual(), saved));
+
+        // A long gap really is losing the axis, and the speed stays where it was.
+        observe(std::nullopt, 1600);
+        CHECK(selector.Source() == WalkSpeedSource::Virtual && Near(selector.Speed(), 0.8));
         return true;
     }
 
@@ -352,10 +396,168 @@ namespace
     }
 }
 
+namespace
+{
+    // Two axes and a button on each device. Values are axis/0, axis/2 and the button.
+    struct FakeDevice
+    {
+        const char* physical;
+        const char* name;
+        double axis0{};
+        double axis2{};
+        bool button{};
+    };
+
+    bool TestAxisCapture()
+    {
+        const auto run = [](std::vector<FakeDevice> devices, const auto& script) {
+            DeviceStore store;
+            store.Start();
+            std::vector<DeviceDescription> descriptions;
+            for (const auto& fake : devices) {
+                DeviceDescription description;
+                auto& device = description.device;
+                Set(device.provider, kProvider);
+                Set(device.physical, fake.physical);
+                Set(device.displayName, fake.name);
+                device.providerEpoch = device.enumerationRevision = device.connectionEpoch = 1;
+                device.validity = D::Validity::Valid;
+                for (const auto* id : { "axis/0", "axis/2", "button/0" }) {
+                    const bool isButton = !std::strcmp(id, "button/0");
+                    D::Channel channel;
+                    channel.shape = isButton ? D::Shape::Button : D::Shape::Scalar;
+                    Set(channel.identity.provider, kProvider);
+                    Set(channel.identity.physical, fake.physical);
+                    Set(channel.identity.channel, id);
+                    Set(channel.displayName, id);
+                    channel.rawUnits = channel.valueUnits = isButton ? D::Units::Boolean : D::Units::Unitless;
+                    if (!isButton) channel.rawUnits = D::Units::ProviderDefined;
+                    channel.components = 1;
+                    description.channels.push_back(channel);
+                }
+                device.channelCount = static_cast<std::uint32_t>(description.channels.size());
+                descriptions.push_back(description);
+            }
+            if (store.ReplaceInventory(std::span(descriptions.data(), descriptions.size())) != D::Result::Ok) return false;
+
+            std::uint64_t now = 1000 * kMs;
+            std::uint64_t sequence{};
+            AxisCapture capture;
+            // Runs for a while with the devices as they are, and returns the last state.
+            const auto hold = [&](std::uint64_t milliseconds) {
+                auto state = capture.Poll(store, now);
+                for (std::uint64_t elapsed = 0; elapsed < milliseconds; elapsed += 16) {
+                    now += 16 * kMs;
+                    ++sequence;
+                    for (const auto& fake : devices) {
+                        DeviceFrame output;
+                        auto& frame = output.frame;
+                        Set(frame.provider, kProvider);
+                        Set(frame.physical, fake.physical);
+                        frame.providerEpoch = frame.enumerationRevision = frame.connectionEpoch = 1;
+                        frame.sequence = sequence;
+                        frame.sampledAt = frame.receivedAt = now;
+                        frame.clock = D::Clock::CoreMonotonicNanoseconds;
+                        frame.validity = D::Validity::Valid;
+                        for (const auto* id : { "axis/0", "axis/2" }) {
+                            D::Sample sample;
+                            Set(sample.channel, id);
+                            sample.shape = D::Shape::Scalar;
+                            sample.validity = D::Validity::Valid;
+                            sample.components = 1;
+                            sample.flags = D::kCalibrationRangeKnown;
+                            sample.calibrationMinimum[0] = -1;
+                            sample.calibrationMaximum[0] = 1;
+                            sample.raw[0] = sample.value[0] = !std::strcmp(id, "axis/0") ? fake.axis0 : fake.axis2;
+                            output.samples.push_back(sample);
+                        }
+                        D::Sample button;
+                        Set(button.channel, "button/0");
+                        button.shape = D::Shape::Button;
+                        button.validity = D::Validity::Valid;
+                        button.components = 1;
+                        button.counterBits = 64;
+                        button.pressCount = fake.button ? 1 : 0;
+                        button.raw[0] = button.value[0] = fake.button ? 1 : 0;
+                        output.samples.push_back(button);
+                        frame.sampleCount = static_cast<std::uint32_t>(output.samples.size());
+                        (void)store.Publish(output);
+                    }
+                    state = capture.Poll(store, now);
+                    if (state != AxisCapture::State::Capturing) break;
+                }
+                return state;
+            };
+            return script(capture, devices, hold, now);
+        };
+        using State = AxisCapture::State;
+        constexpr auto kFirst = "{00000000-0000-0000-0000-000000000001}";
+        constexpr auto kSecond = "{00000000-0000-0000-0000-000000000002}";
+
+        const bool normal = run({ { kFirst, " Rudder ", 0.0, 0.0 }, { kSecond, "Throttle", 0.8, -1.0 } },
+            [&](AxisCapture& capture, std::vector<FakeDevice>& devices, const auto& hold, std::uint64_t& now) {
+                CHECK(capture.Poll(DeviceStore{}, now) == State::Idle);
+                // Axes parked well away from zero, like a throttle, don't count as moving.
+                (void)hold(100);
+                capture.Begin(now);
+                CHECK(hold(200) == State::Capturing);
+                // A wobble and a button press don't count.
+                devices[0].axis0 = 0.1;
+                devices[0].button = true;
+                CHECK(hold(200) == State::Capturing);
+                // A single jump too short to be a real move doesn't count.
+                devices[1].axis2 = -0.5;
+                CHECK(hold(48) == State::Capturing);
+                devices[1].axis2 = -1.0;
+                CHECK(hold(100) == State::Capturing);
+                // The biggest of two real moves wins, and spaces in the name are dropped.
+                devices[0].axis2 = 0.3;
+                devices[1].axis0 = 0.0;
+                CHECK(hold(200) == State::Captured);
+                CHECK(capture.Token() == "Throttle@0x30");
+                const auto binding = ParseAxisBinding("Walk", capture.Token());
+                CHECK(binding.status == BindingStatus::Bound && binding.channel == "axis/0");
+
+                // A second capture starts from where things are now.
+                capture.Begin(now);
+                CHECK(hold(100) == State::Capturing);
+                devices[0].axis2 = -0.3;
+                CHECK(hold(200) == State::Captured);
+                CHECK(capture.Token() == "Rudder@0x32");
+
+                // Doing nothing gives up, and cancelling goes idle.
+                capture.Begin(now);
+                CHECK(hold(100) == State::Capturing);
+                now += AxisCapture::kTimeoutNanoseconds;
+                CHECK(hold(16) == State::TimedOut);
+                capture.Begin(now);
+                capture.Cancel();
+                CHECK(hold(16) == State::Idle);
+                return true;
+            });
+        CHECK(normal);
+
+        // Two devices with one name need their ids, or the binding would be ambiguous.
+        const bool sameName = run({ { kFirst, "VKB Stick", 0.0, 0.0 }, { kSecond, "VKB Stick", 0.0, 0.0 } },
+            [&](AxisCapture& capture, std::vector<FakeDevice>& devices, const auto& hold, std::uint64_t& now) {
+                capture.Begin(now);
+                CHECK(hold(100) == State::Capturing);
+                devices[1].axis2 = 1.0;
+                CHECK(hold(200) == State::Captured);
+                CHECK(capture.Token() == std::string("guid:") + kSecond + "@0x32");
+                const auto binding = ParseAxisBinding("Walk", capture.Token());
+                CHECK(binding.status == BindingStatus::Bound && binding.devicePhysicalId);
+                return true;
+            });
+        CHECK(sameName);
+        return true;
+    }
+}
+
 int main()
 {
-    if (!TestAxisTokens() || !TestSettings() || !TestSelector() || !TestStick() ||
-        !TestKeyRepeat() || !TestGauge() || !TestCoreReadsAxis()) return 1;
+    if (!TestAxisTokens() || !TestSettings() || !TestSelector() || !TestAxisDropouts() || !TestStick() ||
+        !TestKeyRepeat() || !TestGauge() || !TestCoreReadsAxis() || !TestAxisCapture()) return 1;
     std::cout << "walk speed tests passed\n";
     return 0;
 }

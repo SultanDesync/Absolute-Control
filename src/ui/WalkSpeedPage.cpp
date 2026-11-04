@@ -2,6 +2,7 @@
 
 #include "AbsoluteControlPanelAPI.h"
 #include "EvidenceLog.h"
+#include "runtime/AxisCapture.h"
 #include "runtime/BackendRuntime.h"
 #include "runtime/WalkSpeedRuntime.h"
 
@@ -23,15 +24,11 @@ namespace AbsoluteControlPanelResearch::Ui::WalkSpeedPage
 
         constexpr std::string_view kModuleId = "absolute.control";
         constexpr std::string_view kPageId = "walk-speed";
-
-        struct AxisOption
-        {
-            std::string label;
-            std::string token;
-        };
+        constexpr std::string_view kAxisControl = "walk-axis";
 
         std::mutex g_mutex;
         Walk::WalkSpeedSettings g_draft;
+        Walk::AxisCapture g_capture;
 
         template <std::size_t N>
         void Copy(char (&destination)[N], std::string_view source) noexcept
@@ -68,8 +65,8 @@ namespace AbsoluteControlPanelResearch::Ui::WalkSpeedPage
                 "The speed now, and which control set it. The one moved last is in charge.", 0, 255, 1),
             Control(Api::ControlKind::GroupHeader, Api::kControlNone, "walk-axis-group", "Axis",
                 "A controller axis that sets the speed across its full travel."),
-            Control(Api::ControlKind::Choice, Api::kControlNone, "walk-axis", "Speed axis",
-                "Connected controller axes.", 0, 255, 1),
+            Control(Api::ControlKind::InputBinding, Api::kBindingController | Api::kBindingClearable,
+                "walk-axis", "Speed axis", "Move the axis you want to use. Delete clears it."),
             Control(Api::ControlKind::Toggle, Api::kControlNone, "walk-invert", "Invert axis",
                 "Swap which end of the axis is full speed."),
             Control(Api::ControlKind::GroupHeader, Api::kControlNone, "walk-adjust-group", "Wheel and keys",
@@ -90,26 +87,22 @@ namespace AbsoluteControlPanelResearch::Ui::WalkSpeedPage
             return std::string(view.substr(first, view.find_last_not_of(' ') - first + 1));
         }
 
-        // Rebuilt on each read, so it follows controllers being plugged in. Index 0 is no axis.
-        std::vector<AxisOption> AxisOptions(const std::string& current)
+        // What the row shows. The draft keeps the binding token itself.
+        std::string AxisLabel(const std::string& token)
         {
-            std::vector<AxisOption> options{ { "None", "" } };
+            if (token.empty()) return "Unbound";
+            const auto binding = Walk::ParseAxisBinding("WalkSpeed", token);
+            std::uint32_t axis{};
+            if (binding.status != Walk::BindingStatus::Bound ||
+                ::sscanf_s(binding.channel.c_str(), "axis/%u", &axis) != 1) return token;
             const auto snapshot = Walk::NativeBackend().Devices().Snapshot();
             for (const auto& description : snapshot.devices) {
                 const auto name = Trimmed(description.device.displayName);
-                for (const auto& channel : description.channels) {
-                    std::uint32_t axis{};
-                    if (channel.shape != Walk::DeviceDraft::Shape::Scalar ||
-                        ::sscanf_s(channel.identity.channel, "axis/%u", &axis) != 1 || axis > 7) continue;
-                    options.push_back({ std::format("{} · {}", name, channel.displayName),
-                        std::format("{}@0x{:02X}", name, 0x30 + axis) });
+                if (binding.devicePhysicalId ? binding.device == description.device.physical : binding.device == name) {
+                    return std::format("{} · Axis {}", name, axis + 1);
                 }
             }
-            if (!current.empty() && std::ranges::none_of(options, [&](const AxisOption& option) {
-                    return option.token == current; })) {
-                options.push_back({ std::format("{} (not connected)", current), current });
-            }
-            return options;
+            return std::format("{} · Axis {} (not connected)", binding.device, axis + 1);
         }
 
         Api::Result __cdecl ReadValue(void*, const char* rawId, Api::ValueV1* output) noexcept
@@ -131,11 +124,9 @@ namespace AbsoluteControlPanelResearch::Ui::WalkSpeedPage
                 } else if (id == "walk-step") {
                     output->kind = Api::ValueKind::Integer;
                     output->integerValue = std::lround(g_draft.step * 100.0);
-                } else if (id == "walk-axis") {
-                    const auto options = AxisOptions(g_draft.axis);
-                    const auto found = std::ranges::find(options, g_draft.axis, &AxisOption::token);
-                    output->kind = Api::ValueKind::Integer;
-                    output->integerValue = found - options.begin();
+                } else if (id == kAxisControl) {
+                    output->kind = Api::ValueKind::String;
+                    Copy(output->stringValue, AxisLabel(g_draft.axis));
                 } else if (id == "walk-status") {
                     const auto status = Walk::WalkSpeedRuntime::CurrentStatus();
                     output->kind = Api::ValueKind::String;
@@ -166,10 +157,13 @@ namespace AbsoluteControlPanelResearch::Ui::WalkSpeedPage
                     g_draft.speedKeys = static_cast<Walk::SpeedKeys>(integer);
                 } else if (id == "walk-step" && value->kind == Api::ValueKind::Integer && integer >= 1 && integer <= 25) {
                     g_draft.step = static_cast<double>(integer) / 100.0;
-                } else if (id == "walk-axis" && value->kind == Api::ValueKind::Integer) {
-                    const auto options = AxisOptions(g_draft.axis);
-                    if (integer < 0 || integer >= static_cast<std::int64_t>(options.size())) return Api::Result::InvalidArgument;
-                    g_draft.axis = options[static_cast<std::size_t>(integer)].token;
+                } else if (id == kAxisControl && value->kind == Api::ValueKind::String) {
+                    // Empty clears the binding. Anything else has to be a binding we can resolve.
+                    const std::string token{ value->stringValue };
+                    if (!token.empty() && Walk::ParseAxisBinding("WalkSpeed", token).status != Walk::BindingStatus::Bound) {
+                        return Api::Result::InvalidArgument;
+                    }
+                    g_draft.axis = token;
                 } else {
                     return Api::Result::InvalidArgument;
                 }
@@ -193,26 +187,77 @@ namespace AbsoluteControlPanelResearch::Ui::WalkSpeedPage
             if (!rawId || !options || !outputCount) return Api::Result::InvalidArgument;
             try {
                 const std::string_view id{ rawId };
-                if (id == "walk-wheel" || id == "walk-keys") {
-                    static constexpr std::array<std::string_view, 4> kWheel{ "Off", "Alt + wheel", "Shift + wheel", "Ctrl + wheel" };
-                    static constexpr std::array<std::string_view, 4> kKeys{ "Off", "Numpad + / -", "] / [", "Page Up / Page Down" };
-                    *outputCount = 4;
-                    if (capacity < 4) return Api::Result::CapacityExceeded;
-                    Fill(options, id == "walk-wheel" ? std::span<const std::string_view>{ kWheel } : std::span<const std::string_view>{ kKeys });
-                    return Api::Result::Ok;
-                }
-                if (id != "walk-axis") return Api::Result::NotFound;
-                const std::scoped_lock lock{ g_mutex };
-                const auto axes = AxisOptions(g_draft.axis);
-                *outputCount = static_cast<std::uint32_t>(axes.size());
-                if (capacity < axes.size()) return Api::Result::CapacityExceeded;
-                for (std::size_t index = 0; index < axes.size(); ++index) {
-                    options[index].value = static_cast<std::int64_t>(index);
-                    Copy(options[index].label, axes[index].label);
-                }
+                if (id != "walk-wheel" && id != "walk-keys") return Api::Result::NotFound;
+                static constexpr std::array<std::string_view, 4> kWheel{ "Off", "Alt + wheel", "Shift + wheel", "Ctrl + wheel" };
+                static constexpr std::array<std::string_view, 4> kKeys{ "Off", "Numpad + / -", "] / [", "Page Up / Page Down" };
+                *outputCount = 4;
+                if (capacity < 4) return Api::Result::CapacityExceeded;
+                Fill(options, id == "walk-wheel" ? std::span<const std::string_view>{ kWheel } : std::span<const std::string_view>{ kKeys });
                 return Api::Result::Ok;
             } catch (...) {
                 *outputCount = 0;
+                return Api::Result::Rejected;
+            }
+        }
+
+        Api::Result __cdecl BeginCapture(void*, const char* rawId) noexcept
+        {
+            if (!rawId) return Api::Result::InvalidArgument;
+            if (kAxisControl != rawId) return Api::Result::NotFound;
+            try {
+                const std::scoped_lock lock{ g_mutex };
+                g_capture.Begin(Walk::BackendRuntime::Now());
+                EvidenceLog::Event("walk_axis_capture", "started");
+                return Api::Result::Ok;
+            } catch (...) {
+                return Api::Result::Rejected;
+            }
+        }
+
+        Api::Result __cdecl PollCapture(void*, const char* rawId, Api::BindingCaptureV1* output) noexcept
+        {
+            if (!rawId || !output || output->structSize < sizeof(Api::BindingCaptureV1)) return Api::Result::InvalidArgument;
+            if (kAxisControl != rawId) return Api::Result::NotFound;
+            try {
+                const std::scoped_lock lock{ g_mutex };
+                switch (g_capture.Poll(Walk::NativeBackend().Devices(), Walk::BackendRuntime::Now())) {
+                case Walk::AxisCapture::State::Idle:
+                    output->state = Api::BindingCaptureState::Idle;
+                    break;
+                case Walk::AxisCapture::State::Capturing:
+                    output->state = Api::BindingCaptureState::Capturing;
+                    Copy(output->detail, "Move the axis you want to use.");
+                    break;
+                case Walk::AxisCapture::State::Captured:
+                    output->state = Api::BindingCaptureState::Captured;
+                    Copy(output->binding, g_capture.Token());
+                    Copy(output->detail, "Axis captured. Apply to keep it.");
+                    EvidenceLog::Event("walk_axis_capture", std::format("captured token={}", g_capture.Token()));
+                    g_capture.Cancel();
+                    break;
+                case Walk::AxisCapture::State::TimedOut:
+                    output->state = Api::BindingCaptureState::TimedOut;
+                    Copy(output->detail, "No axis moved.");
+                    EvidenceLog::Event("walk_axis_capture", "timed_out");
+                    g_capture.Cancel();
+                    break;
+                }
+                return Api::Result::Ok;
+            } catch (...) {
+                return Api::Result::Rejected;
+            }
+        }
+
+        Api::Result __cdecl CancelCapture(void*, const char* rawId) noexcept
+        {
+            if (!rawId) return Api::Result::InvalidArgument;
+            if (kAxisControl != rawId) return Api::Result::NotFound;
+            try {
+                const std::scoped_lock lock{ g_mutex };
+                g_capture.Cancel();
+                EvidenceLog::Event("walk_axis_capture", "cancelled");
+                return Api::Result::Ok;
+            } catch (...) {
                 return Api::Result::Rejected;
             }
         }
@@ -257,6 +302,9 @@ namespace AbsoluteControlPanelResearch::Ui::WalkSpeedPage
             page.readValue = &ReadValue;
             page.writeDraft = &WriteDraft;
             page.readChoiceOptions = &ReadChoices;
+            page.beginBindingCapture = &BeginCapture;
+            page.pollBindingCapture = &PollCapture;
+            page.cancelBindingCapture = &CancelCapture;
             page.apply = &Apply;
             page.cancel = &Cancel;
             page.controls = kControls.data();

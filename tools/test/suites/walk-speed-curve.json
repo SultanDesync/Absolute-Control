@@ -1,0 +1,681 @@
+{
+  "name": "walk-speed-curve",
+  "description": "Measures how far a movement key moves the player across the speed range, to show the game's response curve and any plateaus. It records distances and doesn't judge them.",
+  "fixture": "on-foot-ship-technician",
+  "testInput": true,
+  "tests": [
+    {
+      "id": "sweep",
+      "description": "Each speed: back for 500 ms, then forward for 500 ms.",
+      "steps": [
+        {
+          "command": "test_axis:0:-1.0"
+        },
+        {
+          "expect": "walk_speed",
+          "detail": "source=axis",
+          "timeoutSeconds": 2
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:1F:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:11:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "test_axis:0:-0.98"
+        },
+        {
+          "expect": "walk_speed",
+          "detail": "source=axis",
+          "timeoutSeconds": 2
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:1F:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:11:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "test_axis:0:-0.96"
+        },
+        {
+          "expect": "walk_speed",
+          "detail": "source=axis",
+          "timeoutSeconds": 2
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:1F:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:11:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "test_axis:0:-0.9"
+        },
+        {
+          "expect": "walk_speed",
+          "detail": "source=axis",
+          "timeoutSeconds": 2
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:1F:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:11:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "test_axis:0:-0.8"
+        },
+        {
+          "expect": "walk_speed",
+          "detail": "source=axis",
+          "timeoutSeconds": 2
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:1F:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:11:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "test_axis:0:-0.7"
+        },
+        {
+          "expect": "walk_speed",
+          "detail": "source=axis",
+          "timeoutSeconds": 2
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:1F:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:11:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "test_axis:0:-0.6"
+        },
+        {
+          "expect": "walk_speed",
+          "detail": "source=axis",
+          "timeoutSeconds": 2
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:1F:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:11:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "test_axis:0:-0.5"
+        },
+        {
+          "expect": "walk_speed",
+          "detail": "source=axis",
+          "timeoutSeconds": 2
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:1F:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:11:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "test_axis:0:-0.4"
+        },
+        {
+          "expect": "walk_speed",
+          "detail": "source=axis",
+          "timeoutSeconds": 2
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:1F:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:11:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "test_axis:0:-0.3"
+        },
+        {
+          "expect": "walk_speed",
+          "detail": "source=axis",
+          "timeoutSeconds": 2
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:1F:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:11:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "test_axis:0:-0.2"
+        },
+        {
+          "expect": "walk_speed",
+          "detail": "source=axis",
+          "timeoutSeconds": 2
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:1F:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:11:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "test_axis:0:-0.1"
+        },
+        {
+          "expect": "walk_speed",
+          "detail": "source=axis",
+          "timeoutSeconds": 2
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:1F:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:11:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "test_axis:0:0.0"
+        },
+        {
+          "expect": "walk_speed",
+          "detail": "source=axis",
+          "timeoutSeconds": 2
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:1F:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:11:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "test_axis:0:0.1"
+        },
+        {
+          "expect": "walk_speed",
+          "detail": "source=axis",
+          "timeoutSeconds": 2
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:1F:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:11:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "test_axis:0:0.2"
+        },
+        {
+          "expect": "walk_speed",
+          "detail": "source=axis",
+          "timeoutSeconds": 2
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:1F:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:11:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "test_axis:0:0.3"
+        },
+        {
+          "expect": "walk_speed",
+          "detail": "source=axis",
+          "timeoutSeconds": 2
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:1F:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:11:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "test_axis:0:0.4"
+        },
+        {
+          "expect": "walk_speed",
+          "detail": "source=axis",
+          "timeoutSeconds": 2
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:1F:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:11:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "test_axis:0:0.5"
+        },
+        {
+          "expect": "walk_speed",
+          "detail": "source=axis",
+          "timeoutSeconds": 2
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:1F:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:11:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "test_axis:0:0.6"
+        },
+        {
+          "expect": "walk_speed",
+          "detail": "source=axis",
+          "timeoutSeconds": 2
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:1F:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:11:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "test_axis:0:0.7"
+        },
+        {
+          "expect": "walk_speed",
+          "detail": "source=axis",
+          "timeoutSeconds": 2
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:1F:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:11:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "test_axis:0:0.8"
+        },
+        {
+          "expect": "walk_speed",
+          "detail": "source=axis",
+          "timeoutSeconds": 2
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:1F:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:11:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "test_axis:0:0.9"
+        },
+        {
+          "expect": "walk_speed",
+          "detail": "source=axis",
+          "timeoutSeconds": 2
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:1F:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:11:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "test_axis:0:0.98"
+        },
+        {
+          "expect": "walk_speed",
+          "detail": "source=axis",
+          "timeoutSeconds": 2
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:1F:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        },
+        {
+          "command": "key_hold:11:500"
+        },
+        {
+          "waitMs": 700
+        },
+        {
+          "command": "player_probe"
+        }
+      ]
+    }
+  ]
+}

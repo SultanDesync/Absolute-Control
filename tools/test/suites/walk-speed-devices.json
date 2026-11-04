@@ -1,21 +1,21 @@
 {
   "name": "walk-speed-devices",
-  "description": "The Walk Speed page with real controllers connected: the axis list fills in and opens. Changes nothing, so no settings are written. Needs a profile without AbsoluteHOTAS.",
+  "description": "The Walk Speed page with real controllers connected: the axis capture starts and a parked set of controllers doesn't trigger it. Changes nothing, so no settings are written. Needs a profile without AbsoluteHOTAS.",
   "fixture": "on-foot-ship-technician",
   "tests": [
     {
-      "id": "off-by-default",
-      "description": "With no settings file the feature stays off and leaves movement alone.",
+      "id": "loads",
+      "description": "The feature loads with whatever settings are saved.",
       "steps": [
         { "expect": "walk_hook_installed", "since": "run" },
-        { "expect": "walk_settings", "detail": "enabled=0", "since": "run" },
+        { "expect": "walk_settings", "since": "run" },
         { "expect": "walk_page_registered", "since": "run" },
         { "expect": "walk_gauge_registered", "since": "run" }
       ]
     },
     {
-      "id": "axis-list",
-      "description": "The Speed axis row lists the connected axes.",
+      "id": "axis-capture-parked",
+      "description": "With nobody touching the controllers, the capture stays waiting, and Esc cancels it.",
       "steps": [
         { "command": "show_probe" },
         { "expect": "menu_message_show", "detail": "result=0", "timeoutSeconds": 5 },
@@ -31,11 +31,19 @@
         { "waitMs": 200 },
         { "screenshot": "axis-row" },
         { "command": "accept" },
-        { "waitMs": 400 },
-        { "screenshot": "axis-list" },
+        { "expect": "walk_axis_capture", "detail": "started", "timeoutSeconds": 2 },
+        { "waitMs": 3000 },
+        { "screenshot": "axis-capture-waiting" },
+        { "absent": "walk_axis_capture", "detail": "captured" },
+        { "absent": "walk_speed", "detail": "source=virtual" },
         { "command": "probe_escape" },
+        { "expect": "walk_axis_capture", "detail": "cancelled", "timeoutSeconds": 2 },
         { "waitMs": 200 },
-        { "command": "hide_probe" }
+        { "command": "hide_probe" },
+        { "waitMs": 8000 },
+        { "absent": "walk_settings_saved", "since": "run" },
+        { "absent": "input_poll_gap", "detail": "ms=2" },
+        { "absent": "input_poll_gap", "detail": "ms=3" }
       ]
     }
   ]

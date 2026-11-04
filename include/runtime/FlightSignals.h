@@ -12,6 +12,7 @@ namespace AbsoluteControl::Runtime
     {
         std::uint32_t flag{};       // PlayerCharacter+0x37C bit 4: pilot seat.
         std::uint32_t sit{};        // PlayerCharacter+0xFC bits 11-12: 1 sitting down, 2 seated, 3 getting up.
+        std::uint32_t traversal{};  // PlayerCharacter+0x10A8 set and its +0x46 clear: the tests the game's ladder input makes.
         std::int32_t tm{};          // Spaceship::TargetingMode+0x54: nonzero while active.
         std::uint32_t active{};     // PlayerControls::Manager+0x1D4: input processed this frame.
         std::uint32_t cam{ 0xFF };  // PlayerCamera current state id, 0xFF with no state.

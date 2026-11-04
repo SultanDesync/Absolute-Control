@@ -24,6 +24,9 @@ namespace AbsoluteControl::Runtime
                 if (const auto* player = *reinterpret_cast<const char* const*>(roots.player)) {
                     signals.flag = (ReadField<std::uint32_t>(player, 0x37C) & 0x10) ? 1 : 0;
                     signals.sit = (ReadField<std::uint32_t>(player, 0xFC) >> 11) & 3;
+                    if (const auto* traversal = ReadField<const char*>(player, 0x10A8)) {
+                        signals.traversal = ReadField<std::uint8_t>(traversal, 0x46) == 0 ? 1 : 0;
+                    }
                 }
                 if (const auto* targeting = *reinterpret_cast<const char* const*>(roots.targetingMode)) {
                     signals.tm = ReadField<std::int32_t>(targeting, 0x54);

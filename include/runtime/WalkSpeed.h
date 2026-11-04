@@ -100,6 +100,30 @@ namespace AbsoluteControl::Runtime
         WalkSpeedSource source_{ WalkSpeedSource::Virtual };
     };
 
+    // A bound axis can read nothing for a moment when the device poll stalls or a frame runs long.
+    // That isn't losing the axis, so hold its last value until the gap is clearly more than that.
+    class AxisDropoutFilter
+    {
+    public:
+        static constexpr std::uint64_t kGraceNanoseconds = 1'500'000'000;
+
+        [[nodiscard]] std::optional<double> Filter(std::optional<double> value, std::uint64_t now) noexcept
+        {
+            if (value) {
+                last_ = value;
+                lastSeenAt_ = now;
+                return value;
+            }
+            if (last_ && now - lastSeenAt_ < kGraceNanoseconds) return last_;
+            last_.reset();
+            return std::nullopt;
+        }
+
+    private:
+        std::optional<double> last_;
+        std::uint64_t lastSeenAt_{};
+    };
+
     struct MoveKeys
     {
         bool forward{};
