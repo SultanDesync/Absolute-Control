@@ -36,43 +36,38 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
         constexpr auto kRootPath = NativeMenuProbe::kRootPath;
         std::uint32_t g_menuFlags{};
 
-        // Menus with flag 0x08000000 hold the game's view at 16:9, and the game's IMenu
-        // destructor lifts that once no other such menu is open. This menu's destructor doesn't
-        // run when it closes, so with no PauseMenu underneath to do it, do the same here. It has
-        // to wait for the UI to take this menu off its active list, which takes a frame or two.
-        void RestoreViewportAfterClose(std::uint32_t a_framesLeft = 60) noexcept
+        // Flash holds this, not the menu. Every native function keeps a reference to its handler,
+        // and our movie keeps its code object alive, so passing the menu here would mean it could
+        // never be freed. The game lifts its 16:9 view hold in the menu's destructor, among other
+        // cleanup. Detach also waits for a call already running, so the bridge can't go away
+        // underneath one. It's recursive because a call can come back in through Flash.
+        class NativeCallHandler final : public RE::Scaleform::GFx::FunctionHandler
         {
-            const auto* tasks = SFSE::GetTaskInterface();
-            if (!tasks) {
-                return;
-            }
-            tasks->AddTask([a_framesLeft]() {
-                using held_t = bool (*)(RE::UI*);
-                using recompute_t = void (*)(std::uint8_t*);
-                static REL::Relocation<held_t> anyMenuHoldsViewport{ REL::ID(130442) };
-                static REL::Relocation<recompute_t> recomputeViewport{ REL::ID(128499) };
-                static REL::Relocation<std::uint8_t**> viewportOwner{ REL::ID(937583) };
+        public:
+            static void* operator new(std::size_t a_count) { return ::operator new(a_count); }
+            static void operator delete(void* a_memory) noexcept { ::operator delete(a_memory); }
+            static void operator delete(void* a_memory, std::size_t) noexcept { ::operator delete(a_memory); }
 
-                auto* const ui = RE::UI::GetSingleton();
-                auto* const owner = *viewportOwner;
-                if (!ui || !owner) {
-                    return;
+            explicit NativeCallHandler(Scaleform::MenuBridge* a_bridge) noexcept : bridge(a_bridge) {}
+
+            void Detach() noexcept
+            {
+                const std::scoped_lock lock{ mutex };
+                bridge = nullptr;
+            }
+
+            void Call(const Params& a_params) override
+            {
+                const std::scoped_lock lock{ mutex };
+                if (bridge) {
+                    bridge->Call(a_params);
                 }
-                if (anyMenuHoldsViewport(ui)) {
-                    if (a_framesLeft > 0) {
-                        RestoreViewportAfterClose(a_framesLeft - 1);
-                    } else {
-                        // Another menu opened, and its own destructor will lift this.
-                        EvidenceLog::Event("panel_viewport_left", "another menu holds 16:9");
-                    }
-                    return;
-                }
-                auto* const viewport = owner + 0x10;
-                viewport[0x41] = 0;
-                recomputeViewport(viewport);
-                EvidenceLog::Event("panel_viewport_restored");
-            });
-        }
+            }
+
+        private:
+            std::recursive_mutex mutex;
+            Scaleform::MenuBridge* bridge{};
+        };
 
         class AbsoluteControlPanelMenu final : public RE::GameMenuBase
         {
@@ -134,11 +129,13 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
                         RefCountForEvidence()));
             }
 
+            // This can run well after hide, on any thread, and possibly after the next panel has
+            // opened. Hide already did the session cleanup, so nothing global belongs here.
             ~AbsoluteControlPanelMenu() override
             {
+                nativeCalls->Detach();
+                nativeCalls->Release();
                 audioLease.Release("menu-destructor");
-                (void)bridge.OnHidden();
-                MenuApiHost::SetMenuOpen(false);
                 EvidenceLog::Event(
                     "menu_destructor_entered",
                     std::format(
@@ -289,6 +286,7 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
                     // Disarm before the base class starts tearing down the movie.
                     // Pointer tasks already queued by the polling thread must become
                     // harmless before any Scaleform object can be invalidated.
+                    nativeCalls->Detach();
                     returnOrigin = bridge.OnHidden();
                 }
                 const auto result = RE::IMenu::ProcessMessage(a_message);
@@ -324,7 +322,7 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
                     Runtime::Transition(ProbeEvent::MenuClosed);
                     EvidenceLog::Event(
                         "menu_message_hide",
-                        std::format("result={}", static_cast<std::int64_t>(result)));
+                        std::format("result={} ref_count={}", static_cast<std::int64_t>(result), RefCountForEvidence()));
                     const auto ui = RE::UI::GetSingleton();
                     const bool pauseOpen = ui && ui->IsMenuOpen(
                                                      RE::BSFixedString("PauseMenu"));
@@ -359,8 +357,6 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
                                 "control_panel_return_missing",
                                 "target=MainMenu source=preload-close; no recovery Show");
                         }
-                    } else {
-                        RestoreViewportAfterClose();
                     }
                 }
                 return result;
@@ -446,26 +442,24 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
                         return;
                     }
                 }
-                RegisterNativeFunction(
-                    "ready", static_cast<std::uint64_t>(Scaleform::NativeFunction::Ready));
-                RegisterNativeFunction(
-                    "close", static_cast<std::uint64_t>(Scaleform::NativeFunction::Close));
-                RegisterNativeFunction(
-                    "dispatch", static_cast<std::uint64_t>(Scaleform::NativeFunction::Dispatch));
-                RegisterNativeFunction(
-                    "compound", static_cast<std::uint64_t>(Scaleform::NativeFunction::Compound));
-                RegisterNativeFunction(
-                    "focus", static_cast<std::uint64_t>(Scaleform::NativeFunction::Focus));
-                RegisterNativeFunction(
-                    "modelApplied", static_cast<std::uint64_t>(Scaleform::NativeFunction::ModelApplied));
-                EvidenceLog::Event("bridge_functions_mapped", "version=1 count=6");
+                const auto mapFunction = [&](const char* a_name, Scaleform::NativeFunction a_function) {
+                    RE::Scaleform::GFx::Value function;
+                    uiMovie->asMovieRoot->CreateFunction(&function, nativeCalls,
+                        reinterpret_cast<void*>(static_cast<std::uint64_t>(a_function)));
+                    codeObject.SetMember(a_name, function);
+                };
+                mapFunction("ready", Scaleform::NativeFunction::Ready);
+                mapFunction("close", Scaleform::NativeFunction::Close);
+                mapFunction("dispatch", Scaleform::NativeFunction::Dispatch);
+                mapFunction("compound", Scaleform::NativeFunction::Compound);
+                mapFunction("focus", Scaleform::NativeFunction::Focus);
+                mapFunction("modelApplied", Scaleform::NativeFunction::ModelApplied);
+                EvidenceLog::Event("bridge_functions_mapped",
+                    std::format("version=1 count=6 ref_count={}", RefCountForEvidence()));
             }
 
-            void Call(
-                const RE::Scaleform::GFx::FunctionHandler::Params& a_params) override
-            {
-                bridge.Call(a_params);
-            }
+            // Flash calls go through NativeCallHandler, so nothing reaches this.
+            void Call(const RE::Scaleform::GFx::FunctionHandler::Params&) override {}
 
             void HandlePointerPhase(Input::PointerPhase a_phase)
             {
@@ -481,6 +475,7 @@ namespace AbsoluteControlPanelResearch::Ui::ControlPanelMenu
             bool bridgeInitializationAccepted{};
             Ui::PauseMenuAudioLease audioLease;
             Scaleform::MenuBridge bridge;
+            NativeCallHandler* nativeCalls{ new NativeCallHandler(&bridge) };
         };
 
         RE::Scaleform::Ptr<RE::IMenu>* CreateMenu(RE::Scaleform::Ptr<RE::IMenu>* a_result)

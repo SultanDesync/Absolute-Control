@@ -40,15 +40,19 @@ namespace AbsoluteControlPanelResearch::Scaleform
             // External menu destruction can bypass the normal close command.  Do
             // not leave product input capture armed, and do not let a deferred
             // movie publication survive the movie object that owns this bridge.
-            if (session.IsCaptureActive()) {
-                EvidenceLog::Event(
-                    session.IsTextCaptureActive() ? "text_capture_cancelled" :
-                                                    "binding_capture_cancelled",
-                    "source=bridge-teardown");
+            // Normally hide has already done this. The menu can be destroyed well after hide,
+            // once the next panel is open, and these are shared with that panel.
+            if (menuShown) {
+                if (session.IsCaptureActive()) {
+                    EvidenceLog::Event(
+                        session.IsTextCaptureActive() ? "text_capture_cancelled" :
+                                                        "binding_capture_cancelled",
+                        "source=bridge-teardown");
+                }
+                session.Teardown();
+                LiveComponents::HostRegistry().SetMenuActive(false);
+                MenuApiHost::SetInputCaptureActive(false);
             }
-            session.Teardown();
-            LiveComponents::HostRegistry().SetMenuActive(false);
-            MenuApiHost::SetInputCaptureActive(false);
             pendingModel.reset();
             movie = nullptr;
             EvidenceLog::Event("bridge_teardown", "deferred model cleared");
@@ -1390,6 +1394,10 @@ namespace AbsoluteControlPanelResearch::Scaleform
                 dirtyDecisionReturnFocus.reset();
                 MenuApiHost::SetInputCaptureActive(false);
                 pendingModel.reset();
+                // Let go of the movie here, on the thread that uses it. The destructor can run
+                // anywhere, and every use of these checks them first.
+                menuObj = nullptr;
+                movie = nullptr;
                 EvidenceLog::Event(
                     "bridge_pointer_disarmed", "reason=menu-hidden");
                 return returnOrigin;

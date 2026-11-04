@@ -61,8 +61,8 @@ the hovered sidebar, tab strip, or settings viewport without changing values.
 `src/AbsoluteWalkGauge.as` is a second, separate movie: the walk speed gauge, an overlay using the
 same menu flags as the game's `HUDMessagesMenu`. It reads the speed and opacity from native getters
 in its own `ENTER_FRAME`, because SFSE tasks run on a pool of threads and calling into a movie from
-one could race with it. Once first shown it stays open at zero opacity, because a closed menu of this
-kind is never freed. The same build script compiles both movies. Its colors are sampled from the
+one could race with it. Once first shown it stays open at zero opacity, so a speed change doesn't have
+to load a movie each time. The same build script compiles both movies. Its colors are sampled from the
 vanilla HUD.
 
 The project must not commit a manually edited opaque SWF as its only source of truth.

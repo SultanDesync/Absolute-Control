@@ -22,6 +22,22 @@ namespace AbsoluteControlPanelResearch::Ui::WalkGaugeMenu
         std::atomic<double> g_speed{ 1.0 };
         std::atomic<double> g_alpha{};
 
+        // Flash holds this, not the menu, so a native function can't keep a closed menu alive.
+        class NativeCallHandler final : public RE::Scaleform::GFx::FunctionHandler
+        {
+        public:
+            static void* operator new(std::size_t size) { return ::operator new(size); }
+            static void operator delete(void* memory) noexcept { ::operator delete(memory); }
+            static void operator delete(void* memory, std::size_t) noexcept { ::operator delete(memory); }
+
+            void Call(const Params& a_params) override
+            {
+                if (!a_params.ret) return;
+                const auto function = static_cast<NativeFunction>(reinterpret_cast<std::uintptr_t>(a_params.userData));
+                *a_params.ret = (function == NativeFunction::Speed ? g_speed : g_alpha).load(std::memory_order_acquire);
+            }
+        };
+
         class Menu final : public RE::GameMenuBase
         {
         public:
@@ -40,6 +56,12 @@ namespace AbsoluteControlPanelResearch::Ui::WalkGaugeMenu
                 SetFlags(kMenuFlags);
                 *(reinterpret_cast<std::uint8_t*>(this) + 0x110) = kMenuPriority;
                 inputEventHandlingEnabled = false;
+            }
+
+            ~Menu() override
+            {
+                nativeCalls->Release();
+                EvidenceLog::Event("walk_gauge_destroyed");
             }
 
             const char* GetName() const override { return kMenuName; }
@@ -111,16 +133,23 @@ namespace AbsoluteControlPanelResearch::Ui::WalkGaugeMenu
 
             void MapCodeObjectFunctions() override
             {
-                RegisterNativeFunction("speed", static_cast<std::uint64_t>(NativeFunction::Speed));
-                RegisterNativeFunction("alpha", static_cast<std::uint64_t>(NativeFunction::Alpha));
+                RE::Scaleform::GFx::Value codeObject;
+                if (!menuObj.GetMember(CODE_OBJ_NAME, &codeObject) || !codeObject.IsObject()) return;
+                const auto mapFunction = [&](const char* name, NativeFunction nativeFunction) {
+                    RE::Scaleform::GFx::Value function;
+                    uiMovie->asMovieRoot->CreateFunction(&function, nativeCalls,
+                        reinterpret_cast<void*>(static_cast<std::uint64_t>(nativeFunction)));
+                    codeObject.SetMember(name, function);
+                };
+                mapFunction("speed", NativeFunction::Speed);
+                mapFunction("alpha", NativeFunction::Alpha);
             }
 
-            void Call(const RE::Scaleform::GFx::FunctionHandler::Params& a_params) override
-            {
-                if (!a_params.ret) return;
-                const auto function = static_cast<NativeFunction>(reinterpret_cast<std::uintptr_t>(a_params.userData));
-                *a_params.ret = (function == NativeFunction::Speed ? g_speed : g_alpha).load(std::memory_order_acquire);
-            }
+            // Flash calls go through NativeCallHandler, so nothing reaches this.
+            void Call(const RE::Scaleform::GFx::FunctionHandler::Params&) override {}
+
+        private:
+            NativeCallHandler* nativeCalls{ new NativeCallHandler() };
         };
 
         RE::Scaleform::Ptr<RE::IMenu>* CreateMenu(RE::Scaleform::Ptr<RE::IMenu>* a_result)

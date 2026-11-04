@@ -10,6 +10,6 @@ namespace AbsoluteControlPanelResearch::Ui::WalkGaugeMenu
     void Publish(double speed, double alpha) noexcept;
 
     // Opens the overlay if it isn't open. It then stays open at zero opacity, like the game's own
-    // HUD messages menu, because a closed menu of this kind is never freed.
+    // HUD messages menu, so a speed change doesn't have to load a movie each time.
     void EnsureOpen() noexcept;
 }

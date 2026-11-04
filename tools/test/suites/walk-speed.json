@@ -181,7 +181,7 @@
         { "waitMs": 500 },
         { "screenshot": "walk-speed-page" },
         { "command": "hide_probe" },
-        { "expect": "panel_viewport_restored", "timeoutSeconds": 3 },
+        { "expect": "menu_destructor_entered", "timeoutSeconds": 5 },
         { "waitMs": 500 },
         { "screenshot": "after-panel-closed" }
       ]

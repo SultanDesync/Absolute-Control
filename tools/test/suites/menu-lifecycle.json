@@ -1,0 +1,81 @@
+{
+  "name": "menu-lifecycle",
+  "description": "Closing the panel really destroys it, in the awkward orders too. A late destructor must not break a panel that has already reopened. Needs a profile without AbsoluteHOTAS.",
+  "fixture": "on-foot-ship-technician",
+  "testInput": true,
+  "tests": [
+    {
+      "id": "open-and-close",
+      "description": "Each close frees that menu.",
+      "repeat": 3,
+      "steps": [
+        { "command": "show_probe" },
+        { "expect": "menu_message_show", "detail": "result=0", "timeoutSeconds": 5 },
+        { "waitMs": 300 },
+        { "command": "hide_probe" },
+        { "expect": "menu_destructor_entered", "timeoutSeconds": 5 },
+        { "expect": "menu_deallocation_started", "timeoutSeconds": 5 }
+      ]
+    },
+    {
+      "id": "view-restored",
+      "description": "With the menu gone, the game's own cleanup has lifted its 16:9 hold. Read the pixels from the screenshot.",
+      "steps": [
+        { "waitMs": 500 },
+        { "screenshot": "after-close" }
+      ]
+    },
+    {
+      "id": "reopen-straight-away",
+      "description": "Close and reopen with no wait. The new panel still works, whenever the old one is destroyed.",
+      "steps": [
+        { "command": "show_probe" },
+        { "expect": "menu_message_show", "detail": "result=0", "timeoutSeconds": 5 },
+        { "command": "hide_probe" },
+        { "command": "show_probe" },
+        { "expect": "menu_message_show", "detail": "result=0", "timeoutSeconds": 5 },
+        { "command": "open_page:absolute.control/walk-speed" },
+        { "expect": "bridge_page_applied", "detail": ["page=walk-speed", "active=true"], "timeoutSeconds": 5 },
+        { "waitMs": 1000 },
+        { "screenshot": "reopened" },
+        { "command": "nav_down" },
+        { "waitMs": 200 },
+        { "command": "hide_probe" },
+        { "expect": "menu_destructor_entered", "timeoutSeconds": 5 }
+      ]
+    },
+    {
+      "id": "close-while-opening",
+      "description": "Close before the movie has finished opening.",
+      "steps": [
+        { "command": "show_probe" },
+        { "command": "hide_probe" },
+        { "waitMs": 2000 },
+        { "command": "show_probe" },
+        { "expect": "menu_message_show", "detail": "result=0", "timeoutSeconds": 5 },
+        { "waitMs": 300 },
+        { "command": "hide_probe" },
+        { "expect": "menu_destructor_entered", "timeoutSeconds": 5 }
+      ]
+    },
+    {
+      "id": "over-the-pause-menu",
+      "description": "Open and close over the pause menu. It stays underneath, and closing it restores the view.",
+      "steps": [
+        { "command": "pause" },
+        { "expect": "research_pause_state", "detail": "open=true", "timeoutSeconds": 10 },
+        { "command": "show_probe" },
+        { "expect": "menu_message_show", "detail": "result=0", "timeoutSeconds": 5 },
+        { "waitMs": 300 },
+        { "command": "hide_probe" },
+        { "expect": "menu_destructor_entered", "timeoutSeconds": 5 },
+        { "waitMs": 500 },
+        { "screenshot": "pause-menu-after-panel" },
+        { "command": "pause" },
+        { "expect": "research_pause_state", "detail": "open=false", "timeoutSeconds": 10 },
+        { "waitMs": 500 },
+        { "screenshot": "after-pause-closed" }
+      ]
+    }
+  ]
+}
