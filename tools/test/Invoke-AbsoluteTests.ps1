@@ -3,6 +3,8 @@ param(
     # Defaults resolve below: Windows PowerShell 5.1 has no $PSScriptRoot in param defaults under -File.
     [string]$Suite = '',
     [string]$ConfigPath = '',
+    # Save to load, by id from fixtures.local.json. Overrides the suite's fixture; 'latest' continues the newest save.
+    [string]$Fixture = '',
     # Enable the test mod and disable other Absolute Control hosts in the profile (MO2 must be closed).
     [switch]$PrepareProfile,
     # Check config, suite, profile and build output without launching anything.
@@ -54,6 +56,21 @@ foreach ($problem in $profileProblems) {
     $hint = if ($PrepareProfile) { '' } else { ' (rerun with -PrepareProfile to fix)' }
     $problems.Add("$problem$hint")
 }
+$fixtureId = $Fixture
+if (-not $fixtureId) {
+    $fixtureId = if ($suiteDefinition.PSObject.Properties.Name -contains 'fixture') { [string]$suiteDefinition.fixture } else { 'latest' }
+}
+$catalog = $null
+$saveFixture = $null
+if ($fixtureId -ne 'latest') {
+    try {
+        $catalog = Read-SaveCatalog (Join-Path $PSScriptRoot 'fixtures.local.json')
+        foreach ($problem in @(Get-SaveFixtureProblems -Config $config -Catalog $catalog -Id $fixtureId)) { $problems.Add($problem) }
+        $saveFixture = Find-SaveFixture -Catalog $catalog -Id $fixtureId
+    } catch { $problems.Add($_.Exception.Message) }
+}
+$saveLabel = if ($saveFixture) { '{0} ({1})' -f $saveFixture.id, ([string]$saveFixture.sha256).Substring(0, 12) } else { 'latest (not pinned)' }
+$saveStatePath = Get-SaveStageStatePath $config
 
 if ($DryRun -or $problems.Count -gt 0) {
     Write-Host ''
@@ -63,6 +80,9 @@ if ($DryRun -or $problems.Count -gt 0) {
         Write-Host ("  - {0} x{1}: {2}" -f $test.id, $repeat, $test.description)
     }
     Write-Host "Profile: $($config.profile)   Test mod: $($config.testModName)"
+    Write-Host "Save:    $saveLabel"
+    if ($saveFixture) { Write-Host "         $($saveFixture.description)" }
+    if (Test-Path -LiteralPath $saveStatePath) { Write-Host "An interrupted save stage will be restored first: $saveStatePath" }
     Write-Host "Run dir: $runDirectory"
     if ($problems.Count -gt 0) {
         Write-Host ''
@@ -77,6 +97,11 @@ if ($DryRun -or $problems.Count -gt 0) {
 }
 
 # ---- run
+# An earlier run that crashed or kept the game open leaves its fixture as the only visible save.
+if (Test-Path -LiteralPath $saveStatePath) {
+    $recovered = Exit-SaveStage -StatePath $saveStatePath -ProcessName $config.processName
+    Write-RunnerEvent $context 'save_stage_recovered' ("restored={0} stage={1}" -f $recovered.restored, $recovered.stage)
+}
 $deployed = Publish-TestHooksBuild -Config $config -RepoRoot $repoRoot -RunId $runId -Mode $Mode
 Write-RunnerEvent $context 'deployed' ("dll={0}" -f $deployed['SFSE\Plugins\AbsoluteControlPanel.dll'])
 $results = @()
@@ -84,6 +109,13 @@ $fatal = ''
 $shutdown = 'not_started'
 $dumps = @()
 try {
+    if ($saveFixture) {
+        $stage = Enter-SaveStage -SaveRoots (Get-SaveRoots $config) -FixtureFile $saveFixture.file `
+            -FixtureHash $saveFixture.sha256 -StageRoot $catalog.saveStageRoot -RunId $runId -StatePath $saveStatePath `
+            -ProcessName $config.processName
+        $context.ExpectedSave = Split-Path -Leaf ([string]$saveFixture.file)
+        Write-RunnerEvent $context 'save_fixture_staged' ("{0} hidden={1} stage={2}" -f $saveLabel, @($stage.entries).Count, $stage.stage)
+    }
     Start-GameSession $context
     $results = @(Invoke-TestSuite -Context $context -Suite $suiteDefinition)
 } catch {
@@ -93,6 +125,20 @@ try {
 } finally {
     $shutdown = Stop-GameSession -Context $context -KeepGameRunning:$KeepGameRunning
     $dumps = @(Save-RunArtifacts $context)
+    if (Test-Path -LiteralPath $saveStatePath) {
+        if ($shutdown -in @('retained', 'left_running')) {
+            Write-RunnerEvent $context 'save_stage_kept' 'Starfield is still running; the next run restores the saves.'
+        } else {
+            try {
+                $restored = Exit-SaveStage -StatePath $saveStatePath -ProcessName $config.processName
+                Write-RunnerEvent $context 'save_stage_restored' ("restored={0} run_saves_moved={1}" -f $restored.restored, $restored.runSavesMoved)
+            } catch {
+                $restoreError = "Saves were not restored: $($_.Exception.Message) Rerun the suite to retry, or see $saveStatePath."
+                $fatal = if ($fatal) { "$fatal $restoreError" } else { $restoreError }
+                Write-RunnerEvent $context 'save_stage_restore_failed' $restoreError
+            }
+        }
+    }
 }
 if ($results.Count -eq 0) {
     $results = @(@($suiteDefinition.tests) | ForEach-Object {
@@ -100,7 +146,7 @@ if ($results.Count -eq 0) {
     })
 }
 $summary = Write-TestReport -Context $context -Suite $suiteDefinition -Results $results -Shutdown $shutdown `
-    -Deployed $deployed -Dumps $dumps -FatalError $fatal
+    -Deployed $deployed -Dumps $dumps -FatalError $fatal -Save $saveLabel
 Write-Host ''
 Write-Host ("{0}: passed {1}, failed {2}, not run {3}. Report: {4}" -f $suiteDefinition.name, $summary.passed,
     $summary.failed, $summary.notRun, (Join-Path $runDirectory 'report.md'))

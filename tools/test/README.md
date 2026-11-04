@@ -14,7 +14,9 @@ plugin's evidence log, and closes the game.
    ```
 2. Copy `test.local.example.json` to `test.local.json` (git-ignored) and check the MO2 paths
    and profile.
-3. Close MO2, then let the runner add the test mod to the profile and disable other Absolute
+3. Copy `fixtures.example.json` to `fixtures.local.json` (git-ignored) and list your saves. See
+   [Choosing a save](#choosing-a-save).
+4. Close MO2, then let the runner add the test mod to the profile and disable other Absolute
    Control hosts. It backs up `modlist.txt` into the run folder first:
    ```powershell
    powershell -ExecutionPolicy Bypass -File tools\test\Invoke-AbsoluteTests.ps1 -PrepareProfile -DryRun
@@ -52,10 +54,43 @@ Results go to `artifacts/test-runs/<suite>-<timestamp>/`:
 A new dump, a game exit or an error dialog marks the current test `crashed` and the rest
 `not_run`.
 
+## Choosing a save
+
+Each run can load a known context from the save catalog, `fixtures.local.json`. A suite names its
+save with `"fixture": "<id>"`, and `-Fixture <id>` overrides that for one run. With neither, or with
+`-Fixture latest`, the run continues the newest save in the profile.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\test\Invoke-AbsoluteTests.ps1 -Suite tools\test\suites\save-load.json -Fixture pilot-seated-control-v2
+```
+
+For each run with a fixture, the runner:
+1. Refuses to start if the catalogued file doesn't match its SHA256, or the MO2 profile doesn't use
+   local saves.
+2. Backs up every save the game can see to `<saveStageRoot>\<run id>-save-stage\`, then hides them.
+   That means the profile's saves and MO2's real `My Games\Starfield\__MO_Saves` folder, which MO2
+   overlays them on. Set `overlaySaveDirectory` in `test.local.json` if yours is elsewhere.
+3. Copies the fixture in as the only visible save, so the guarded Continue has to load it.
+4. Has the plugin list the saves folder from inside the game, under MO2's virtual filesystem, and
+   fails the run unless the fixture is the only save there. The report shows that listing.
+5. After the game closes, moves the fixture copy and any saves made during the run to that stage
+   folder's `run-saves\`, then restores the originals and checks their hashes.
+
+Continue loads the newest save the game can see, so a stray save in any other folder MO2 overlays
+would outrank an older fixture. Step 4 catches that.
+
+If a run crashes, or used `-KeepGameRunning`, the next run restores the saves before doing anything
+else. If an original has changed, the restore stops and leaves the files for inspection. The open
+transaction is `absolute-test-save-stage.json` in the profile folder.
+
+To add a save, copy it somewhere permanent, get its hash with `Get-FileHash`, and add an entry with
+`id`, `file`, `sha256` and `description`. Give a changed save a new id. State labels record what
+someone saw when the save was made; they aren't proof of game state.
+
 ## Writing suites
 
-A suite is JSON: `name`, `description` and `tests`. Each test has an `id`, a `description`, an
-optional `repeat`, and `steps`, each with exactly one of:
+A suite is JSON: `name`, `description`, an optional `fixture` and `tests`. Each test has an `id`, a
+`description`, an optional `repeat`, and `steps`, each with exactly one of:
 
 | Step | Meaning |
 |---|---|
@@ -70,7 +105,7 @@ Mailbox commands, from `src/research/ResearchSupport.cpp`:
 - **Menu:** `show_probe` and `hide_probe` open and close Absolute Control; `open_page:<module>/<page>`;
   `select_main_entry` and `select_continue_entry` select a title-menu row without activating it;
   `inject_pause_entry`.
-- **Read-only probes:** `probe_pause_root`, `probe_main_root`.
+- **Read-only probes:** `probe_pause_root`, `probe_main_root`, `list_saves:<folder>`.
 
 ## Self-test
 

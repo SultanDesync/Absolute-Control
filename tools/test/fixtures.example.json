@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "saveStageRoot": "F:\\AbsoluteHOTAS-ResearchData\\runs",
+  "fixtures": [
+    {
+      "id": "pilot-seated-control-v2",
+      "file": "F:\\AbsoluteHOTAS-ResearchData\\exports\\example\\Quicksave0_example.sfs",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "description": "Seated in flight with the cockpit HUD up, no threats and no hull damage.",
+      "observedState": { "reportedBy": "user", "pilotSeated": true }
+    }
+  ]
+}

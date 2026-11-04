@@ -1,6 +1,7 @@
 {
   "name": "menu-regression",
   "description": "Native menu presence, open/close stress, HOTAS page switching and a live-telemetry soak.",
+  "fixture": "pilot-seated-control-v2",
   "tests": [
     {
       "id": "title-entry-present",

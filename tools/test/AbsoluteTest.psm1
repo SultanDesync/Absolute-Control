@@ -40,6 +40,7 @@ function Read-AbsoluteTestConfig {
     }
     $defaults = [ordered]@{
         sfseLogDirectory = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'My Games\Starfield\SFSE\Logs'
+        overlaySaveDirectory = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'My Games\Starfield\__MO_Saves'
         gameDirectory = ''
         artifactRoot = ''
         conflictingModPatterns = @('Absolute Control*', 'AbsoluteControlPanel*')
@@ -226,6 +227,178 @@ function Publish-TestHooksBuild {
     return $deployed
 }
 
+# ---------------------------------------------------------------- save fixtures
+
+# A run loads a known context by making one catalogued save the only save the game can see,
+# then using the normal guarded Continue. The transaction design is ported from the research
+# harness (Absolute-Research-Harness scripts\SaveFixtures.psm1): recovery information is written
+# before the first rename, and originals are hash-checked when restored. Saves made during the
+# run are moved to the run's stage folder so they never become the latest save.
+
+function Read-SaveCatalog {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "Save catalog not found: $Path. Copy tools\test\fixtures.example.json to fixtures.local.json and edit it."
+    }
+    $catalog = [System.IO.File]::ReadAllText($Path) | ConvertFrom-Json
+    if (-not ($catalog.PSObject.Properties.Name -contains 'saveStageRoot') -or [string]::IsNullOrWhiteSpace([string]$catalog.saveStageRoot)) {
+        throw "Save catalog is missing 'saveStageRoot': $Path"
+    }
+    $ids = @{}
+    foreach ($fixture in @($catalog.fixtures)) {
+        foreach ($name in @('id', 'file', 'sha256')) {
+            if (-not ($fixture.PSObject.Properties.Name -contains $name) -or [string]::IsNullOrWhiteSpace([string]$fixture.$name)) {
+                throw "A fixture in $Path is missing '$name'."
+            }
+        }
+        if ($ids.ContainsKey($fixture.id)) { throw "Duplicate fixture id '$($fixture.id)' in $Path." }
+        $ids[$fixture.id] = $true
+    }
+    return $catalog
+}
+
+function Find-SaveFixture {
+    param([Parameter(Mandatory = $true)]$Catalog, [Parameter(Mandatory = $true)][string]$Id)
+    return @($Catalog.fixtures) | Where-Object { $_.id -eq $Id } | Select-Object -First 1
+}
+
+function Get-SaveFixtureProblems {
+    # Returns the reasons this fixture can't be staged for this profile.
+    param($Config, [Parameter(Mandatory = $true)]$Catalog, [Parameter(Mandatory = $true)][string]$Id)
+    $problems = New-Object System.Collections.Generic.List[string]
+    $fixture = Find-SaveFixture -Catalog $Catalog -Id $Id
+    if ($null -eq $fixture) {
+        $problems.Add("Unknown save fixture '$Id'. Available: $((@($Catalog.fixtures) | ForEach-Object id) -join ', ')")
+    } elseif (-not (Test-Path -LiteralPath $fixture.file -PathType Leaf)) {
+        $problems.Add("Save fixture '$Id' is missing: $($fixture.file)")
+    } elseif ((Get-Sha256 $fixture.file) -ine $fixture.sha256) {
+        $problems.Add("Save fixture '$Id' does not match its recorded hash: $($fixture.file)")
+    }
+    if (-not (Test-Path -LiteralPath $Catalog.saveStageRoot -PathType Container)) {
+        $problems.Add("Save stage folder is unavailable: $($Catalog.saveStageRoot)")
+    }
+    $settings = Join-Path (Get-ProfileDirectory $Config) 'settings.ini'
+    if (-not (Test-Path -LiteralPath $settings -PathType Leaf) -or
+        [System.IO.File]::ReadAllText($settings) -notmatch '(?im)^\s*LocalSaves\s*=\s*true\s*$') {
+        $problems.Add("MO2 profile '$($Config.profile)' does not use local saves, so its saves can't be swapped.")
+    }
+    return $problems.ToArray()
+}
+
+function Get-SaveStageStatePath {
+    param($Config)
+    return Join-Path (Get-ProfileDirectory $Config) 'absolute-test-save-stage.json'
+}
+
+function Get-SaveRoots {
+    # MO2 overlays the profile's saves on a real folder (sLocalSavePath), and the game sees both.
+    # Continue picks the newest, so a save left in the real folder can outrank a fixture.
+    param($Config)
+    $roots = @(Join-Path (Get-ProfileDirectory $Config) 'saves')
+    if (Test-Path -LiteralPath $Config.overlaySaveDirectory -PathType Container) { $roots += [string]$Config.overlaySaveDirectory }
+    return $roots
+}
+
+function Get-VisibleSaves {
+    param([Parameter(Mandatory = $true)][string]$SaveRoot)
+    return @(Get-ChildItem -LiteralPath $SaveRoot -File -ErrorAction Stop | Where-Object { $_.Extension -ieq '.sfs' })
+}
+
+function Assert-VisibleSaves {
+    # Reported is the listing from the plugin's list_saves command. With one save visible, Continue
+    # can only load that save, and anything else means this run wouldn't test the chosen context.
+    param([Parameter(Mandatory = $true)][string]$Reported, [Parameter(Mandatory = $true)][string]$Expected)
+    if ($Reported -cne "count=1 names=$Expected") {
+        throw "The game can see the wrong saves: expected only '$Expected', got '$Reported'."
+    }
+}
+
+function Enter-SaveStage {
+    # Backs up and hides every save the game can see, then deploys the fixture into the first root.
+    param([Parameter(Mandatory = $true)][string[]]$SaveRoots, [Parameter(Mandatory = $true)][string]$FixtureFile,
+        [Parameter(Mandatory = $true)][string]$FixtureHash, [Parameter(Mandatory = $true)][string]$StageRoot,
+        [Parameter(Mandatory = $true)][string]$RunId, [Parameter(Mandatory = $true)][string]$StatePath,
+        [Parameter(Mandatory = $true)][string]$ProcessName)
+    if (Get-Process -Name $ProcessName -ErrorAction SilentlyContinue) { throw 'Close Starfield before changing the save set.' }
+    if (Test-Path -LiteralPath $StatePath) { throw "A save stage is already open; restore it first: $StatePath" }
+    if ((Get-Sha256 $FixtureFile) -ine $FixtureHash) { throw "Fixture hash mismatch: $FixtureFile" }
+    $stage = Join-Path $StageRoot "$RunId-save-stage"
+    New-Item -ItemType Directory -Path $stage -ErrorAction Stop | Out-Null
+    $entries = @(for ($rootIndex = 0; $rootIndex -lt $SaveRoots.Count; $rootIndex++) {
+        $backupRoot = Join-Path $stage "root$rootIndex"
+        New-Item -ItemType Directory -Path $backupRoot -ErrorAction Stop | Out-Null
+        foreach ($save in Get-VisibleSaves $SaveRoots[$rootIndex]) {
+            $hash = Get-Sha256 $save.FullName
+            $backup = Join-Path $backupRoot $save.Name
+            Copy-Item -LiteralPath $save.FullName -Destination $backup -ErrorAction Stop
+            if ((Get-Sha256 $backup) -ne $hash) { throw "Save backup hash mismatch: $($save.FullName)" }
+            [pscustomobject]@{ root = $SaveRoots[$rootIndex]; name = $save.Name; sha256 = $hash
+                hiddenName = "$($save.Name).test-hidden-$RunId"; backup = $backup }
+        }
+    })
+    $state = [pscustomobject]@{ schemaVersion = 1; runId = $RunId; saveRoots = $SaveRoots; stage = $stage
+        fixtureName = (Split-Path -Leaf $FixtureFile); fixtureHash = $FixtureHash; entries = $entries }
+    $json = $state | ConvertTo-Json -Depth 6
+    [System.IO.File]::WriteAllText((Join-Path $stage 'manifest.json'), $json, $script:Utf8NoBom)
+    [System.IO.File]::WriteAllText($StatePath, $json, $script:Utf8NoBom)
+    foreach ($entry in $entries) {
+        Move-Item -LiteralPath (Join-Path $entry.root $entry.name) -Destination (Join-Path $entry.root $entry.hiddenName) -ErrorAction Stop
+    }
+    $deployed = Join-Path $SaveRoots[0] $state.fixtureName
+    Copy-Item -LiteralPath $FixtureFile -Destination $deployed -ErrorAction Stop
+    if ((Get-Sha256 $deployed) -ine $FixtureHash) { throw 'Deployed fixture hash mismatch.' }
+    $visible = @($SaveRoots | ForEach-Object { Get-VisibleSaves $_ })
+    if ($visible.Count -ne 1 -or $visible[0].FullName -cne $deployed) { throw 'The fixture is not the only visible save.' }
+    return $state
+}
+
+function Exit-SaveStage {
+    # Restores the originals. Safe to rerun after an interruption: each original may be hidden
+    # or already restored. Nothing moves until every original has been checked, so a changed
+    # save stops the restore with both the transaction and the files left for inspection.
+    param([Parameter(Mandatory = $true)][string]$StatePath, [Parameter(Mandatory = $true)][string]$ProcessName)
+    if (Get-Process -Name $ProcessName -ErrorAction SilentlyContinue) { throw 'Close Starfield before restoring saves.' }
+    $state = [System.IO.File]::ReadAllText($StatePath) | ConvertFrom-Json
+    $entries = @($state.entries)
+    $saveRoots = @($state.saveRoots)
+    $restored = @{}
+    foreach ($entry in $entries) {
+        foreach ($name in @($entry.name, $entry.hiddenName)) {
+            if ([System.IO.Path]::GetFileName($name) -cne $name) { throw "Unsafe save name in ${StatePath}: $name" }
+        }
+        if ($saveRoots -notcontains $entry.root) { throw "Unknown save folder in ${StatePath}: $($entry.root)" }
+        $original = Join-Path $entry.root $entry.name
+        $hidden = Join-Path $entry.root $entry.hiddenName
+        if (Test-Path -LiteralPath $hidden) {
+            if ((Get-Sha256 $hidden) -ne $entry.sha256) { throw "Hidden save changed; transaction kept for inspection: $hidden" }
+        } elseif ((Test-Path -LiteralPath $original) -and (Get-Sha256 $original) -eq $entry.sha256) {
+            $restored[$original] = $true
+        } else {
+            throw "Original save is missing or changed; transaction kept. Backup: $($entry.backup)"
+        }
+    }
+    $moved = 0
+    for ($rootIndex = 0; $rootIndex -lt $saveRoots.Count; $rootIndex++) {
+        $runSaves = Join-Path $state.stage "run-saves\root$rootIndex"
+        foreach ($save in Get-VisibleSaves $saveRoots[$rootIndex]) {
+            if ($restored.ContainsKey((Join-Path $saveRoots[$rootIndex] $save.Name))) { continue }
+            New-Item -ItemType Directory -Force -Path $runSaves -ErrorAction Stop | Out-Null
+            $target = Join-Path $runSaves $save.Name
+            if (Test-Path -LiteralPath $target) { throw "Run save already exists; transaction kept for inspection: $target" }
+            Move-Item -LiteralPath $save.FullName -Destination $target -ErrorAction Stop
+            $moved++
+        }
+    }
+    foreach ($entry in $entries) {
+        $original = Join-Path $entry.root $entry.name
+        $hidden = Join-Path $entry.root $entry.hiddenName
+        if (Test-Path -LiteralPath $hidden) { Move-Item -LiteralPath $hidden -Destination $original -ErrorAction Stop }
+        if ((Get-Sha256 $original) -ne $entry.sha256) { throw "Restored save hash mismatch: $original" }
+    }
+    Remove-Item -LiteralPath $StatePath -ErrorAction Stop
+    return [pscustomobject]@{ restored = $entries.Count; runSavesMoved = $moved; stage = $state.stage }
+}
+
 # ---------------------------------------------------------------- evidence
 
 function New-EvidenceReader {
@@ -288,6 +461,7 @@ function New-TestContext {
     $logDirectory = [Environment]::ExpandEnvironmentVariables([string]$Config.sfseLogDirectory)
     $context = @{
         Config = $Config; RunId = $RunId; RunDirectory = $RunDirectory; Process = $null
+        ExpectedSave = ''; VisibleSaves = ''
         Evidence = New-EvidenceReader -Path (Join-Path $logDirectory 'AbsoluteControlPanel.evidence.jsonl') -RunId $RunId
         MailboxPath = Join-Path $logDirectory "AbsoluteControlPanelResearch.$RunId.input"
         AdvancePath = Join-Path $logDirectory "AbsoluteControlPanelResearch.$RunId.advance"
@@ -456,7 +630,8 @@ function Invoke-GameCommand {
 # ---------------------------------------------------------------- game lifecycle
 
 function Start-GameSession {
-    # Launches the profile through MO2, advances the title screen and continues the latest save.
+    # Launches the profile through MO2, advances the title screen and continues the newest
+    # visible save, which is the staged fixture when the run selected one.
     param([hashtable]$Context)
     $config = $Context.Config
     if (Get-Process -Name $config.processName -ErrorAction SilentlyContinue) { throw 'Starfield is already running.' }
@@ -480,6 +655,13 @@ function Start-GameSession {
     [void](Wait-Evidence -Context $Context -Event 'research_input_mailbox_registered' `
         -DetailContains (Split-Path -Leaf $Context.MailboxPath) -TimeoutSeconds $config.titleTimeoutSeconds)
     Write-RunnerEvent $Context 'data_loaded'
+    if ($Context.ExpectedSave) {
+        $listing = Invoke-GameCommand -Context $Context -Command "list_saves:$($config.overlaySaveDirectory)"
+        $detail = [string]$listing.detail
+        $Context.VisibleSaves = $detail.Substring($detail.IndexOf(' count=') + 1)
+        Write-RunnerEvent $Context 'saves_visible' $Context.VisibleSaves
+        Assert-VisibleSaves -Reported $Context.VisibleSaves -Expected $Context.ExpectedSave
+    }
     [void](Save-GameScreenshot -Context $Context -Path (Join-Path $Context.RunDirectory 'title.png'))
     if (-not (Set-GameForeground $Context)) { throw 'Refusing to press Enter at the title: Starfield is not the foreground window.' }
     [System.IO.File]::WriteAllText($Context.AdvancePath, [DateTimeOffset]::UtcNow.ToString('o'), $script:Utf8NoBom)
@@ -627,9 +809,10 @@ function Save-RunArtifacts {
 }
 
 function Write-TestReport {
-    param([hashtable]$Context, $Suite, $Results, [string]$Shutdown, $Deployed, [string[]]$Dumps, [string]$FatalError)
+    param([hashtable]$Context, $Suite, $Results, [string]$Shutdown, $Deployed, [string[]]$Dumps, [string]$FatalError,
+        [string]$Save = 'latest (not pinned)')
     $summary = [ordered]@{
-        suite = $Suite.name; runId = $Context.RunId; profile = $Context.Config.profile
+        suite = $Suite.name; runId = $Context.RunId; profile = $Context.Config.profile; save = $Save; savesVisibleToGame = $Context.VisibleSaves
         finished = [DateTimeOffset]::UtcNow.ToString('o'); shutdown = $Shutdown; fatalError = $FatalError
         passed = @($Results | Where-Object status -eq 'passed').Count
         failed = @($Results | Where-Object { $_.status -in @('failed', 'crashed') }).Count
@@ -639,6 +822,9 @@ function Write-TestReport {
     [System.IO.File]::WriteAllText((Join-Path $Context.RunDirectory 'result.json'), ($summary | ConvertTo-Json -Depth 6), $script:Utf8NoBom)
     $markdown = New-Object System.Collections.Generic.List[string]
     $markdown.Add("# $($Suite.name) - $($Context.RunId)")
+    $markdown.Add('')
+    $markdown.Add("Save: $Save.")
+    if ($Context.VisibleSaves) { $markdown.Add(''); $markdown.Add("Saves the game could see: $($Context.VisibleSaves)") }
     $markdown.Add('')
     $markdown.Add("Profile: $($Context.Config.profile). Passed $($summary.passed), failed $($summary.failed), not run $($summary.notRun). Shutdown: $Shutdown.")
     if ($FatalError) { $markdown.Add(''); $markdown.Add("**Run error:** $FatalError") }

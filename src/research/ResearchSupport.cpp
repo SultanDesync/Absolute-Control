@@ -685,6 +685,30 @@ namespace AbsoluteControlPanelResearch::ResearchSupport
                     });
                     return;
                 }
+                // Lists a save folder from inside the game's process, under MO2's virtual
+                // filesystem, so the runner sees what the game can see: list_saves:<folder>.
+                if (command.starts_with("list_saves:")) {
+                    a_lastCommandId = commandId;
+                    std::error_code listError;
+                    std::vector<std::string> names;
+                    for (const auto& entry : std::filesystem::directory_iterator{ command.substr(11), listError }) {
+                        if (entry.path().extension() == ".sfs") names.push_back(entry.path().filename().string());
+                    }
+                    if (listError) {
+                        EvidenceLog::Event("research_input_rejected",
+                            std::format("id={} command={} reason=list_failed error={}", commandId, command, listError.value()));
+                        return;
+                    }
+                    std::ranges::sort(names);
+                    std::string joined;
+                    for (const auto& name : names) {
+                        if (!joined.empty()) joined += '|';
+                        joined += name;
+                    }
+                    EvidenceLog::Event("research_probe_command_dispatched",
+                        std::format("id={} command={} count={} names={}", commandId, command, names.size(), joined));
+                    return;
+                }
                 // Generic page smoke for the test runner: open_page:<module>/<page>.
                 if (command.starts_with("open_page:")) {
                     a_lastCommandId = commandId;

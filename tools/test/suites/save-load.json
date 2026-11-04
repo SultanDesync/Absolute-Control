@@ -1,0 +1,15 @@
+{
+  "name": "save-load",
+  "description": "Loads a save and records what it shows. Pick the save with -Fixture.",
+  "tests": [
+    {
+      "id": "save-loads",
+      "description": "The save reaches the HUD and stays up for 10 seconds without a crash or dialog, then a screenshot records the scene.",
+      "steps": [
+        { "expect": "active_menu_insert_completed", "detail": "name=HUDMenu ", "since": "run" },
+        { "waitMs": 10000 },
+        { "screenshot": "scene" }
+      ]
+    }
+  ]
+}

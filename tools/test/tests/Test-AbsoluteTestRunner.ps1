@@ -32,6 +32,8 @@ try {
     Check (Throws { Read-TestSuite $bad }) 'a step with two kinds is rejected'
     [System.IO.File]::WriteAllText($bad, '{"name":"x","tests":[{"id":"a","steps":[]},{"id":"a","steps":[]}]}', $utf8)
     Check (Throws { Read-TestSuite $bad }) 'duplicate test ids are rejected'
+    Check ($suite.fixture -eq 'pilot-seated-control-v2') 'menu-regression pins its save'
+    Check ((Read-TestSuite (Join-Path $PSScriptRoot '..\suites\save-load.json')).name -eq 'save-load') 'save-load suite parses'
 
     Write-Host 'INI rewriting'
     $ini = Set-IniValues -Lines @('; header', '[ControlPanel]', 'RunId=old', 'EnableMainMenuEntry=true', '[Other]', 'RunId=keep') `
@@ -49,7 +51,7 @@ try {
     [System.IO.File]::WriteAllText($modList, ("# generated`r`n+AbsoluteHOTAS 5.2.1`r`n+Absolute Control 1.0.0-dev rewrite`r`n" +
         "-Absolute Control test-hooks`r`n+SFSE`r`n*Unmanaged: X`r`n"), $utf8)
     $config = [pscustomobject]@{ mo2Executable = 'x'; mo2BaseDirectory = $base; profile = 'Test Profile'; mo2Shortcut = 'sfse_loader'
-        testModName = 'Absolute Control test-hooks'; processName = 'Starfield'; sfseLogDirectory = $root; gameDirectory = ''
+        testModName = 'Absolute Control test-hooks'; processName = 'Starfield'; sfseLogDirectory = $root; overlaySaveDirectory = (Join-Path $root 'overlay'); gameDirectory = ''
         artifactRoot = ''; conflictingModPatterns = @('Absolute Control*', 'AbsoluteControlPanel*'); killOnTimeout = $true
         launchTimeoutSeconds = 1; titleTimeoutSeconds = 1; loadTimeoutSeconds = 1; shutdownTimeoutSeconds = 1; commandTimeoutSeconds = 1 }
     $problems = @(Test-ProfileReadiness $config)
@@ -75,6 +77,88 @@ try {
     Check ($deployedIni -contains 'RunId=run-42' -and $deployedIni -contains 'AdvanceTitleWithSendInput=true') 'deployed INI carries the run id and title advance'
     Check ($deployed.Count -eq 4) 'DLL, PDB, SWF and INI are deployed and hashed'
     Check (Test-Path (Join-Path (Get-TestModDirectory $config) 'meta.ini')) 'meta.ini is created for MO2'
+
+    Write-Host 'Save fixtures'
+    $noGame = 'absolute-test-no-such-process'
+    $saveRoot = Join-Path $profileDir 'saves'
+    $stageRoot = Join-Path $root 'stage'
+    $fixtureDir = Join-Path $root 'catalogued'
+    $overlayRoot = $config.overlaySaveDirectory
+    New-Item -ItemType Directory -Force -Path $saveRoot, $overlayRoot, $stageRoot, $fixtureDir | Out-Null
+    function Write-Save { param([string]$Path, [string]$Text) [System.IO.File]::WriteAllText($Path, $Text, $utf8) }
+    function Get-VisibleNames { @(@($saveRoot, $overlayRoot) | ForEach-Object { Get-VisibleSaves $_ } | ForEach-Object Name | Sort-Object) -join ',' }
+    $originalNames = 'SaveA.sfs,SaveA.sfs,SaveB.sfs,Stray.sfs'
+    Write-Save (Join-Path $saveRoot 'SaveA.sfs') 'original A'
+    Write-Save (Join-Path $saveRoot 'SaveB.sfs') 'original B'
+    Write-Save (Join-Path $saveRoot 'SaveC.sfs.research-run-old') 'retired copy from the old harness'
+    Write-Save (Join-Path $overlayRoot 'Stray.sfs') 'a newer save from another character'
+    Write-Save (Join-Path $overlayRoot 'SaveA.sfs') 'overlay A'
+    $fixtureFile = Join-Path $fixtureDir 'Seated.sfs'
+    Write-Save $fixtureFile 'seated save'
+    $fixtureHash = Get-Sha256 $fixtureFile
+    $catalogPath = Join-Path $root 'fixtures.local.json'
+    $catalogJson = @{ schemaVersion = 1; saveStageRoot = $stageRoot; fixtures = @(@{ id = 'seated'; file = $fixtureFile; sha256 = $fixtureHash; description = 'x' }) } | ConvertTo-Json -Depth 4
+    [System.IO.File]::WriteAllText($catalogPath, $catalogJson, $utf8)
+    $catalog = Read-SaveCatalog $catalogPath
+    Check ((Find-SaveFixture -Catalog $catalog -Id 'seated').sha256 -eq $fixtureHash) 'catalog parses and finds a fixture'
+    $badCatalog = Join-Path $root 'bad-catalog.json'
+    [System.IO.File]::WriteAllText($badCatalog, ('{"saveStageRoot":"x","fixtures":[{"id":"a","file":"f","sha256":"1"},{"id":"a","file":"f","sha256":"1"}]}'), $utf8)
+    Check (Throws { Read-SaveCatalog $badCatalog }) 'duplicate fixture ids are rejected'
+    [System.IO.File]::WriteAllText($badCatalog, ('{"saveStageRoot":"x","fixtures":[{"id":"a","file":"f"}]}'), $utf8)
+    Check (Throws { Read-SaveCatalog $badCatalog }) 'a fixture without a hash is rejected'
+    [System.IO.File]::WriteAllText((Join-Path $profileDir 'settings.ini'), "[General]`r`nLocalSaves=false`r`n", $utf8)
+    Check ([bool](@(Get-SaveFixtureProblems -Config $config -Catalog $catalog -Id 'seated') -like '*local saves*')) 'a profile without local saves is refused'
+    [System.IO.File]::WriteAllText((Join-Path $profileDir 'settings.ini'), "[General]`r`nLocalSaves=true`r`n", $utf8)
+    Check (@(Get-SaveFixtureProblems -Config $config -Catalog $catalog -Id 'seated').Count -eq 0) 'a good fixture has no problems'
+    Check (@(Get-SaveRoots $config).Count -eq 2) 'the game sees the profile saves and the overlay folder'
+    $noOverlay = $config.PSObject.Copy()
+    $noOverlay.overlaySaveDirectory = Join-Path $root 'missing'
+    Check (@(Get-SaveRoots $noOverlay).Count -eq 1) 'a missing overlay folder is skipped'
+    Check (-not (Throws { Assert-VisibleSaves -Reported 'count=1 names=Seated.sfs' -Expected 'Seated.sfs' })) 'the fixture alone passes the visibility check'
+    Check (Throws { Assert-VisibleSaves -Reported 'count=2 names=Seated.sfs|Stray.sfs' -Expected 'Seated.sfs' }) 'another visible save fails the run'
+    Check (Throws { Assert-VisibleSaves -Reported 'count=1 names=Stray.sfs' -Expected 'Seated.sfs' }) 'a different visible save fails the run'
+    Check (Throws { Assert-VisibleSaves -Reported 'count=0 names=' -Expected 'Seated.sfs' }) 'no visible save fails the run'
+    Check ([bool](@(Get-SaveFixtureProblems -Config $config -Catalog $catalog -Id 'nope') -like '*Available: seated*')) 'an unknown fixture lists the available ids'
+    $tampered = Read-SaveCatalog $catalogPath
+    @($tampered.fixtures)[0].sha256 = 'ABC'
+    Check ([bool](@(Get-SaveFixtureProblems -Config $config -Catalog $tampered -Id 'seated') -like '*recorded hash*')) 'a changed fixture file is refused'
+    $statePath = Get-SaveStageStatePath $config
+    function Enter-Stage { param([string]$RunId, [string]$Process = $noGame, [string]$Hash = $fixtureHash)
+        Enter-SaveStage -SaveRoots (Get-SaveRoots $config) -FixtureFile $fixtureFile -FixtureHash $Hash -StageRoot $stageRoot -RunId $RunId `
+            -StatePath $statePath -ProcessName $Process }
+    Check (Throws { Enter-Stage 'run-running' -Process (Get-Process -Id $PID).ProcessName }) 'staging is refused while the game is running'
+    Check (Throws { Enter-Stage 'run-badhash' -Hash 'ABC' }) 'staging is refused when the fixture hash differs'
+    Check ((Get-VisibleNames) -eq $originalNames) 'a refused stage changes nothing'
+    $stage = Enter-Stage 'run-1'
+    Check ((Get-VisibleNames) -eq 'Seated.sfs') 'the fixture is the only visible save, including the overlay folder'
+    Check ((Test-Path $statePath) -and (Test-Path (Join-Path $stage.stage 'root0\SaveA.sfs')) -and (Test-Path (Join-Path $stage.stage 'root1\Stray.sfs')) -and (Test-Path (Join-Path $stage.stage 'manifest.json'))) 'originals are backed up and recovery information is written'
+    Check (Throws { Enter-Stage 'run-2' }) 'a second stage is refused while one is open'
+    Write-Save (Join-Path $saveRoot 'Exitsave0.sfs') 'made during the run'
+    Write-Save (Join-Path $overlayRoot 'Autosave9.sfs') 'also made during the run'
+    Check (Throws { Exit-SaveStage -StatePath $statePath -ProcessName (Get-Process -Id $PID).ProcessName }) 'restoring is refused while the game is running'
+    $restored = Exit-SaveStage -StatePath $statePath -ProcessName $noGame
+    Check ((Get-VisibleNames) -eq $originalNames) 'originals are back in both folders and nothing else is visible'
+    Check ([System.IO.File]::ReadAllText((Join-Path $saveRoot 'SaveA.sfs')) -eq 'original A' -and [System.IO.File]::ReadAllText((Join-Path $overlayRoot 'SaveA.sfs')) -eq 'overlay A') 'same-named originals in both folders keep their contents'
+    Check ($restored.restored -eq 4 -and $restored.runSavesMoved -eq 3 -and (Test-Path (Join-Path $stage.stage 'run-saves\root0\Exitsave0.sfs')) -and (Test-Path (Join-Path $stage.stage 'run-saves\root1\Autosave9.sfs')) -and (Test-Path (Join-Path $stage.stage 'run-saves\root0\Seated.sfs'))) 'the fixture copy and new saves move to the stage folder'
+    Check ((-not (Test-Path $statePath)) -and (Test-Path (Join-Path $saveRoot 'SaveC.sfs.research-run-old'))) 'the transaction closes and other files are untouched'
+    Write-Save (Join-Path $saveRoot 'Seated.sfs') 'an unrelated save with the same name'
+    $stage = Enter-Stage 'run-3'
+    Check ([System.IO.File]::ReadAllText((Join-Path $saveRoot 'Seated.sfs')) -eq 'seated save') 'a same-named original is hidden, not overwritten'
+    [void](Exit-SaveStage -StatePath $statePath -ProcessName $noGame)
+    Check ([System.IO.File]::ReadAllText((Join-Path $saveRoot 'Seated.sfs')) -eq 'an unrelated save with the same name') 'a same-named original comes back'
+    Remove-Item -LiteralPath (Join-Path $saveRoot 'Seated.sfs')
+    $stage = Enter-Stage 'run-4'
+    $hiddenB = @($stage.entries | Where-Object name -eq 'SaveB.sfs')[0].hiddenName
+    Remove-Item -LiteralPath (Join-Path $saveRoot 'Seated.sfs')
+    Move-Item -LiteralPath (Join-Path $saveRoot $hiddenB) -Destination (Join-Path $saveRoot 'SaveB.sfs')
+    $restored = Exit-SaveStage -StatePath $statePath -ProcessName $noGame
+    Check ((Get-VisibleNames) -eq $originalNames -and $restored.runSavesMoved -eq 0) 'an interrupted restore finishes without moving restored originals'
+    $stage = Enter-Stage 'run-5'
+    $hiddenA = @($stage.entries | Where-Object name -eq 'SaveA.sfs')[0].hiddenName
+    Write-Save (Join-Path $saveRoot $hiddenA) 'changed while hidden'
+    Check (Throws { Exit-SaveStage -StatePath $statePath -ProcessName $noGame }) 'a changed hidden save stops the restore'
+    Check ((Test-Path $statePath) -and (Get-VisibleNames) -eq 'Seated.sfs') 'a stopped restore moves nothing and keeps the transaction'
+    Remove-Item -LiteralPath $statePath
 
     Write-Host 'Mailbox'
     $mailbox = Join-Path $root 'AbsoluteControlPanelResearch.run-42.input'
@@ -140,8 +224,10 @@ try {
     Check ($results[1].status -eq 'not_run') 'tests after a crash are not run'
     $moved = @(Save-RunArtifacts $context)
     Check ($moved.Count -eq 1 -and -not (Test-Path (Join-Path $dumpDir 'Starfield_test.dmp'))) 'the dump is moved out of overwrite into the run folder'
-    $summary = Write-TestReport -Context $context -Suite $crashing -Results $results -Shutdown 'not_started' -Deployed $deployed -Dumps $moved -FatalError ''
+    $context.VisibleSaves = 'count=1 names=Seated.sfs'
+    $summary = Write-TestReport -Context $context -Suite $crashing -Results $results -Shutdown 'not_started' -Deployed $deployed -Dumps $moved -FatalError '' -Save 'seated (ABC)'
     Check ($summary.failed -eq 1 -and $summary.notRun -eq 1) 'the report counts failures and not-run tests'
+    Check ($summary.save -eq 'seated (ABC)' -and [System.IO.File]::ReadAllText((Join-Path $root 'report.md')).Contains('Saves the game could see: count=1 names=Seated.sfs')) 'the report names the staged save and what the game could see'
     Check ((Test-Path (Join-Path $root 'report.md')) -and (Test-Path (Join-Path $root 'result.json'))) 'report.md and result.json are written'
 } finally {
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
