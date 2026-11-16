@@ -1,6 +1,6 @@
 {
   "name": "ship-loop",
-  "description": "The ship control loop on the input bus, driven by the fake test device: bindings resolve, buttons report intents while seated, and getting up closes the gate. Needs a profile without AbsoluteHOTAS.",
+  "description": "The ship control loop on the input bus, driven by the fake test device: bindings resolve, buttons report intents and press their key while seated, and getting up closes the gate. Needs a profile without AbsoluteHOTAS, and the game window in focus: the gate stays shut without it.",
   "fixture": "pilot-seated-control-v2",
   "testInput": true,
   "tests": [
@@ -8,7 +8,8 @@
       "id": "bus-and-bindings",
       "description": "The loop starts, sees the test device, and reports the one binding it can't resolve.",
       "steps": [
-        { "expect": "control_loop_started", "since": "run" },
+        { "expect": "control_loop_started", "detail": "output=sendinput", "since": "run" },
+        { "expect": "ship_outputs_resolved", "detail": "actions=23", "since": "run" },
         { "expect": "input_device", "detail": "name=Absolute Test Stick", "since": "run" },
         { "expect": "ship_bindings_resolved", "detail": ["enabled=1", "bound=2", "problems=1"], "since": "run" },
         { "expect": "ship_binding", "detail": ["action=Repair", "status=device_missing"], "since": "run" }
@@ -16,14 +17,16 @@
     },
     {
       "id": "button-while-seated",
-      "description": "With the gate open, a button reports held and released intents for its action.",
+      "description": "With the gate open, a button reports held and released intents for its action and presses its key. The fixture's ShipAction1 key is R (scan code 0x13) unless the profile rebinds it.",
       "steps": [
         { "expect": "ship_gate", "detail": "open=1", "since": "run", "timeoutSeconds": 15 },
         { "command": "test_button:18:1" },
         { "expect": "ship_action_intent", "detail": ["action=ShipAction1", "held=1"], "timeoutSeconds": 2 },
+        { "expect": "ship_output", "detail": ["kind=key", "down=1", "sent=1"], "timeoutSeconds": 2 },
         { "waitMs": 300 },
         { "command": "test_button:18:0" },
-        { "expect": "ship_action_intent", "detail": ["action=ShipAction1", "held=0"], "timeoutSeconds": 2 }
+        { "expect": "ship_action_intent", "detail": ["action=ShipAction1", "held=0"], "timeoutSeconds": 2 },
+        { "expect": "ship_output", "detail": ["kind=key", "down=0", "sent=1"], "timeoutSeconds": 2 }
       ]
     },
     {
@@ -37,6 +40,7 @@
         { "command": "test_button:1:0" },
         { "waitMs": 300 },
         { "absent": "ship_action_intent", "detail": "action=FireWeapon0", "since": "run" },
+        { "absent": "ship_output", "detail": "kind=mouse", "since": "run" },
         { "screenshot": "after-get-up" }
       ]
     }

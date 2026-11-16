@@ -3,10 +3,13 @@
 #include "runtime/PilotSignal.h"
 #include "runtime/ShipBindings.h"
 #include "runtime/ShipControlCore.h"
+#include "runtime/ShipOutputs.h"
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <format>
+#include <initializer_list>
 #include <iostream>
 #include <set>
 #include <string>
@@ -463,12 +466,158 @@ namespace
         }
         return true;
     }
+
+    // One section of ControlMap_Custom.txt: 0x03, a big-endian length, then records.
+    std::vector<std::uint8_t> Section(std::initializer_list<ControlMap::Record> records)
+    {
+        std::vector<std::uint8_t> body;
+        for (const auto& record : records) {
+            body.insert(body.end(), record.context.begin(), record.context.end());
+            body.push_back(0);
+            body.insert(body.end(), record.action.begin(), record.action.end());
+            body.push_back(0);
+            for (int shift = 0; shift < 32; shift += 8) body.push_back(static_cast<std::uint8_t>(record.device >> shift));
+            body.push_back(static_cast<std::uint8_t>(record.token));
+            body.push_back(static_cast<std::uint8_t>(record.token >> 8));
+            body.push_back(record.flag);
+            body.push_back(0);
+        }
+        const auto length = body.size() + 3;
+        std::vector<std::uint8_t> section{ 0x03, static_cast<std::uint8_t>(length >> 8), static_cast<std::uint8_t>(length) };
+        section.insert(section.end(), body.begin(), body.end());
+        return section;
+    }
+
+    bool TestControlMap()
+    {
+        CHECK(ControlMap::Parse({}).valid && ControlMap::Parse({}).records.empty());
+        CHECK(!ControlMap::ReadFile("no-such-control-map.txt").valid);
+
+        // Keyboard and mouse sit in separate sections; a gamepad record (device 2) is dropped.
+        auto bytes = Section({ { "ShipHUD", "Cruise", 1, 0x004B, 0 }, { "ShipHUD", "Cruise", 2, 0x0001, 0 },
+            { "ShipHUD", "RepairShip", 1, ControlMap::kUnboundToken, 0 } });
+        const auto mouse = Section({ { "ShipHUD", "RepairShip", 1, 0x0002, 1 },
+            { "ShipHUD", "Boosters", 1, ControlMap::kUnboundToken, 0 } });
+        bytes.insert(bytes.end(), mouse.begin(), mouse.end());
+        const auto file = ControlMap::Parse(bytes);
+        CHECK(file.valid && file.records.size() == 4);
+
+        const ControlMap::Output vanilla{ ShipActionOutputKind::Keyboard, 0x14, false };
+        // Rebound to K: the scan code comes from this machine's keyboard layout.
+        const auto cruise = ControlMap::ResolveBinding(file.records, "ShipHUD", "Cruise", vanilla);
+        CHECK(cruise.kind == ShipActionOutputKind::Keyboard && cruise.code != 0x14 && !cruise.extended);
+        CHECK(cruise.code == ControlMap::TokenToOutput(0x004B).code);
+        // Primary unbound, alternate on the middle mouse button.
+        const auto repair = ControlMap::ResolveBinding(file.records, "ShipHUD", "RepairShip", vanilla);
+        CHECK(repair.kind == ShipActionOutputKind::Mouse && repair.code == 3);
+        // Unbound with no alternate, and never rebound.
+        CHECK(ControlMap::ResolveBinding(file.records, "ShipHUD", "Boosters", vanilla).kind == ShipActionOutputKind::None);
+        CHECK(ControlMap::ResolveBinding(file.records, "ShipHUD", "TogglePOV", vanilla).code == 0x14);
+        CHECK(ControlMap::HasPrimary(file.records, "ShipHUD", "Cruise"));
+        CHECK(!ControlMap::HasPrimary(file.records, "ShipHUD", "TogglePOV"));
+
+        const auto left = ControlMap::TokenToOutput(0x0025);
+        CHECK(left.kind == ShipActionOutputKind::Keyboard && left.code == 0x4B && left.extended);
+        CHECK(ControlMap::TokenToOutput(0x0000).kind == ShipActionOutputKind::Mouse);
+        CHECK(ControlMap::TokenToOutput(ControlMap::kUnboundToken).kind == ShipActionOutputKind::None);
+
+        // Truncated or mislabelled bytes are invalid, keeping what parsed before them.
+        auto truncated = bytes;
+        truncated.resize(truncated.size() - 4);
+        CHECK(!ControlMap::Parse(truncated).valid);
+        auto mislabelled = bytes;
+        mislabelled[0] = 0x04;
+        CHECK(!ControlMap::Parse(mislabelled).valid);
+        return true;
+    }
+
+    std::size_t ActionIndex(std::string_view actionId)
+    {
+        return static_cast<std::size_t>(FindShipAction(actionId) - kShipActionCatalog.data());
+    }
+
+    bool TestOutputs()
+    {
+        CHECK(ParseShipOutput(" KEY:0x13 ")->code == 0x13 && !ParseShipOutput("key:0x13")->extended);
+        CHECK(ParseShipOutput("key:72")->extended);
+        CHECK(ParseShipOutput("mouse:4")->kind == ShipActionOutputKind::Mouse);
+        CHECK(ParseShipOutput("none")->kind == ShipActionOutputKind::None);
+        CHECK(!ParseShipOutput("") && !ParseShipOutput("key:0") && !ParseShipOutput("mouse:5") &&
+            !ParseShipOutput("key:0x1FFFF") && !ParseShipOutput("R"));
+
+        const auto file = ControlMap::Parse(Section({ { "ShipHUD", "Cruise", 1, 0x004B, 0 },
+            { "ShipHUD", "Up", 1, 0x004B, 0 }, { "ShipHUD", "RepairShip", 1, 0x004B, 0 } }));
+        IniValues ini;
+        ini.Merge("[ShipButtonOutputs]\nsRepairOutput = key:0x21\nsTogglePovOutput = nonsense\n");
+        auto outputs = ResolveShipOutputs(ini, file.records);
+        CHECK(outputs.size() == kShipActionCatalog.size());
+        // Untouched actions press the game's default.
+        const auto& action1 = outputs[ActionIndex("ShipAction1")];
+        CHECK(action1.output.code == 0x13 && action1.source == KeyboardResolutionSource::VanillaFallback);
+        const auto& fire = outputs[ActionIndex("FireWeapon0")];
+        CHECK(fire.output.kind == ShipActionOutputKind::Mouse && fire.output.code == 1);
+        // The player's rebind wins over the default, and an explicit output over both.
+        const auto& cruise = outputs[ActionIndex("Cruise")];
+        CHECK(cruise.output.code == ControlMap::TokenToOutput(0x004B).code &&
+            cruise.source == KeyboardResolutionSource::ControlMapCustom);
+        const auto& repair = outputs[ActionIndex("Repair")];
+        CHECK(repair.output.code == 0x21 && repair.source == KeyboardResolutionSource::LegacyManualOverride);
+        // An output that doesn't parse changes nothing.
+        CHECK(outputs[ActionIndex("TogglePov")].output.code == 0x10);
+        // Context actions keep the game's fixed key whatever the rebinds say.
+        const auto& power = outputs[ActionIndex("IncreaseSystemPower")];
+        CHECK(power.output.code == 0x48 && power.output.extended && power.source == KeyboardResolutionSource::FixedContext);
+
+        ini.Merge("[General]\nbSyncShipOutputsFromControlMap = false\n");
+        outputs = ResolveShipOutputs(ini, file.records);
+        CHECK(outputs[ActionIndex("Cruise")].output.code == 0x14);
+        return true;
+    }
+
+    bool TestHeldOutputs()
+    {
+        std::vector<std::string> sent;
+        HeldOutputs held([&](const ShipActionOutputSpec& output, bool down) {
+            sent.push_back(std::format("{}:{:02X}:{}", output.kind == ShipActionOutputKind::Mouse ? "mouse" : "key",
+                output.code, down ? 1 : 0));
+        });
+        const ShipActionOutputSpec space{ ShipActionOutputKind::Keyboard, 0x39, false };
+        const ShipActionOutputSpec fire{ ShipActionOutputKind::Mouse, 1, false };
+
+        // Two actions share Space: it goes down once and up when the last lets go.
+        held.Set(space, 1, true);
+        held.Set(space, 2, true);
+        held.Set(space, 2, true);
+        held.Set(space, 1, false);
+        CHECK(sent == std::vector<std::string>{ "key:39:1" });
+        held.Set(space, 2, false);
+        CHECK(sent.back() == "key:39:0" && sent.size() == 2 && !held.Any());
+
+        // Releasing what isn't held, or an action with no output, sends nothing.
+        held.Set(space, 1, false);
+        held.Set({}, 1, true);
+        CHECK(sent.size() == 2);
+
+        // The numpad and arrow keys share scan codes and differ only by the extended flag.
+        held.Set({ ShipActionOutputKind::Keyboard, 0x48, true }, 1, true);
+        held.Set({ ShipActionOutputKind::Keyboard, 0x48, false }, 2, true);
+        CHECK(sent.size() == 4);
+
+        held.Set(fire, 3, true);
+        held.ReleaseAll();
+        CHECK(sent.size() == 8 && !held.Any());
+        CHECK(std::ranges::count(sent, std::string("mouse:01:0")) == 1);
+        held.ReleaseAll();
+        CHECK(sent.size() == 8);
+        return true;
+    }
 }
 
 int main()
 {
     if (!TestIni() || !TestTokens() || !TestCatalogAndLoad() || !TestPilotSignal() ||
-        !TestRouter() || !TestCore() || !TestCoreConfigProblems()) return 1;
+        !TestRouter() || !TestCore() || !TestCoreConfigProblems() || !TestControlMap() ||
+        !TestOutputs() || !TestHeldOutputs()) return 1;
     std::cout << "ship control tests passed\n";
     return 0;
 }

@@ -5,6 +5,7 @@
 #include "runtime/PilotSignal.h"
 #include "runtime/ShipBindings.h"
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -29,10 +30,16 @@ namespace AbsoluteControl::Runtime
         void Tick(const DeviceStore& devices, const PilotObservation& observation, std::uint64_t now);
         [[nodiscard]] bool GateOpen() const noexcept { return gateOpen_; }
 
-        // One extra axis read off the bus each tick. Nothing is read when it's unbound.
-        void SetAxisBinding(ConfiguredBinding binding);
+        // Axes read off the bus each tick. Slot 0 is the walk speed axis and the rest are
+        // flight axes. Nothing is read for a slot that's unbound.
+        static constexpr std::size_t kAxisSlots = 8;
+        void SetAxisBinding(ConfiguredBinding binding) { SetAxisBinding(0, std::move(binding)); }
+        void SetAxisBinding(std::size_t slot, ConfiguredBinding binding);
         // -1 to 1, or nothing if the axis is unbound, missing, stale or has no known range.
-        [[nodiscard]] std::optional<double> AxisValue() const noexcept { return axisValue_; }
+        [[nodiscard]] std::optional<double> AxisValue(std::size_t slot = 0) const noexcept
+        {
+            return slot < axes_.size() ? axes_[slot].value : std::nullopt;
+        }
 
     private:
         struct Resolved
@@ -45,9 +52,13 @@ namespace AbsoluteControl::Runtime
         void Reconcile(const DeviceStore& devices);
         void SampleButtons(const DeviceStore& devices, std::uint64_t now);
 
-        ConfiguredBinding axisBinding_;
-        Resolved axisResolved_;
-        std::optional<double> axisValue_;
+        struct AxisSlot
+        {
+            ConfiguredBinding binding;
+            Resolved resolved;
+            std::optional<double> value;
+        };
+        std::array<AxisSlot, kAxisSlots> axes_;
         ShipBindingConfig config_;
         ActionSink sink_;
         ControlLog log_;

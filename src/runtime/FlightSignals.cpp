@@ -38,8 +38,10 @@ namespace AbsoluteControl::Runtime
                 }
                 if (const auto* manager = *reinterpret_cast<const char* const*>(roots.manager)) {
                     signals.active = ReadField<std::uint8_t>(manager, 0x1D4);
+                    signals.managerAddress = reinterpret_cast<std::uintptr_t>(manager);
                     if (const auto* cluster = ReadField<const char*>(manager, 0x208)) {
                         signals.cluster = 1;
+                        signals.clusterAddress = reinterpret_cast<std::uintptr_t>(cluster);
                         signals.manual = ReadField<float>(cluster, 0x68);
                         signals.effective = ReadField<float>(cluster, 0x6C);
                         signals.speed = ReadField<float>(cluster, 0x70);

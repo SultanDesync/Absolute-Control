@@ -89,14 +89,18 @@ local release_sources = {
     "src/interop/OSFUICompatibility.cpp",
     "src/runtime/ProbeRuntimeState.cpp",
     "src/runtime/BackendRuntime.cpp",
+    "src/runtime/ControlMapReader.cpp",
     "src/runtime/DeviceStore.cpp",
     "src/runtime/DirectInputProvider.cpp",
+    "src/runtime/FlightAxes.cpp",
+    "src/runtime/FlightOutput.cpp",
     "src/runtime/FlightSignals.cpp",
     "src/runtime/LegacyHotasToken.cpp",
     "src/runtime/RuntimeCompatibility.cpp",
     "src/runtime/ShipBindings.cpp",
     "src/runtime/ShipControlCore.cpp",
     "src/runtime/ShipControlLoop.cpp",
+    "src/runtime/ShipOutputs.cpp",
     "src/runtime/AxisCapture.cpp",
     "src/runtime/WalkSpeed.cpp",
     "src/runtime/WalkSpeedRuntime.cpp",
@@ -133,6 +137,7 @@ local function configure_control_panel_plugin(plugin_name, description)
 
     add_control_panel_core_sources()
     add_links("dinput8", "dxguid")
+    add_syslinks("user32", "shell32", "ole32")
     add_headerfiles("include/(**.h)")
     -- This generated overlay shadows only RE/IDs.h. The upstream submodule remains pristine,
     -- and any upstream text change makes configuration fail instead of silently mispatching.
@@ -214,9 +219,20 @@ target("ship_control_test", function()
     set_default(false)
     add_tests("bindings_pilot_signal_and_routing")
     add_includedirs("include")
-    add_files("src/runtime/DeviceStore.cpp", "src/runtime/LegacyHotasToken.cpp",
-        "src/runtime/ShipBindings.cpp", "src/runtime/ShipControlCore.cpp",
+    add_files("src/runtime/ControlMapReader.cpp", "src/runtime/DeviceStore.cpp",
+        "src/runtime/LegacyHotasToken.cpp", "src/runtime/ShipBindings.cpp",
+        "src/runtime/ShipControlCore.cpp", "src/runtime/ShipOutputs.cpp",
         "tests/ShipControlTests.cpp")
+    add_syslinks("user32")
+end)
+
+target("flight_axes_test", function()
+    set_kind("binary")
+    set_default(false)
+    add_tests("shaping_throttle_zones_config_and_frame")
+    add_includedirs("include")
+    add_files("src/runtime/FlightAxes.cpp", "src/runtime/LegacyHotasToken.cpp",
+        "src/runtime/ShipBindings.cpp", "tests/FlightAxesTests.cpp")
 end)
 
 target("walk_speed_test", function()

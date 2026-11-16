@@ -24,6 +24,8 @@ namespace AbsoluteControl::Runtime
         float manual{};             // cluster+0x68.
         float effective{};          // cluster+0x6C.
         float speed{};              // cluster+0x70.
+        std::uintptr_t managerAddress{}; // PlayerControls::Manager, for the flight output.
+        std::uintptr_t clusterAddress{}; // Its flight handler, or zero.
     };
 
     // Aligned field reads with no call or lock, safe from any thread. Objects can be freed

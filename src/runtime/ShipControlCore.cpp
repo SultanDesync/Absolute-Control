@@ -37,11 +37,10 @@ namespace AbsoluteControl::Runtime
         samples_(config_.bindings.size()), buffer_(DeviceStore::kChannelLimit)
     {}
 
-    void ShipControlCore::SetAxisBinding(ConfiguredBinding binding)
+    void ShipControlCore::SetAxisBinding(std::size_t slot, ConfiguredBinding binding)
     {
-        axisBinding_ = std::move(binding);
-        axisResolved_ = {};
-        axisValue_.reset();
+        if (slot >= axes_.size()) return;
+        axes_[slot] = { std::move(binding), {}, {} };
         reconciled_ = false;
     }
 
@@ -86,9 +85,17 @@ namespace AbsoluteControl::Runtime
         reconciled_ = true;
         slots_.clear();
         for (const auto& description : snapshot.devices) {
-            log_("input_device", std::format("name={} id={} channels={} valid={}",
+            // Which axes a device really reports settles any "channel missing" binding.
+            std::string axes;
+            for (const auto& channel : description.channels) {
+                const std::string_view id{ channel.identity.channel };
+                if (!id.starts_with("axis/")) continue;
+                if (!axes.empty()) axes += ',';
+                axes += id.substr(5);
+            }
+            log_("input_device", std::format("name={} id={} channels={} valid={} axes={}",
                 description.device.displayName, description.device.physical,
-                description.channels.size(), description.device.validity == D::Validity::Valid ? 1 : 0));
+                description.channels.size(), description.device.validity == D::Validity::Valid ? 1 : 0, axes));
         }
 
         std::size_t bound{}, problems{};
@@ -106,17 +113,25 @@ namespace AbsoluteControl::Runtime
         log_("ship_bindings_resolved", std::format("enabled={} bound={} problems={} devices={}",
             config_.enabled ? 1 : 0, bound, problems, snapshot.devices.size()));
 
-        const auto axis = Resolve(axisBinding_, snapshot);
-        if (axis.status != axisResolved_.status) {
-            log_("walk_axis", std::format("status={} token={}", ToString(axis.status), axisBinding_.token));
+        for (std::size_t slot = 0; slot < axes_.size(); ++slot) {
+            auto& axis = axes_[slot];
+            const auto next = Resolve(axis.binding, snapshot);
+            if (next.status != axis.resolved.status) {
+                if (slot == 0) {
+                    log_("walk_axis", std::format("status={} token={}", ToString(next.status), axis.binding.token));
+                } else {
+                    log_("flight_axis", std::format("axis={} status={} token={}", axis.binding.actionId,
+                        ToString(next.status), axis.binding.token));
+                }
+            }
+            axis.resolved = next;
         }
-        axisResolved_ = axis;
     }
 
     void ShipControlCore::SampleButtons(const DeviceStore& devices, std::uint64_t now)
     {
         std::ranges::fill(samples_, ButtonSample{});
-        axisValue_.reset();
+        for (auto& axis : axes_) axis.value.reset();
         for (std::size_t slot = 0; slot < slots_.size(); ++slot) {
             D::Frame frame;
             std::uint32_t required{};
@@ -131,12 +146,13 @@ namespace AbsoluteControl::Runtime
                 if (sample.validity != D::Validity::Valid || config_.bindings[index].channel != sample.channel) continue;
                 samples_[index] = { true, sample.value[0] != 0, sample.pressCount };
             }
-            if (axisResolved_.status == BindingStatus::Bound && axisResolved_.deviceSlot == slot &&
-                axisResolved_.channelIndex < required) {
-                const auto& sample = buffer_[axisResolved_.channelIndex];
+            for (auto& axis : axes_) {
+                if (axis.resolved.status != BindingStatus::Bound || axis.resolved.deviceSlot != slot ||
+                    axis.resolved.channelIndex >= required) continue;
+                const auto& sample = buffer_[axis.resolved.channelIndex];
                 if (sample.validity == D::Validity::Valid && sample.shape == D::Shape::Scalar &&
-                    (sample.flags & D::kCalibrationRangeKnown) && axisBinding_.channel == sample.channel) {
-                    axisValue_ = sample.value[0];
+                    (sample.flags & D::kCalibrationRangeKnown) && axis.binding.channel == sample.channel) {
+                    axis.value = sample.value[0];
                 }
             }
         }
