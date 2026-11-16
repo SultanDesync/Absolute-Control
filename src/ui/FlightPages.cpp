@@ -749,23 +749,27 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
         {
             std::vector<Row> rows;
             const auto report = Rt::ControlSettings::Instance().Report();
-            rows.push_back(Header("settings-about", "Settings file", "Everything on the Flight pages is saved in one file, AbsoluteControl.ini, beside the plugin. It is the only settings file Absolute Control reads."));
+            rows.push_back(Header("settings-about", "Settings file", "One file, AbsoluteControl.ini, beside the plugin."));
             if (report.imported) {
                 rows.push_back(Line("import-from", "Imported from", "Your AbsoluteHOTAS settings were copied in once. Those files are not read again, so editing them changes nothing.",
                     report.date.empty() ? report.from : std::format("{} on {}", report.from, report.date)));
                 rows.push_back(Line("import-result", "Result", "Bindings and tuning for features Absolute Control has were carried over.",
                     report.dropped.empty() ? "Everything was carried over" :
-                    std::format("{} {} not carried over, listed below", report.dropped.size(), report.dropped.size() == 1 ? "setting was" : "settings were")));
+                    std::format("{} not carried over", report.dropped.size())));
                 // The menu shows the first of them; all of them are in the file's [Import] section.
                 constexpr std::size_t kShown = 12;
                 for (std::size_t index = 0; index < report.dropped.size() && index < kShown; ++index) {
+                    // The box is narrow, so it shows the setting's name. The whole line is
+                    // the description, read with the row selected.
+                    const auto& line = report.dropped[index];
+                    const auto colon = line.find(": ");
                     rows.push_back(Line(std::format("import-line-{}", index + 1), std::format("Not carried {}", index + 1),
-                        "Set this up again in the menu if you still want it.", report.dropped[index]));
+                        line + ".", colon == std::string::npos ? line : line.substr(0, colon)));
                 }
             } else {
                 rows.push_back(Line("import-from", "Set up", "Nothing was imported from AbsoluteHOTAS.", "In this menu"));
             }
-            rows.push_back(Header("fresh-group", "Start fresh", "If anything seems broken after an update or an import, starting fresh is more reliable than repairing old settings."));
+            rows.push_back(Header("fresh-group", "Start fresh", "More reliable than repairing old settings."));
             rows.push_back({ Kind::Reset, "settings-reset", "Reset flight settings", "Clears every binding and setting on the Flight pages, back to a new install. Walk speed is not changed. This can't be undone." });
             return rows;
         }

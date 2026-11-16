@@ -142,17 +142,9 @@ package
             if (liveSurfaceInput.handlePointer(kind, target, stageX, stageY,
                 shell, pointer, sliderWrites, model, selection, syncFocus,
                 sendSelectPage, redraw, send)) return true;
-            if (kind == "dirtyDecision") {
-                dirtyDecisionCursor = int(target.index);
-                sendPage(String(target.payload));
-                return true;
-            }
-            if (kind == "bindingConflict") {
-                dirtyDecisionCursor = int(target.index);
-                sendPage(String(target.payload));
-                return true;
-            }
-            if (kind == "actionConfirmation") {
+            // The three modals share one cursor and answer the same way.
+            if (kind == "dirtyDecision" || kind == "bindingConflict" ||
+                kind == "actionConfirmation") {
                 dirtyDecisionCursor = int(target.index);
                 sendPage(String(target.payload));
                 return true;

@@ -319,6 +319,7 @@ namespace AbsoluteControl::Runtime
                     bool targetAxisArmed = true;
                     std::optional<ShipActionOutputSpec> targetPulse;
                     std::uint64_t targetPulseEnd{};
+                    std::uint64_t nextThrottleLog{};
                     const auto outputFor = [&](std::string_view actionId) {
                         for (std::size_t index = 0; index < outputs->size(); ++index) {
                             if (kShipActionCatalog[index].actionId == actionId) return (*outputs)[index].output;
@@ -432,6 +433,15 @@ namespace AbsoluteControl::Runtime
                         if (current.flightOutput && allowed != flightLive) {
                             flightLive = allowed;
                             Log::Event("flight_gate", std::format("open={}", allowed ? 1 : 0));
+                        }
+                        // Once a second while piloting with a lever bound: where the lever is,
+                        // what was asked for, and what the game holds, read before this tick's
+                        // write. It answers throttle questions from the log instead of from feel.
+                        if (allowed && frame.throttleBound && now >= nextThrottleLog) {
+                            nextThrottleLog = now + 1'000'000'000;
+                            Log::Event("flight_throttle", std::format("lever={:.2f} asked={:.2f} game_target={:.2f} game_effective={:.2f} speed={:.1f} reverse={} boost={}",
+                                inputs.throttle.value_or(0.0F), frame.throttle, signals->manual, signals->effective, signals->speed,
+                                frame.reverse ? 1 : 0, frame.boost ? 1 : 0));
                         }
                         if (allowed) {
                             FlightOutput::Apply(*flight, frame, { signals->managerAddress, signals->clusterAddress },
