@@ -154,6 +154,16 @@ namespace AbsoluteControl::Runtime
         return found->second;
     }
 
+    std::size_t IniValues::CountSet(std::string_view section) const
+    {
+        const auto prefix = ValueKey(section, "");
+        std::size_t count{};
+        for (const auto& [key, value] : values_) {
+            if (key.starts_with(prefix) && value.find_first_not_of(" \t") != std::string::npos) ++count;
+        }
+        return count;
+    }
+
     std::string_view ToString(BindingStatus status) noexcept
     {
         switch (status) {

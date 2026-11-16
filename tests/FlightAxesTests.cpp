@@ -149,7 +149,18 @@ namespace
         CHECK(Near(ComputeFlightFrame(mini, { {}, {}, {}, {}, {}, {}, {}, 0.5F, 0.5F }).aimPitch, -1.0F));
         CHECK(ignored("DigitalAxes/iDigitalRollLeftButton") && !ignored("DigitalAxes/iDigitalRollRightButton"));
         CHECK(ignored("Buttons/bAlwaysOn") && ignored("Gate/PilotGateMode") && !ignored("Gate/PilotSignal"));
-        CHECK(config.ignored.size() == 5);
+        // The burst length was changed from its default, and tuning it is not in this build.
+        CHECK(ignored("Injection/iThrottleBurstMs") && config.ignored.size() == 6);
+        IniValues extras;
+        extras.Merge("[ButtonExpansion]\nStick@iButton32 = key:0x39\n[Calibration]\n[Normalization]\nbReverseAxisEnabled = false\n[Hardware]\niReverseAxis = Pedals@0x30\nfReverseSensitivity = 1.5\n");
+        const auto extra = LoadHotasFlightConfig(extras);
+        CHECK(extra.ignored.size() == 1 && extra.ignored[0] == "ButtonExpansion/1 extra button-to-key mapping");
+        // A reverse axis that was switched off comes across unbound.
+        CHECK(extra.reverse.status == BindingStatus::Unbound);
+        extras.Merge("[Normalization]\nbReverseAxisEnabled = true\nfReverseActivationThreshold = 0.2\n");
+        const auto kept = LoadHotasFlightConfig(extras);
+        const auto keptRead = LoadFlightConfig([&] { IniValues own; for (const auto& entry : WriteFlightConfig(kept)) own.Set(entry.section, entry.key, entry.value); return own; }());
+        CHECK(keptRead.reverse.channel == "axis/0" && Near(keptRead.reverseAxis.sensitivity, 1.5F) && Near(keptRead.reverseAxis.activation, 0.2F));
 
         ini.Merge("[Injection]\nbEnableInjection = false\n");
         CHECK(!LoadHotasFlightConfig(ini).enabled);

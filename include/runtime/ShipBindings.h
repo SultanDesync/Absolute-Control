@@ -26,6 +26,8 @@ namespace AbsoluteControl::Runtime
         void Merge(std::string_view text);
         void Set(std::string_view section, std::string_view key, std::string_view value);
         [[nodiscard]] std::optional<std::string> Get(std::string_view section, std::string_view key) const;
+        // How many keys a section has with something set.
+        [[nodiscard]] std::size_t CountSet(std::string_view section) const;
 
     private:
         std::map<std::string, std::string> values_;

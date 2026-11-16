@@ -106,6 +106,18 @@ namespace AbsoluteControl::Runtime
             for (const auto& [section, key] : kBindings) {
                 note(Bound(ini, section, key), std::string(section) + "/" + std::string(key));
             }
+            // Whole sections of entries the player made up: extra button-to-key mappings
+            // and hand-set axis ranges.
+            if (const auto count = ini.CountSet("ButtonExpansion")) {
+                ignored.push_back(std::format("ButtonExpansion/{} extra button-to-key mapping{}", count, count == 1 ? "" : "s"));
+            }
+            if (const auto count = ini.CountSet("Calibration")) {
+                ignored.push_back(std::format("Calibration/{} hand-set axis range{}", count, count == 1 ? "" : "s"));
+            }
+            note(Bound(ini, "Buttons", "iToggleWizardButton"), "Buttons/iToggleWizardButton");
+            note(Float(ini, "Injection", "fThrottleAtEngineStart", 0.0F) != 0.0F, "Injection/fThrottleAtEngineStart");
+            note(Float(ini, "Hardware", "fThrottleDeadzone", 0.0F) > 0.0F, "Hardware/fThrottleDeadzone");
+            note(Long(ini, "Injection", "iThrottleBurstMs", 250) != 250, "Injection/iThrottleBurstMs");
             note(Bool(ini, "DualStick", "bAccumulatorThrottle", false), "DualStick/bAccumulatorThrottle");
             note(Bool(ini, "DualStick", "bAccumulatorTurnAssist", false), "DualStick/bAccumulatorTurnAssist");
             note(!Bool(ini, "Buttons", "bAlwaysOn", true), "Buttons/bAlwaysOn");
@@ -291,7 +303,12 @@ namespace AbsoluteControl::Runtime
         throttle.detentCenter = Travel(ini, "Throttle", "CentreDetent", 50.0F);
         throttle.detentDeadzone = Travel(ini, "Throttle", "CentreDetentWidth", 0.763F);
 
-        config.reverseAxis.invert = Bool(ini, "Throttle", "ReverseAxisInvert", false);
+        auto& reverse = config.reverseAxis;
+        reverse.invert = Bool(ini, "Throttle", "ReverseAxisInvert", false);
+        reverse.sensitivity = Float(ini, "Throttle", "ReverseAxisSensitivity", 100.0F) / 100.0F;
+        reverse.deadzone = Fraction(ini, "Throttle", "ReverseAxisDeadzone", 0.05F, 0.0F, 0.95F);
+        reverse.saturation = Fraction(ini, "Throttle", "ReverseAxisFullAt", 1.0F, 0.05F, 1.0F);
+        reverse.activation = Fraction(ini, "Throttle", "ReverseAxisPressedAt", 0.05F, 0.0F, 1.0F);
         config.rollEnabled = Bool(ini, "Roll", "Enabled", true);
         config.holdForBoost = Bool(ini, "Throttle", "HoldForBoost", true);
         config.reverseGateVelocity = std::clamp(Float(ini, "Throttle", "ReverseBelowSpeed", 5.0F), 0.0F, 100.0F);
@@ -328,6 +345,10 @@ namespace AbsoluteControl::Runtime
         add("Throttle", "ReverseBelowSpeed", Text(static_cast<double>(config.reverseGateVelocity)));
         add("Throttle", "ReverseAxis", Token(config.reverse));
         add("Throttle", "ReverseAxisInvert", Text(config.reverseAxis.invert));
+        add("Throttle", "ReverseAxisSensitivity", Text(config.reverseAxis.sensitivity * 100.0));
+        add("Throttle", "ReverseAxisDeadzone", Text(config.reverseAxis.deadzone * 100.0));
+        add("Throttle", "ReverseAxisFullAt", Text(config.reverseAxis.saturation * 100.0));
+        add("Throttle", "ReverseAxisPressedAt", Text(config.reverseAxis.activation * 100.0));
         add("Throttle", "Centred", Text(!throttle.unipolar));
         add("Throttle", "CentreDetent", Text(throttle.detentCenter / kTravelPerPercent));
         add("Throttle", "CentreDetentWidth", Text(throttle.detentDeadzone / kTravelPerPercent));
@@ -396,6 +417,11 @@ namespace AbsoluteControl::Runtime
         reverse.saturation = std::clamp(Float(ini, "Hardware", "fReverseSaturation", 1.0F), 0.05F, 1.0F);
         reverse.deadzone = Float(ini, "Normalization", "fReverseDeadzone", 0.05F);
         reverse.activation = Float(ini, "Normalization", "fReverseActivationThreshold", 0.05F);
+        // The new file has no switch for it: an axis that was switched off comes across unbound.
+        if (!reverse.enabled) {
+            config.reverse = ParseAxisBinding("Reverse", "");
+            reverse.enabled = true;
+        }
 
         config.rollEnabled = Bool(ini, "Injection", "bRollEnabled", true);
         config.holdForBoost = Bool(ini, "DualStick", "bHoldForBoost", Bool(ini, "Injection", "bHoldForBoost", true));

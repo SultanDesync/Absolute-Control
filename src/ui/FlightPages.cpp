@@ -185,7 +185,7 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
         // locks, so the page's pending values are copied here whenever they change.
         struct ThrottleView
         {
-            std::atomic<float> idle{ 5 }, saturation{ 100 }, reverseAt{}, reverseWidth{}, boostAt{ 95 }, boostWidth{};
+            std::atomic<float> idle{ 5 }, saturation{ 100 }, reverseAt{}, reverseWidth{}, boostAt{ 95 }, boostWidth{}, cruiseAt{ 50 }, cruiseWidth{ 1 };
             std::atomic<bool> invert{}, reverse{}, boost{};
         };
         struct StickView
@@ -221,6 +221,8 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
                 g_throttle.boost = Shown(page, "zone-boost") != 0;
                 g_throttle.boostAt = static_cast<float>(Shown(page, "zone-boost-at"));
                 g_throttle.boostWidth = static_cast<float>(Shown(page, "zone-boost-width"));
+                g_throttle.cruiseAt = static_cast<float>(Shown(page, "zone-cruise-at"));
+                g_throttle.cruiseWidth = static_cast<float>(Shown(page, "zone-cruise-width"));
             } else {
                 for (auto& stick : g_sticks) {
                     if (page.pageId != stick.page) continue;
@@ -294,23 +296,39 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
             } else {
                 range.Band(Band::Dead, Role::Neutral, 0, idle, "Idle");
             }
+            // With the reverse zone on, thrust climbs to half at the cruise zone, holds across
+            // it, then climbs again.
+            const auto thrust = [&](double from, double to) {
+                if (!reverse) {
+                    range.Band(Band::Active, Role::Accent, from, to, "Thrust");
+                    return;
+                }
+                const double centre = g_throttle.cruiseAt.load(std::memory_order_relaxed);
+                const double width = g_throttle.cruiseWidth.load(std::memory_order_relaxed);
+                const double low = std::clamp(centre - width, from, to);
+                const double high = std::clamp(centre + width, low, to);
+                range.Band(Band::Active, Role::Accent, from, low, "Thrust");
+                range.Band(Band::Cruise, Role::Positive, low, high, "Cruise");
+                range.Band(Band::Active, Role::Accent, high, to, "");
+            };
             if (reverse && boost) {
                 // With both zones the ramp is fitted between them: half thrust at the detent,
                 // full thrust at the boost zone's lower edge.
                 const double fullAt = std::clamp(boostAt - boostWidth, thrustFrom, 100.0);
-                range.Band(Band::Active, Role::Accent, thrustFrom, fullAt, "Thrust");
+                thrust(thrustFrom, fullAt);
                 range.Band(Band::Cruise, Role::Positive, fullAt, std::max(fullAt, boostFrom), "Full thrust");
                 range.Band(Band::Boost, Role::Critical, std::max(fullAt, boostFrom), 100, "Boost");
             } else if (boost) {
-                range.Band(Band::Active, Role::Accent, thrustFrom, std::max(thrustFrom, boostFrom), "Thrust");
+                thrust(thrustFrom, std::max(thrustFrom, boostFrom));
                 range.Band(Band::Boost, Role::Critical, std::max(thrustFrom, boostFrom), 100, "Boost");
             } else {
-                range.Band(Band::Active, Role::Accent, thrustFrom, 100, "Thrust");
+                thrust(thrustFrom, 100);
             }
 
             if (reverse) {
                 range.Marker(Live::RangeMarkerSemantic::Custom, std::clamp(reverseAt, 0.0, 100.0), "reverse-zone", "Reverse zone", "zone-reverse-at");
-                range.Marker(Live::RangeMarkerSemantic::Detent, 50, "half-thrust", "Half thrust");
+                range.Marker(Live::RangeMarkerSemantic::Detent, std::clamp<double>(g_throttle.cruiseAt.load(std::memory_order_relaxed), 0, 100),
+                    "cruise-zone", "Cruise zone", "zone-cruise-at");
             } else {
                 const double saturation = std::clamp<double>(g_throttle.saturation.load(std::memory_order_relaxed), 5, 100);
                 range.Marker(Live::RangeMarkerSemantic::Saturation, std::clamp(idle + saturation * (100.0 - idle) / 100.0, 0.0, 100.0),
@@ -665,6 +683,10 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
             rows.push_back(SetFromLever("throttle-idle-set", "Set idle band from lever", "Rest the lever where thrust should begin, then choose this.", "throttle-idle"));
             rows.push_back({ Kind::Percent, "throttle-saturation", "Full thrust at (%)", "How much of the travel above the idle band it takes to reach full thrust.",
                 "Throttle", "FullThrustAt", 100, 5, 100, 5 });
+            rows.push_back({ Kind::Percent, "throttle-sensitivity", "Sensitivity (%)", "Scales the thrust the lever asks for. 100 is one to one.",
+                "Throttle", "Sensitivity", 100, 10, 200, 5 });
+            rows.push_back({ Kind::Toggle, "throttle-centred", "Centred lever", "For a lever that springs to the middle: thrust starts at the centre and the lower half does nothing. The graph above doesn't show this layout.",
+                "Throttle", "Centred" });
 
             rows.push_back(Header("reverse-group", "Reverse zone", "The bottom of the lever reverses the ship once it has slowed. With it on, the lever's middle is half thrust."));
             rows.push_back({ Kind::Toggle, "zone-reverse", "Reverse zone", "Pulling the lever below this zone reverses the ship.", "Throttle", "ReverseZone" });
@@ -674,6 +696,13 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
             rows.push_back({ Kind::Percent, "zone-reverse-width", "Zone half-width (%)", "Reverse starts this far below the centre, and thrust this far above it.",
                 "Throttle", "ReverseZoneWidth", Rt::kDefaultReverseZoneWidth, 0, 25, 1 });
 
+            rows.push_back(Header("cruise-group", "Cruise zone", "Used with the reverse zone on. The lever holds half thrust across this zone, so there is a place to rest it for cruising."));
+            rows.push_back(SetFromLever("zone-cruise-set", "Set zone from lever", "Hold the lever where half thrust should sit, then choose this. You can also drag its marker on the graph.", "zone-cruise-at"));
+            rows.push_back({ Kind::Percent, "zone-cruise-at", "Zone centre (%)", "Where the zone sits, as travel from the bottom of the lever.",
+                "Throttle", "CentreDetent", 50, 10, 90, 1 });
+            rows.push_back({ Kind::Percent, "zone-cruise-width", "Zone half-width (%)", "Half thrust is held this far either side of the centre.",
+                "Throttle", "CentreDetentWidth", 1, 0, 25, 1 });
+
             rows.push_back(Header("boost-group", "Boost zone", "The top of the lever presses your booster key."));
             rows.push_back({ Kind::Toggle, "zone-boost", "Boost zone", "Pushing the lever past this zone fires the boosters.", "Throttle", "BoostZone" });
             rows.push_back(SetFromLever("zone-boost-set", "Set zone from lever", "Hold the lever where boost should begin to feel right, then choose this. You can also drag its marker on the graph.", "zone-boost-at"));
@@ -681,15 +710,29 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
                 "Throttle", "BoostZoneCentre", Rt::kDefaultBoostZoneCentre, 50, 100, 1 });
             rows.push_back({ Kind::Percent, "zone-boost-width", "Zone half-width (%)", "Boosters fire this far above the centre. With the reverse zone on, full thrust is reached this far below it.",
                 "Throttle", "BoostZoneWidth", Rt::kDefaultBoostZoneWidth, 0, 25, 1 });
+            rows.push_back({ Kind::Toggle, "throttle-hold-boost", "Boosters take the throttle", "While the boosters fire, the game keeps its own thrust and the lever takes over again afterwards.",
+                "Throttle", "HoldForBoost", 1.0 });
+
+            rows.push_back(Header("reverse-axis-group", "Reverse axis", "A separate axis, such as a toe brake, that reverses the ship while it is pressed. It works with or without the reverse zone."));
+            rows.push_back({ Kind::Axis, "reverse-axis", "Axis", "Press the axis you want to use. Delete clears it.", "Throttle", "ReverseAxis" });
+            rows.push_back({ Kind::Toggle, "reverse-axis-invert", "Invert", "Swap which end of the axis counts as pressed.", "Throttle", "ReverseAxisInvert" });
+            rows.push_back({ Kind::Percent, "reverse-axis-pressed", "Pressed at (%)", "How far the axis has to travel before it counts as pressed.",
+                "Throttle", "ReverseAxisPressedAt", 5, 1, 90, 1 });
+            rows.push_back({ Kind::Percent, "reverse-below-speed", "Reverse below speed", "Reverse, from the zone or the axis, only engages once the ship is slower than this.",
+                "Throttle", "ReverseBelowSpeed", 5, 0, 100, 1 });
             return rows;
         }
 
         std::vector<Row> AxisRows()
         {
             std::vector<Row> rows;
+            rows.push_back(Header("flight-about", "Flight control", "Absolute Control flies the ship from the axes bound on these pages."));
+            rows.push_back({ Kind::Toggle, "flight-enabled", "Enabled", "Turn off to fly with the game's own controls without losing your bindings. Ship buttons have their own switch.",
+                "General", "Enabled", 1.0 });
             AddAxis(rows, "pitch", "Pitch", "Nose up and down.", "Pitch", 0);
             AddAxis(rows, "yaw", "Yaw", "Nose left and right.", "Yaw", 0);
             AddAxis(rows, "roll", "Roll", "Works together with sideways strafe.", "Roll", 0);
+            rows.push_back({ Kind::Toggle, "roll-enabled", "Roll enabled", "Turn roll off without losing its binding.", "Roll", "Enabled", 1.0 });
             AddAxis(rows, "strafe-side", "Strafe sideways", "Slide left and right. Your flight mode key is held for you while you strafe.", "StrafeSideways", 5);
             AddAxis(rows, "strafe-up", "Strafe up and down", "Slide up and down.", "StrafeVertical", 5);
             return rows;
@@ -721,6 +764,8 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
             rows.push_back(Header("buttons-about", "Ship buttons", "Each button presses the key the game has for that action, so your in-game key bindings still decide what it does."));
             rows.push_back({ Kind::Toggle, "buttons-enabled", "Enabled", "Turn every ship button off without losing the bindings.",
                 "ShipButtons", "Enabled", 1.0 });
+            rows.push_back({ Kind::Toggle, "buttons-follow", "Follow game key rebinds", "On: a button presses whatever key the game currently has for its action. Off: it always presses the game's default key.",
+                "ShipButtons", "FollowGameRebinds", 1.0 });
 
             struct Group
             {
