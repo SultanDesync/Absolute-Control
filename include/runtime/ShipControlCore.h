@@ -32,7 +32,7 @@ namespace AbsoluteControl::Runtime
 
         // Axes read off the bus each tick. Slot 0 is the walk speed axis and the rest are
         // flight axes. Nothing is read for a slot that's unbound.
-        static constexpr std::size_t kAxisSlots = 8;
+        static constexpr std::size_t kAxisSlots = 10;
         void SetAxisBinding(ConfiguredBinding binding) { SetAxisBinding(0, std::move(binding)); }
         void SetAxisBinding(std::size_t slot, ConfiguredBinding binding);
         // -1 to 1, or nothing if the axis is unbound, missing, stale or has no known range.

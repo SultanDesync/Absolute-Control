@@ -88,7 +88,7 @@ namespace AbsoluteControl::Runtime
             const auto note = [&](bool present, std::string_view name) {
                 if (present) ignored.emplace_back(name);
             };
-            constexpr std::array<std::pair<std::string_view, std::string_view>, 26> kBindings{ {
+            constexpr std::array<std::pair<std::string_view, std::string_view>, 24> kBindings{ {
                 { "DigitalAxes", "iDigitalReverseButton" }, { "DigitalAxes", "iDigitalRollLeftButton" },
                 { "DigitalAxes", "iDigitalRollRightButton" }, { "DigitalAxes", "iDigitalStrafeLeftButton" },
                 { "DigitalAxes", "iDigitalStrafeRightButton" }, { "DigitalAxes", "iDigitalStrafeUpButton" },
@@ -100,7 +100,7 @@ namespace AbsoluteControl::Runtime
                 { "MenuControls", "iMenuUpButton" }, { "MenuControls", "iMenuDownButton" },
                 { "MenuControls", "iMenuLeftButton" }, { "MenuControls", "iMenuRightButton" },
                 { "DualStick", "iTurnAssistButton" },
-                { "Aim", "iAimYawAxis" }, { "Aim", "iAimPitchAxis" }, { "Aim", "iDigitalAimLeftButton" },
+                { "Aim", "iDigitalAimLeftButton" },
                 { "Aim", "iDigitalAimRightButton" }, { "Aim", "iDigitalAimUpButton" }, { "Aim", "iDigitalAimDownButton" },
             } };
             for (const auto& [section, key] : kBindings) {
@@ -115,6 +115,32 @@ namespace AbsoluteControl::Runtime
             if (const auto signal = ini.Get("Gate", "PilotSignal")) note(Lower(*signal) != "auto", "Gate/PilotSignal");
             return ignored;
         }
+    }
+
+    std::string_view ReticleModeName(ReticleMode mode) noexcept
+    {
+        switch (mode) {
+        case ReticleMode::FlightStick: return "FlightStick";
+        case ReticleMode::OwnAxes: return "OwnAxes";
+        case ReticleMode::Centred: return "Centred";
+        default: return "Mouse";
+        }
+    }
+
+    ReticleMode ParseReticleMode(std::string_view text) noexcept
+    {
+        const auto first = text.find_first_not_of(" \t");
+        text = first == std::string_view::npos ? std::string_view{} : text.substr(first, text.find_last_not_of(" \t") - first + 1);
+        const auto same = [&](std::string_view name) {
+            return std::ranges::equal(text, name, [](char a, char b) {
+                const auto lower = [](char c) { return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c; };
+                return lower(a) == lower(b);
+            });
+        };
+        for (const auto mode : { ReticleMode::FlightStick, ReticleMode::OwnAxes, ReticleMode::Centred }) {
+            if (same(ReticleModeName(mode))) return mode;
+        }
+        return ReticleMode::Mouse;
     }
 
     float ShapeAxis(float position, const AxisShape& shape) noexcept
@@ -269,8 +295,12 @@ namespace AbsoluteControl::Runtime
         config.rollEnabled = Bool(ini, "Roll", "Enabled", true);
         config.holdForBoost = Bool(ini, "Throttle", "HoldForBoost", true);
         config.reverseGateVelocity = std::clamp(Float(ini, "Throttle", "ReverseBelowSpeed", 5.0F), 0.0F, 100.0F);
-        config.steerThroughAim = Bool(ini, "Steering", "ThroughAimPoint", false);
-        config.aimSensitivity = Float(ini, "Steering", "AimSensitivity", 100.0F) / 100.0F;
+        config.reticle = ParseReticleMode(ini.Get("Reticle", "Mode").value_or(""));
+        config.aimSensitivity = Float(ini, "Reticle", "StickSensitivity", 100.0F) / 100.0F;
+        config.aimYaw = Axis(ini, "AimYaw", "Axis", "AimYaw");
+        config.aimPitch = Axis(ini, "AimPitch", "Axis", "AimPitch");
+        config.aimYawShape = ReadShape(ini, "AimYaw", 0.04F);
+        config.aimPitchShape = ReadShape(ini, "AimPitch", 0.04F);
         return config;
     }
 
@@ -316,8 +346,10 @@ namespace AbsoluteControl::Runtime
         axis("StrafeSideways", config.strafeLateral, config.strafeLateralShape);
         axis("StrafeVertical", config.strafeVertical, config.strafeVerticalShape);
 
-        add("Steering", "ThroughAimPoint", Text(config.steerThroughAim));
-        add("Steering", "AimSensitivity", Text(config.aimSensitivity * 100.0));
+        add("Reticle", "Mode", std::string(ReticleModeName(config.reticle)));
+        add("Reticle", "StickSensitivity", Text(config.aimSensitivity * 100.0));
+        axis("AimYaw", config.aimYaw, config.aimYawShape);
+        axis("AimPitch", config.aimPitch, config.aimPitchShape);
         return entries;
     }
 
@@ -369,14 +401,23 @@ namespace AbsoluteControl::Runtime
         config.holdForBoost = Bool(ini, "DualStick", "bHoldForBoost", Bool(ini, "Injection", "bHoldForBoost", true));
         config.throttleBurstMilliseconds = static_cast<int>(std::clamp(Long(ini, "Injection", "iThrottleBurstMs", 250), 0L, 5000L));
         config.reverseGateVelocity = std::clamp(Float(ini, "DualStick", "fReverseGateVelocity", 5.0F), 0.0F, 100.0F);
-        // The stick steers through the aim point only when nothing else is bound to aim.
-        // With separate aim axes or HOSAS mode it steers directly, as it always has.
-        bool aimBound = Bool(ini, "Aim", "bHOSAMMode", false);
-        for (const auto key : { "iAimYawAxis", "iAimPitchAxis", "iDigitalAimLeftButton", "iDigitalAimRightButton",
-            "iDigitalAimUpButton", "iDigitalAimDownButton" }) {
-            aimBound = aimBound || Bound(ini, "Aim", key);
+        // AbsoluteHOTAS wrote the aim point every tick unless that was off or the mouse had
+        // it (HOSAS mode): from separate aim axes when bound, else from the flight stick.
+        config.aimYaw = Axis(ini, "Aim", "iAimYawAxis", "AimYaw");
+        config.aimPitch = Axis(ini, "Aim", "iAimPitchAxis", "AimPitch");
+        const float aimDeadzone = std::clamp(Float(ini, "Aim", "fAimDeadzone", 0.04F), 0.0F, 0.95F);
+        config.aimYawShape = { Bool(ini, "Aim", "bInvertAimYaw", false), Float(ini, "Aim", "fAimYawSensitivity", 1.0F), 1.0F, aimDeadzone };
+        config.aimPitchShape = { Bool(ini, "Aim", "bInvertAimPitch", false), Float(ini, "Aim", "fAimPitchSensitivity", 1.0F), 1.0F, aimDeadzone };
+        const bool aimAxes = Bound(ini, "Aim", "iAimYawAxis") || Bound(ini, "Aim", "iAimPitchAxis");
+        bool aimButtons{};
+        for (const auto key : { "iDigitalAimLeftButton", "iDigitalAimRightButton", "iDigitalAimUpButton", "iDigitalAimDownButton" }) {
+            aimButtons = aimButtons || Bound(ini, "Aim", key);
         }
-        config.steerThroughAim = Bool(ini, "Aim", "bSourceObjectAim", false) && !aimBound;
+        if (!Bool(ini, "Aim", "bSourceObjectAim", false) || Bool(ini, "Aim", "bHOSAMMode", false)) config.reticle = ReticleMode::Mouse;
+        else if (aimAxes) config.reticle = ReticleMode::OwnAxes;
+        // Aim buttons aren't in this build; with only those, the reticle rested at the centre.
+        else if (aimButtons || !Bool(ini, "Aim", "bMirrorFlightToAim", true)) config.reticle = ReticleMode::Centred;
+        else config.reticle = ReticleMode::FlightStick;
         config.aimSensitivity = Float(ini, "Aim", "fAimSensitivity", 1.0F);
         config.ignored = IgnoredSettings(ini);
         return config;
@@ -419,6 +460,8 @@ namespace AbsoluteControl::Runtime
         frame.splitStrafe = strafe;
         frame.splitActive = strafeActive || rollActive;
         frame.strafeModifier = strafeActive || frame.verticalActive;
+        frame.aimYaw = inputs.aimYaw ? ShapeAxis(*inputs.aimYaw, config.aimYawShape) : 0.0F;
+        frame.aimPitch = inputs.aimPitch ? ShapeAxis(*inputs.aimPitch, config.aimPitchShape) : 0.0F;
         return frame;
     }
 }

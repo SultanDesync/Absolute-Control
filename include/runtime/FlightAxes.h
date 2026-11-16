@@ -4,6 +4,7 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 // Flight axis maths carried over from AbsoluteHOTAS, so existing settings fly the same.
@@ -63,6 +64,19 @@ namespace AbsoluteControl::Runtime
 
     [[nodiscard]] bool ReverseAxisHeld(const ReverseAxisConfig& config, float position) noexcept;
 
+    // What moves the game's aim point, which places the reticle. The mouse moves the same
+    // value, so anything but Mouse also stops stray mouse movement shifting the reticle.
+    enum class ReticleMode
+    {
+        Mouse,       // Left to the game.
+        FlightStick, // Pitch and yaw move it and the ship follows: aim-driven steering.
+        OwnAxes,     // Its own pair of axes, such as a mini stick. The flight stick steers directly.
+        Centred      // Held at the centre.
+    };
+
+    [[nodiscard]] std::string_view ReticleModeName(ReticleMode mode) noexcept;
+    [[nodiscard]] ReticleMode ParseReticleMode(std::string_view text) noexcept;
+
     struct FlightConfig
     {
         bool enabled{ true };
@@ -74,8 +88,10 @@ namespace AbsoluteControl::Runtime
         bool holdForBoost{ true };       // The boost key takes the throttle while it's held.
         int throttleBurstMilliseconds{ 250 };
         float reverseGateVelocity{ 5.0F };
-        bool steerThroughAim{};          // Pitch and yaw move the game's own aim point.
-        float aimSensitivity{ 1.0F };
+        ReticleMode reticle{ ReticleMode::Mouse };
+        float aimSensitivity{ 1.0F };    // The flight stick's reach when it moves the reticle.
+        ConfiguredBinding aimYaw, aimPitch;
+        AxisShape aimYawShape, aimPitchShape;
         std::vector<std::string> ignored; // Settings in the file for features this build lacks.
     };
 
@@ -87,7 +103,8 @@ namespace AbsoluteControl::Runtime
     //              ReverseAxisInvert, Centred, CentreDetent, CentreDetentWidth
     //   [Pitch] [Yaw] [Roll] [StrafeSideways] [StrafeVertical]
     //              Axis, Invert, Sensitivity, Deadzone, FullOutputAt; [Roll] also Enabled
-    //   [Steering] ThroughAimPoint, AimSensitivity
+    //   [Reticle]  Mode (Mouse, FlightStick, OwnAxes, Centred), StickSensitivity
+    //   [AimYaw] [AimPitch]  Axis, Invert, Sensitivity, Deadzone, FullOutputAt
     [[nodiscard]] FlightConfig LoadFlightConfig(const IniValues& ini);
     // Every setting above, so a written file reads back as the same configuration.
     [[nodiscard]] std::vector<SettingEntry> WriteFlightConfig(const FlightConfig& config);
@@ -104,7 +121,7 @@ namespace AbsoluteControl::Runtime
     // Axis positions off the bus, -1 to 1. Nothing for an axis that is unbound or missing.
     struct FlightInputs
     {
-        std::optional<float> throttle, pitch, yaw, roll, strafeLateral, strafeVertical, reverse;
+        std::optional<float> throttle, pitch, yaw, roll, strafeLateral, strafeVertical, reverse, aimYaw, aimPitch;
     };
 
     struct FlightFrame
@@ -124,6 +141,7 @@ namespace AbsoluteControl::Runtime
         float splitRoll{}, splitStrafe{};
         bool splitActive{};
         bool strafeModifier{}; // Either strafe axis is deflected: hold the flight mode key.
+        float aimYaw{}, aimPitch{}; // The reticle's own axes, shaped.
     };
 
     [[nodiscard]] FlightFrame ComputeFlightFrame(const FlightConfig& config, const FlightInputs& inputs) noexcept;

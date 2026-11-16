@@ -11,7 +11,7 @@
 namespace AbsoluteControl::Runtime::FlightTelemetry
 {
     // The order the loop reads flight axes in.
-    enum Axis : std::size_t { Throttle, Pitch, Yaw, Roll, StrafeLateral, StrafeVertical, Reverse, Count };
+    enum Axis : std::size_t { Throttle, Pitch, Yaw, Roll, StrafeLateral, StrafeVertical, Reverse, AimYaw, AimPitch, Count };
 
     struct State
     {

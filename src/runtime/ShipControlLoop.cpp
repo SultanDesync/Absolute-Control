@@ -283,10 +283,10 @@ namespace AbsoluteControl::Runtime
                     },
                     [](std::string_view event, std::string_view detail) { Log::Event(event, detail); });
 
-                // Flight axes take slots 1 to 7; slot 0 stays the walk speed axis.
+                // Flight axes take slots 1 to 9; slot 0 stays the walk speed axis.
                 const auto flight = std::make_shared<const FlightConfig>(LoadFlightConfig(ini));
-                const std::array<const ConfiguredBinding*, 7> axes{ &flight->throttle, &flight->pitch, &flight->yaw,
-                    &flight->roll, &flight->strafeLateral, &flight->strafeVertical, &flight->reverse };
+                const std::array<const ConfiguredBinding*, 9> axes{ &flight->throttle, &flight->pitch, &flight->yaw,
+                    &flight->roll, &flight->strafeLateral, &flight->strafeVertical, &flight->reverse, &flight->aimYaw, &flight->aimPitch };
                 bool anyAxis{};
                 for (std::size_t index = 0; index < axes.size(); ++index) {
                     loaded.core->SetAxisBinding(index + 1, *axes[index]);
@@ -299,7 +299,7 @@ namespace AbsoluteControl::Runtime
                 Log::Event("flight_config", std::format("enabled={} axes={} output={} gates={} shared={} store_hooks={} split={} aim={} zero={} ignored={}",
                     flight->enabled ? 1 : 0, anyAxis ? 1 : 0, loaded.flightOutput ? 1 : 0, installed.steeringGates ? 1 : 0,
                     installed.sharedGate ? 1 : 0, installed.storeHooks, installed.splitHook ? 1 : 0,
-                    flight->steerThroughAim ? 1 : 0, mouseSteeringOwned ? 1 : 0, flight->ignored.size()));
+                    ReticleModeName(flight->reticle), mouseSteeringOwned ? 1 : 0, flight->ignored.size()));
                 loaded.flight = flight;
                 return loaded;
             };
@@ -388,12 +388,12 @@ namespace AbsoluteControl::Runtime
                             const auto value = core->AxisValue(slot);
                             return value ? std::optional<float>(static_cast<float>(*value)) : std::nullopt;
                         };
-                        const FlightInputs inputs{ axis(1), axis(2), axis(3), axis(4), axis(5), axis(6), axis(7) };
+                        const FlightInputs inputs{ axis(1), axis(2), axis(3), axis(4), axis(5), axis(6), axis(7), axis(8), axis(9) };
                         const auto frame = ComputeFlightFrame(*flight, inputs);
-                        const std::array<std::optional<float>, 7> positions{ inputs.throttle, inputs.pitch, inputs.yaw,
-                            inputs.roll, inputs.strafeLateral, inputs.strafeVertical, inputs.reverse };
-                        const std::array<float, 7> shaped{ frame.throttle, frame.pitch, frame.yaw, frame.splitRoll,
-                            frame.splitStrafe, frame.vertical, frame.reverse ? 1.0F : 0.0F };
+                        const std::array<std::optional<float>, 9> positions{ inputs.throttle, inputs.pitch, inputs.yaw,
+                            inputs.roll, inputs.strafeLateral, inputs.strafeVertical, inputs.reverse, inputs.aimYaw, inputs.aimPitch };
+                        const std::array<float, 9> shaped{ frame.throttle, frame.pitch, frame.yaw, frame.splitRoll,
+                            frame.splitStrafe, frame.vertical, frame.reverse ? 1.0F : 0.0F, frame.aimYaw, frame.aimPitch };
                         for (std::size_t index = 0; index < positions.size(); ++index) {
                             FlightTelemetry::SetPosition(index, positions[index]);
                             telemetry.output[index].store(shaped[index], std::memory_order_relaxed);

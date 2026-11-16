@@ -32,7 +32,7 @@ namespace AbsoluteControl::Runtime::FlightOutput
 
         constexpr float kThrottleMoved = 0.015F;
         constexpr float kAimScale = 200.0F;
-        constexpr float kAimLimit = 400.0F;
+        constexpr float kAimLimit = 200.0F; // The aim point is a circle of this radius.
         constexpr float kAimChaseRate = 60.0F;
 
         // Read by the patched code through absolute addresses, so these never move.
@@ -443,8 +443,10 @@ namespace AbsoluteControl::Runtime::FlightOutput
             }
         }
 
-        // Moves the game's aim point toward where the stick points, over a few frames.
-        void SteerAim(std::uintptr_t source, float yaw, float pitch, float sensitivity, std::uint64_t now) noexcept
+        // Moves the game's aim point toward a place on its circle, over a few frames. Yaw
+        // and pitch are -1 to 1 with any sensitivity already applied, so a higher sensitivity
+        // reaches the rim sooner and never passes it.
+        void SteerAim(std::uintptr_t source, float yaw, float pitch, std::uint64_t now) noexcept
         {
             const float size = std::sqrt(yaw * yaw + pitch * pitch);
             if (size > 1.0F) {
@@ -456,8 +458,8 @@ namespace AbsoluteControl::Runtime::FlightOutput
             const float blend = 1.0F - std::exp(-kAimChaseRate * seconds);
             float currentYaw{}, currentPitch{};
             if (!ReadFloat(source + kSourceAimYaw, currentYaw) || !ReadFloat(source + kSourceAimPitch, currentPitch)) return;
-            const float targetYaw = yaw * sensitivity * kAimScale;
-            const float targetPitch = pitch * sensitivity * kAimScale;
+            const float targetYaw = yaw * kAimScale;
+            const float targetPitch = pitch * kAimScale;
             WriteFloat(source + kSourceAimYaw, std::clamp(currentYaw + blend * (targetYaw - currentYaw), -kAimLimit, kAimLimit));
             WriteFloat(source + kSourceAimPitch, std::clamp(currentPitch + blend * (targetPitch - currentPitch), -kAimLimit, kAimLimit));
         }
@@ -590,12 +592,16 @@ namespace AbsoluteControl::Runtime::FlightOutput
             g_verticalActive = frame.verticalActive ? 1 : 0;
         }
         const bool steer = frame.pitchYawBound && !mouseSteeringOwned;
-        const bool throughAim = steer && config.steerThroughAim && source;
+        const bool throughAim = steer && config.reticle == ReticleMode::FlightStick && source;
         g_yawBits = std::bit_cast<std::uint32_t>(frame.yaw);
         g_pitchBits = std::bit_cast<std::uint32_t>(frame.pitch);
         g_yawActive = steer && !throughAim ? 1 : 0;
         g_pitchActive = steer && !throughAim ? 1 : 0;
-        if (throughAim) SteerAim(source, frame.yaw, frame.pitch, config.aimSensitivity, now);
+        // Written every tick, so stray mouse movement can't shift the reticle. With
+        // AbsoluteZero installed the mouse steers and the aim point is left to it.
+        if (throughAim) SteerAim(source, frame.yaw * config.aimSensitivity, frame.pitch * config.aimSensitivity, now);
+        else if (source && !mouseSteeringOwned && config.reticle == ReticleMode::OwnAxes) SteerAim(source, frame.aimYaw, frame.aimPitch, now);
+        else if (source && !mouseSteeringOwned && config.reticle == ReticleMode::Centred) SteerAim(source, 0.0F, 0.0F, now);
         else g_lastAimTime = now;
 
         // Throttle.

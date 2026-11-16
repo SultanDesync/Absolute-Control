@@ -130,17 +130,26 @@ namespace
         CHECK(config.throttleConfig.reverseZoneCenter == 6000 && Near(config.throttleConfig.idlePlateau, 0.1F));
         CHECK(!config.rollEnabled && !config.holdForBoost && config.throttleBurstMilliseconds == 100);
         // Separate aim axes are bound here, so the stick steers directly.
-        CHECK(!config.steerThroughAim && Near(config.aimSensitivity, 1.5F) && Near(config.reverseGateVelocity, 12.0F));
+        CHECK(!(config.reticle == ReticleMode::FlightStick) && Near(config.aimSensitivity, 1.5F) && Near(config.reverseGateVelocity, 12.0F));
         IniValues aimOnly;
         aimOnly.Merge("[Aim]\nbSourceObjectAim = true\niAimYawAxis = \n");
-        CHECK(LoadHotasFlightConfig(aimOnly).steerThroughAim);
+        CHECK((LoadHotasFlightConfig(aimOnly).reticle == ReticleMode::FlightStick));
         aimOnly.Merge("[Aim]\nbHOSAMMode = true\n");
-        CHECK(!LoadHotasFlightConfig(aimOnly).steerThroughAim);
+        CHECK(!(LoadHotasFlightConfig(aimOnly).reticle == ReticleMode::FlightStick));
         const auto ignored = [&](std::string_view name) { return std::ranges::find(config.ignored, name) != config.ignored.end(); };
-        CHECK(ignored("Aim/iAimYawAxis") && ignored("Aim/bHOSAMMode") && ignored("DualStick/bAccumulatorThrottle"));
+        CHECK(!ignored("Aim/iAimYawAxis") && ignored("Aim/bHOSAMMode") && ignored("DualStick/bAccumulatorThrottle"));
+        // The aim axis is carried; HOSAS mode had left the reticle to the mouse.
+        CHECK(config.aimYaw.channel == "axis/5" && config.reticle == ReticleMode::Mouse);
+        IniValues miniStick;
+        miniStick.Merge("[Aim]\nbSourceObjectAim = true\niAimYawAxis = Stick@0x33\niAimPitchAxis = Stick@0x34\nfAimPitchSensitivity = 3\nbInvertAimPitch = true\n");
+        const auto mini = LoadHotasFlightConfig(miniStick);
+        CHECK(mini.reticle == ReticleMode::OwnAxes && mini.aimPitchShape.invert && Near(mini.aimPitchShape.sensitivity, 3.0F));
+        const auto miniRead = LoadFlightConfig([&] { IniValues own; for (const auto& entry : WriteFlightConfig(mini)) own.Set(entry.section, entry.key, entry.value); return own; }());
+        CHECK(miniRead.reticle == ReticleMode::OwnAxes && miniRead.aimYaw.channel == "axis/3" && Near(miniRead.aimPitchShape.sensitivity, 3.0F));
+        CHECK(Near(ComputeFlightFrame(mini, { {}, {}, {}, {}, {}, {}, {}, 0.5F, 0.5F }).aimPitch, -1.0F));
         CHECK(ignored("DigitalAxes/iDigitalRollLeftButton") && !ignored("DigitalAxes/iDigitalRollRightButton"));
         CHECK(ignored("Buttons/bAlwaysOn") && ignored("Gate/PilotGateMode") && !ignored("Gate/PilotSignal"));
-        CHECK(config.ignored.size() == 6);
+        CHECK(config.ignored.size() == 5);
 
         ini.Merge("[Injection]\nbEnableInjection = false\n");
         CHECK(!LoadHotasFlightConfig(ini).enabled);
@@ -208,7 +217,7 @@ namespace
         const auto fresh = LoadFlightConfig({});
         CHECK(fresh.enabled && fresh.throttle.status == BindingStatus::Unbound && fresh.ignored.empty());
         CHECK(!fresh.pitchShape.invert && Near(fresh.strafeLateralShape.deadzone, 0.05F) && fresh.rollEnabled && fresh.holdForBoost);
-        CHECK(fresh.throttleConfig.unipolar && Near(fresh.throttleConfig.idlePlateau, 0.05F) && !fresh.steerThroughAim);
+        CHECK(fresh.throttleConfig.unipolar && Near(fresh.throttleConfig.idlePlateau, 0.05F) && !(fresh.reticle == ReticleMode::FlightStick));
         // A new setup's zones work as soon as they are switched on.
         CHECK(fresh.throttleConfig.reverseZoneCenter - fresh.throttleConfig.reverseZoneDeadzone > 0);
         CHECK(fresh.throttleConfig.boostZoneCenter + fresh.throttleConfig.boostZoneDeadzone < 65535);
@@ -236,7 +245,7 @@ namespace
         const auto after = LoadFlightConfig(written);
 
         CHECK(after.enabled == before.enabled && after.rollEnabled == before.rollEnabled && after.holdForBoost == before.holdForBoost);
-        CHECK(after.steerThroughAim == before.steerThroughAim && Near(after.aimSensitivity, before.aimSensitivity));
+        CHECK((after.reticle == ReticleMode::FlightStick) == (before.reticle == ReticleMode::FlightStick) && Near(after.aimSensitivity, before.aimSensitivity));
         CHECK(Near(after.reverseGateVelocity, before.reverseGateVelocity));
         CHECK(after.throttle.channel == before.throttle.channel && after.throttle.device == before.throttle.device);
         CHECK(after.pitch.channel == "axis/1" && after.roll.channel == "axis/3" && after.yaw.status == BindingStatus::Unbound);

@@ -190,6 +190,7 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
         };
         struct StickView
         {
+            const char* page;
             const char* prefix;
             const char* title;
             std::size_t telemetry;
@@ -199,10 +200,13 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
         };
         ThrottleView g_throttle;
         std::atomic<std::uint64_t> g_throttleSequence{};
-        std::array<StickView, 5> g_sticks{ {
-            { "pitch", "Pitch", Telemetry::Pitch }, { "yaw", "Yaw", Telemetry::Yaw }, { "roll", "Roll", Telemetry::Roll },
-            { "strafe-side", "Strafe sideways", Telemetry::StrafeLateral },
-            { "strafe-up", "Strafe up and down", Telemetry::StrafeVertical },
+        std::array<StickView, 7> g_sticks{ {
+            { "flight-axes", "pitch", "Pitch", Telemetry::Pitch }, { "flight-axes", "yaw", "Yaw", Telemetry::Yaw },
+            { "flight-axes", "roll", "Roll", Telemetry::Roll },
+            { "flight-axes", "strafe-side", "Strafe sideways", Telemetry::StrafeLateral },
+            { "flight-axes", "strafe-up", "Strafe up and down", Telemetry::StrafeVertical },
+            { "reticle", "aim-yaw", "Reticle left and right", Telemetry::AimYaw },
+            { "reticle", "aim-pitch", "Reticle up and down", Telemetry::AimPitch },
         } };
 
         void SyncViews(const Page& page)
@@ -217,8 +221,9 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
                 g_throttle.boost = Shown(page, "zone-boost") != 0;
                 g_throttle.boostAt = static_cast<float>(Shown(page, "zone-boost-at"));
                 g_throttle.boostWidth = static_cast<float>(Shown(page, "zone-boost-width"));
-            } else if (page.pageId == "flight-axes") {
+            } else {
                 for (auto& stick : g_sticks) {
+                    if (page.pageId != stick.page) continue;
                     const std::string prefix{ stick.prefix };
                     stick.deadzone = static_cast<float>(Shown(page, prefix + "-deadzone"));
                     stick.saturation = static_cast<float>(Shown(page, prefix + "-saturation"));
@@ -627,14 +632,14 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
         // The rows every stick axis has: its binding and its shaping. The section is the
         // one the axis has in the settings file.
         void AddAxis(std::vector<Row>& rows, std::string_view id, std::string_view title, std::string_view about,
-            std::string_view section, double deadzoneDefault)
+            std::string_view section, double deadzoneDefault, int sensitivityMaximum = 200)
         {
             const std::string name(id), where(section);
             rows.push_back(Header(name + "-group", std::string(title), std::string(about)));
             rows.push_back({ Kind::Axis, name + "-axis", "Axis", "Move the axis you want to use, or click its bar above. Delete clears it.", where, "Axis" });
             rows.push_back({ Kind::Toggle, name + "-invert", "Invert", "Swap the axis's direction.", where, "Invert" });
             rows.push_back({ Kind::Percent, name + "-sensitivity", "Sensitivity (%)", "Scales the output. 100 is one to one.",
-                where, "Sensitivity", 100, 10, 200, 5 });
+                where, "Sensitivity", 100, 10, sensitivityMaximum, 5 });
             rows.push_back({ Kind::Percent, name + "-deadzone", "Deadzone (%)", "Travel around the centre that does nothing.",
                 where, "Deadzone", deadzoneDefault, 0, 50, 1 });
             rows.push_back({ Kind::Percent, name + "-saturation", "Full output at (%)", "Travel at which the output reaches full. Lower it for a shorter throw.",
@@ -687,6 +692,26 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
             AddAxis(rows, "roll", "Roll", "Works together with sideways strafe.", "Roll", 0);
             AddAxis(rows, "strafe-side", "Strafe sideways", "Slide left and right. Your flight mode key is held for you while you strafe.", "StrafeSideways", 5);
             AddAxis(rows, "strafe-up", "Strafe up and down", "Slide up and down.", "StrafeVertical", 5);
+            return rows;
+        }
+
+        std::vector<Row> ReticleRows()
+        {
+            std::vector<Row> rows;
+            rows.push_back(Header("reticle-about", "Reticle", "What places the aiming reticle. Anything but the mouse also stops a bumped mouse shifting it."));
+            Row mode{ Kind::Choice, "reticle-mode", "Reticle follows",
+                "The mouse: left to the game. Flight stick: pitch and yaw move the reticle and the ship follows it, like a gamepad stick. "
+                "Its own axes: a mini stick moves it while the flight stick steers. Held centred: it stays in the middle. "
+                "With AbsoluteZero installed the mouse keeps it.",
+                "Reticle", "Mode" };
+            mode.choices = { { "Mouse", "The mouse" }, { "FlightStick", "Flight stick" }, { "OwnAxes", "Its own axes" }, { "Centred", "Held centred" } };
+            mode.maximum = static_cast<int>(mode.choices.size()) - 1;
+            rows.push_back(std::move(mode));
+            rows.push_back({ Kind::Percent, "reticle-stick-sensitivity", "Flight stick reach (%)",
+                "Used with Flight stick. Above 100 the reticle reaches its edge before the stick reaches its stop.",
+                "Reticle", "StickSensitivity", 100, 10, 400, 5 });
+            AddAxis(rows, "aim-yaw", "Reticle left and right", "Used with Its own axes.", "AimYaw", 4, 400);
+            AddAxis(rows, "aim-pitch", "Reticle up and down", "Used with Its own axes.", "AimPitch", 4, 400);
             return rows;
         }
 
@@ -849,17 +874,20 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
             // The menu keeps pointers into these for as long as the game runs.
             static Page throttle{ "throttle", "Throttle", "Bind the lever and set its zones by feel.", "Flight", ThrottleRows() };
             static Page axes{ "flight-axes", "Flight Axes", "Bind and shape pitch, yaw, roll and strafe.", "Flight", AxisRows() };
+            static Page reticle{ "reticle", "Reticle", "Choose what moves the aiming reticle.", "Flight", ReticleRows() };
             static Page buttons{ "ship-buttons", "Ship Buttons", "Bind buttons and hats to ship actions.", "Flight", ButtonRows() };
             static Page settings{ "settings-file", "Settings File", "Where your settings came from, and how to start fresh.", "Setup", SettingsRows() };
-            g_pages = { &throttle, &axes, &buttons, &settings };
+            g_pages = { &throttle, &axes, &reticle, &buttons, &settings };
             RegisterPage(*api, throttle);
             RegisterPage(*api, axes);
+            RegisterPage(*api, reticle);
             RegisterPage(*api, buttons);
             RegisterPage(*api, settings);
             {
-                const std::scoped_lock lock{ throttle.mutex, axes.mutex };
+                const std::scoped_lock lock{ throttle.mutex, axes.mutex, reticle.mutex };
                 SyncViews(throttle);
                 SyncViews(axes);
+                SyncViews(reticle);
             }
 
             // Live graphs: the lever with its zones, pinned above the Throttle page, and a
@@ -892,7 +920,7 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
             };
             addGraph("throttle", "lever", "Lever travel", 0, ThrottleRange(), &ReadThrottleFrame, nullptr, Live::kLivePresentationPinned);
             for (auto& stick : g_sticks) {
-                addGraph("flight-axes", std::string(stick.prefix) + "-bar", stick.title, -100, StickRange(stick), &ReadStickFrame, &stick,
+                addGraph(stick.page, std::string(stick.prefix) + "-bar", stick.title, -100, StickRange(stick), &ReadStickFrame, &stick,
                     Live::kLivePresentationNone);
             }
         } catch (...) {

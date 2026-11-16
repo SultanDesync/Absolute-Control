@@ -61,10 +61,10 @@ namespace AbsoluteControl::Runtime
             result.dropped.push_back(slash == std::string::npos ? std::format("{}: not in Absolute Control", name) :
                 std::format("[{}] {}: this feature isn't in Absolute Control", name.substr(0, slash), name.substr(slash + 1)));
         }
-        const std::array<std::pair<std::string_view, const ConfiguredBinding*>, 7> axes{ {
+        const std::array<std::pair<std::string_view, const ConfiguredBinding*>, 9> axes{ {
             { "Throttle", &flight.throttle }, { "Pitch", &flight.pitch }, { "Yaw", &flight.yaw }, { "Roll", &flight.roll },
             { "Strafe sideways", &flight.strafeLateral }, { "Strafe up and down", &flight.strafeVertical },
-            { "Reverse", &flight.reverse },
+            { "Reverse", &flight.reverse }, { "Reticle left and right", &flight.aimYaw }, { "Reticle up and down", &flight.aimPitch },
         } };
         for (const auto& [name, binding] : axes) {
             if (Unreadable(*binding)) {
