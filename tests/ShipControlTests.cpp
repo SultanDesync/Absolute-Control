@@ -488,6 +488,11 @@ namespace
         return section;
     }
 
+    std::size_t ActionIndex(std::string_view actionId)
+    {
+        return static_cast<std::size_t>(FindShipAction(actionId) - kShipActionCatalog.data());
+    }
+
     bool TestControlMap()
     {
         CHECK(ControlMap::Parse({}).valid && ControlMap::Parse({}).records.empty());
@@ -521,6 +526,24 @@ namespace
         CHECK(ControlMap::TokenToOutput(0x0000).kind == ShipActionOutputKind::Mouse);
         CHECK(ControlMap::TokenToOutput(ControlMap::kUnboundToken).kind == ShipActionOutputKind::None);
 
+        // A file the game wrote on 1.16.244 after weapon 1 was moved from the mouse to "=":
+        // the key sits in an alternate slot and the mouse primary is marked unbound, with an
+        // empty third section.
+        const std::vector<std::uint8_t> real{
+            0x03, 0x00, 0x3D, 'M', 'a', 'i', 'n', 'G', 'a', 'm', 'e', 'p', 'l', 'a', 'y', 0, 'F', 'o', 'r', 'w', 'a', 'r', 'd', 0,
+            0x01, 0, 0, 0, 0x57, 0, 0, 0, 'S', 'h', 'i', 'p', 'H', 'U', 'D', 0, 'W', 'e', 'a', 'p', 'o', 'n', 'G', 'r', 'o', 'u', 'p', '1', 0,
+            0x01, 0, 0, 0, 0xBB, 0, 0x02, 0,
+            0x03, 0x00, 0x3D, 'S', 'h', 'i', 'p', 'H', 'U', 'D', 0, 'W', 'e', 'a', 'p', 'o', 'n', 'G', 'r', 'o', 'u', 'p', '1', 0,
+            0x01, 0, 0, 0, 0xFF, 0x02, 0, 0, 'S', 'h', 'i', 'p', 'H', 'U', 'D', 0, 'W', 'e', 'a', 'p', 'o', 'n', 'G', 'r', 'o', 'u', 'p', '1', 0,
+            0x01, 0, 0, 0, 0xFF, 0x02, 0x02, 0,
+            0x03, 0x00, 0x03 };
+        const auto realFile = ControlMap::Parse(real);
+        CHECK(realFile.valid && realFile.records.size() == 4);
+        const auto weapon = ControlMap::ResolveBinding(realFile.records, "ShipHUD", "WeaponGroup1",
+            { ShipActionOutputKind::Mouse, 1, false });
+        CHECK(weapon.kind == ShipActionOutputKind::Keyboard && weapon.code == ControlMap::TokenToOutput(0x00BB).code && weapon.code != 0);
+        CHECK(ResolveShipOutputs({}, realFile.records)[ActionIndex("FireWeapon0")].output.kind == ShipActionOutputKind::Keyboard);
+
         // Truncated or mislabelled bytes are invalid, keeping what parsed before them.
         auto truncated = bytes;
         truncated.resize(truncated.size() - 4);
@@ -529,11 +552,6 @@ namespace
         mislabelled[0] = 0x04;
         CHECK(!ControlMap::Parse(mislabelled).valid);
         return true;
-    }
-
-    std::size_t ActionIndex(std::string_view actionId)
-    {
-        return static_cast<std::size_t>(FindShipAction(actionId) - kShipActionCatalog.data());
     }
 
     bool TestOutputs()

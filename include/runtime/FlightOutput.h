@@ -13,6 +13,7 @@ namespace AbsoluteControl::Runtime::FlightOutput
     struct InstallResult
     {
         bool steeringGates{}; // False if the block wasn't found, as when another mod owns it.
+        bool sharedGate{};    // Then roll and the strafes are set just after that mod's code.
         int storeHooks{};     // Game stores that can be held back.
         bool splitHook{};     // Roll and sideways strafe can be written separately.
     };

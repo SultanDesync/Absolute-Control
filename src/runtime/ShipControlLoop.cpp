@@ -52,7 +52,7 @@ namespace AbsoluteControl::Runtime
         }
 
         // The player's own key and mouse rebinds, so a button presses whatever they chose.
-        ControlMap::File LoadRebinds()
+        std::filesystem::path RebindPath()
         {
             PWSTR documents{};
             std::filesystem::path path;
@@ -60,7 +60,21 @@ namespace AbsoluteControl::Runtime
                 path = std::filesystem::path(documents) / L"My Games" / L"Starfield" / L"ControlMap_Custom.txt";
             }
             if (documents) ::CoTaskMemFree(documents);
+            return path;
+        }
+
+        ControlMap::File LoadRebinds()
+        {
+            const auto path = RebindPath();
             return path.empty() ? ControlMap::File{} : ControlMap::ReadFile(path);
+        }
+
+        // Changes when the game saves a rebind, so a key changed mid-session is picked up.
+        std::filesystem::file_time_type RebindStamp(const std::filesystem::path& path)
+        {
+            std::error_code error;
+            const auto stamp = std::filesystem::last_write_time(path, error);
+            return error ? std::filesystem::file_time_type{} : stamp;
         }
 
         std::vector<ResolvedShipOutput> LoadOutputs(const IniValues& ini)
@@ -192,12 +206,15 @@ namespace AbsoluteControl::Runtime
         try {
             // Process lifetime, like NativeBackend: never join a worker under the loader lock.
             static auto* service = new CooperativeService;
-            const auto ini = LoadIni(bindingFiles);
+            const auto ini = std::make_shared<const IniValues>(LoadIni(bindingFiles));
             // Only the loop's thread touches the held keys, through the sink and on the way out.
             auto held = std::make_shared<HeldOutputs>(&SendOutput);
-            const auto outputs = std::make_shared<const std::vector<ResolvedShipOutput>>(LoadOutputs(ini));
+            const auto rebindPath = RebindPath();
+            const auto rebindStamp = RebindStamp(rebindPath);
+            // Replaced on the loop's thread when the game saves new key bindings.
+            const auto outputs = std::make_shared<std::vector<ResolvedShipOutput>>(LoadOutputs(*ini));
             auto boostButton = std::make_shared<bool>(false);
-            auto core = std::make_shared<ShipControlCore>(LoadShipBindings(ini),
+            auto core = std::make_shared<ShipControlCore>(LoadShipBindings(*ini),
                 [held, outputs, boostButton](std::string_view actionId, bool down) {
                     Log::Event("ship_action_intent", std::format("action={} held={}", actionId, down ? 1 : 0));
                     if (actionId == "FireBoosters") *boostButton = down;
@@ -211,7 +228,7 @@ namespace AbsoluteControl::Runtime
                 [](std::string_view event, std::string_view detail) { Log::Event(event, detail); });
 
             // Flight axes take slots 1 to 7; slot 0 stays the walk speed axis.
-            const auto flight = std::make_shared<const FlightConfig>(LoadFlightConfig(ini));
+            const auto flight = std::make_shared<const FlightConfig>(LoadFlightConfig(*ini));
             const std::array<const ConfiguredBinding*, 7> axes{ &flight->throttle, &flight->pitch, &flight->yaw,
                 &flight->roll, &flight->strafeLateral, &flight->strafeVertical, &flight->reverse };
             bool anyAxis{};
@@ -225,12 +242,12 @@ namespace AbsoluteControl::Runtime
             const auto installed = flightOutput ? FlightOutput::Install() : FlightOutput::InstallResult{};
             // AbsoluteZero steers pitch and yaw through the same aim point.
             const bool mouseSteeringOwned = ::GetModuleHandleW(L"AbsoluteZero.dll") != nullptr;
-            Log::Event("flight_config", std::format("enabled={} axes={} output={} gates={} store_hooks={} split={} aim={} zero={} ignored={}",
-                flight->enabled ? 1 : 0, anyAxis ? 1 : 0, flightOutput ? 1 : 0, installed.steeringGates ? 1 : 0,
+            Log::Event("flight_config", std::format("enabled={} axes={} output={} gates={} shared={} store_hooks={} split={} aim={} zero={} ignored={}",
+                flight->enabled ? 1 : 0, anyAxis ? 1 : 0, flightOutput ? 1 : 0, installed.steeringGates ? 1 : 0, installed.sharedGate ? 1 : 0,
                 installed.storeHooks, installed.splitHook ? 1 : 0, flight->steerThroughAim ? 1 : 0, mouseSteeringOwned ? 1 : 0, flight->ignored.size()));
 
             const bool started = service->Start(
-                [core, held, outputs, boostButton, flight, flightOutput, mouseSteeringOwned](
+                [core, held, outputs, boostButton, flight, flightOutput, mouseSteeringOwned, ini, rebindPath, rebindStamp](
                     std::stop_token stop, const std::shared_ptr<CallbackGate>&) {
                     constexpr std::uint32_t kStrafeOwner = 1000;
                     constexpr std::uint32_t kBoostZoneOwner = 1001;
@@ -240,8 +257,10 @@ namespace AbsoluteControl::Runtime
                         }
                         return ShipActionOutputSpec{};
                     };
-                    const auto strafeKey = outputFor("SwitchFlightModes");
-                    const auto boostKey = outputFor("FireBoosters");
+                    auto strafeKey = outputFor("SwitchFlightModes");
+                    auto boostKey = outputFor("FireBoosters");
+                    auto stamp = rebindStamp;
+                    std::uint64_t nextRebindCheck{};
                     const auto axis = [&](std::size_t slot) -> std::optional<float> {
                         const auto value = core->AxisValue(slot);
                         return value ? std::optional<float>(static_cast<float>(*value)) : std::nullopt;
@@ -257,6 +276,18 @@ namespace AbsoluteControl::Runtime
                             core->SetAxisBinding(ParseAxisBinding("WalkSpeed", axisToken));
                         }
                         const auto now = BackendRuntime::Now();
+                        if (now >= nextRebindCheck) {
+                            nextRebindCheck = now + 1'000'000'000;
+                            if (const auto current = RebindStamp(rebindPath); current != stamp) {
+                                stamp = current;
+                                // Let go of everything first: a held key may be about to change.
+                                held->ReleaseAll();
+                                *outputs = LoadOutputs(*ini);
+                                strafeKey = outputFor("SwitchFlightModes");
+                                boostKey = outputFor("FireBoosters");
+                                Log::Event("ship_outputs_reloaded", "reason=control_map_changed");
+                            }
+                        }
                         const auto signals = ReadFlightSignals();
                         PilotObservation observation;
                         if (signals) {

@@ -24,7 +24,7 @@ namespace AbsoluteControl::Runtime::FlightOutput
         constexpr std::ptrdiff_t kThrottleTarget = 0x68;
         constexpr std::ptrdiff_t kThrottleEffective = 0x6C;
         constexpr std::ptrdiff_t kVelocity = 0x70;
-        // The steering block reads its object through r13. It looks like Manager + 0x20; unconfirmed.
+        // The steering block reads its object through r13: Manager + 0x20 on every flight logged.
         constexpr std::ptrdiff_t kSourceFromManager = 0x20;
         constexpr std::ptrdiff_t kSourceReverseIntent = 0x3C;
         constexpr std::ptrdiff_t kSourceAimYaw = 0x4C;
@@ -63,6 +63,7 @@ namespace AbsoluteControl::Runtime::FlightOutput
         std::uintptr_t g_flightHandlerVtable{};
 
         bool g_reverseOwnsVertical{};
+        bool g_sharedGate{}; // Another mod owns the steering block; ours sits just after it.
         bool g_installed{};
         InstallResult g_result;
 
@@ -224,6 +225,60 @@ namespace AbsoluteControl::Runtime::FlightOutput
             return PatchJump(target, memory);
         }
 
+        // The block as another mod leaves it: the first instruction intact, then a jump and
+        // eighteen bytes of padding where the four stores were.
+        const std::uint8_t* FindSharedBlock(const Text& text)
+        {
+            constexpr std::array<std::uint8_t, 8> kHead{ 0x49, 0x8B, 0x85, 0xE8, 0x01, 0x00, 0x00, 0xE9 };
+            const auto* begin = reinterpret_cast<const std::uint8_t*>(text.start);
+            const auto* end = begin + text.size - 64;
+            const std::uint8_t* match{};
+            for (auto at = std::search(begin, end, kHead.begin(), kHead.end()); at != end;
+                at = std::search(at + 1, end, kHead.begin(), kHead.end())) {
+                if (!std::all_of(at + 12, at + 30, [](std::uint8_t byte) { return byte == 0x90; })) continue;
+                if (match) return nullptr; // Not unique: don't guess.
+                match = at;
+            }
+            return match;
+        }
+
+        // Straight after the block the game loads a constant with
+        // "vmovss xmm2,[rip+disp]", with the flight handler still in rax. A gate there sets
+        // roll or strafe and vertical strafe after the other mod has stored the game's values.
+        bool InstallGateAfterSharedBlock(const Text& text)
+        {
+            const auto* block = FindSharedBlock(text);
+            if (!block) return false;
+            const auto* next = block + 30;
+            if (next[0] != 0xC5 || next[1] != 0xFA || next[2] != 0x10 || next[3] != 0x15 || next[8] != 0x80 || next[9] != 0x3D) return false;
+            std::int32_t displacement{};
+            std::memcpy(&displacement, next + 4, 4);
+            const auto target = reinterpret_cast<std::uintptr_t>(next);
+            const auto constant = target + 8 + displacement;
+
+            auto* memory = AllocateNear(target);
+            if (!memory) return false;
+            Assembler code{ memory };
+            code.Bytes({ 0x51, 0x9C });                   // push rcx; pushfq
+            code.LoadRcx(&g_lateralActive);
+            code.Bytes({ 0x80, 0x39, 0x00 });             // cmp byte ptr [rcx],0
+            const auto noLateral = code.ShortJump(0x74);
+            code.LoadRcx(&g_lateralBits);
+            code.Bytes({ 0x8B, 0x09, 0x89, 0x48, 0x58 }); // mov ecx,[rcx]; mov [rax+58],ecx
+            code.Land(noLateral);
+            code.LoadRcx(&g_verticalActive);
+            code.Bytes({ 0x80, 0x39, 0x00 });
+            const auto noVertical = code.ShortJump(0x74);
+            code.LoadRcx(&g_verticalBits);
+            code.Bytes({ 0x8B, 0x09, 0x89, 0x48, 0x5C }); // mov ecx,[rcx]; mov [rax+5C],ecx
+            code.Land(noVertical);
+            code.LoadRcx(reinterpret_cast<const void*>(constant));
+            code.Bytes({ 0xC5, 0xFA, 0x10, 0x11 });       // vmovss xmm2,[rcx]: the game's own load
+            code.Bytes({ 0x9D, 0x59 });                   // popfq; pop rcx
+            code.JumpTo(target + 8);
+            return PatchJump(target, memory);
+        }
+
         bool InstallSteeringGates(const Text& text)
         {
             constexpr std::array<std::uint8_t, 30> kBlock{
@@ -238,7 +293,11 @@ namespace AbsoluteControl::Runtime::FlightOutput
             const auto* end = begin + text.size;
             const auto found = std::search(begin, end, kBlock.begin(), kBlock.end());
             if (found == end) {
-                Log::Event("flight_gates", "installed=0 reason=block_not_found");
+                // AbsoluteZero replaces the block from its second instruction on with a jump
+                // and padding, and writes the four lanes itself. Roll and both strafes can
+                // still be set just after it.
+                g_sharedGate = InstallGateAfterSharedBlock(text);
+                Log::Event("flight_gates", std::format("installed=0 reason=block_not_found shared={}", g_sharedGate ? 1 : 0));
                 return false;
             }
             // More than one match would mean the signature no longer identifies the block.
@@ -476,10 +535,11 @@ namespace AbsoluteControl::Runtime::FlightOutput
             return g_result;
         }
         g_result.steeringGates = InstallSteeringGates(*text);
+        g_result.sharedGate = g_sharedGate;
         g_result.storeHooks = InstallStoreHolds(*text);
         g_result.splitHook = InstallSplitHook(text->module);
-        Log::Event("flight_output", std::format("installed=1 gates={} store_hooks={} split={}",
-            g_result.steeringGates ? 1 : 0, g_result.storeHooks, g_result.splitHook ? 1 : 0));
+        Log::Event("flight_output", std::format("installed=1 gates={} shared={} store_hooks={} split={}",
+            g_result.steeringGates ? 1 : 0, g_result.sharedGate ? 1 : 0, g_result.storeHooks, g_result.splitHook ? 1 : 0));
         return g_result;
     }
 
@@ -496,9 +556,12 @@ namespace AbsoluteControl::Runtime::FlightOutput
         // while it belongs to the flight handler in use. Until that code has run, nothing
         // is written through it.
         const std::uintptr_t captured = g_capturedSource;
-        const std::uintptr_t source = captured && g_capturedCluster == target.cluster ? captured : 0;
+        std::uintptr_t source = captured && g_capturedCluster == target.cluster ? captured : 0;
+        // Without our own gate in the block nothing is captured. The object sat at
+        // Manager + 0x20 on every flight that did capture it.
+        if (g_sharedGate && target.manager) source = target.manager + kSourceFromManager;
         g_lastSource = source;
-        if (!g_sourceChecked && source) {
+        if (!g_sourceChecked && source && captured) {
             // For a later build: whether it could be worked out from the manager instead.
             g_sourceChecked = true;
             Log::Event("flight_source", std::format("manager_offset_match={}",
