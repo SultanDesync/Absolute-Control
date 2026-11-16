@@ -102,6 +102,7 @@ namespace AbsoluteControl::Runtime
             ComPtr<IDirectInputDevice8W> device;
             std::vector<Control> controls;
             bool connected{}, objectFailure{};
+            std::uint32_t axisMask{}, sliders{}; // Filled while the controls are listed.
         };
         void AddControl(Controller& controller, Kind kind, DWORD offset, std::uint32_t ordinal,
             std::uint32_t direction = 0)
@@ -149,18 +150,30 @@ namespace AbsoluteControl::Runtime
         {
             auto& c = *static_cast<Controller*>(context);
             try {
+                // dwOfs here is the device's own layout, not the joystick state's. A control's
+                // place in the state follows from what it is: an axis by its type (X to Rz,
+                // then up to two sliders), a button or hat by its instance number.
                 const std::array<DWORD, 8> axes{ DIJOFS_X, DIJOFS_Y, DIJOFS_Z,
                     DIJOFS_RX, DIJOFS_RY, DIJOFS_RZ, DIJOFS_SLIDER(0), DIJOFS_SLIDER(1) };
-                const auto axis = std::find(axes.begin(), axes.end(), object->dwOfs);
-                if ((object->dwType & DIDFT_AXIS) && axis != axes.end()) {
-                    AddControl(c, Kind::Axis, object->dwOfs, static_cast<std::uint32_t>(axis - axes.begin()));
-                } else if ((object->dwType & DIDFT_BUTTON) && object->dwOfs >= DIJOFS_BUTTON(0) && object->dwOfs <= DIJOFS_BUTTON(127)) {
-                    AddControl(c, Kind::Button, object->dwOfs, object->dwOfs - DIJOFS_BUTTON(0));
-                } else if ((object->dwType & DIDFT_POV) && object->dwOfs >= DIJOFS_POV(0) && object->dwOfs <= DIJOFS_POV(3) &&
-                    (object->dwOfs - DIJOFS_POV(0)) % sizeof(DWORD) == 0) {
-                    const auto index = static_cast<std::uint32_t>((object->dwOfs - DIJOFS_POV(0)) / sizeof(DWORD));
-                    AddControl(c, Kind::Pov, object->dwOfs, index);
-                    for (std::uint32_t direction = 0; direction < 4; ++direction) AddControl(c, Kind::Direction, object->dwOfs, index, direction);
+                const std::array<const GUID*, 6> types{ &GUID_XAxis, &GUID_YAxis, &GUID_ZAxis,
+                    &GUID_RxAxis, &GUID_RyAxis, &GUID_RzAxis };
+                const auto instance = static_cast<std::uint32_t>(DIDFT_GETINSTANCE(object->dwType));
+                if (object->dwType & DIDFT_AXIS) {
+                    std::uint32_t slot = 8;
+                    for (std::uint32_t index = 0; index < types.size(); ++index) {
+                        if (IsEqualGUID(object->guidType, *types[index])) slot = index;
+                    }
+                    if (slot == 8 && IsEqualGUID(object->guidType, GUID_Slider) && c.sliders < 2) slot = 6 + c.sliders++;
+                    if (slot < 8 && !(c.axisMask & (1U << slot))) {
+                        c.axisMask |= 1U << slot;
+                        AddControl(c, Kind::Axis, axes[slot], slot);
+                    }
+                } else if ((object->dwType & DIDFT_BUTTON) && instance < 128) {
+                    AddControl(c, Kind::Button, DIJOFS_BUTTON(instance), instance);
+                } else if ((object->dwType & DIDFT_POV) && instance < 4) {
+                    const DWORD offset = DIJOFS_POV(instance);
+                    AddControl(c, Kind::Pov, offset, instance);
+                    for (std::uint32_t direction = 0; direction < 4; ++direction) AddControl(c, Kind::Direction, offset, instance, direction);
                 }
                 return DIENUM_CONTINUE;
             } catch (...) { c.objectFailure = true; return DIENUM_STOP; }
@@ -310,6 +323,7 @@ namespace AbsoluteControl::Runtime
                 }
                 // Rebuild descriptors on a new connection; identity is tied to GUID + object.
                 c.controls.clear(); c.objectFailure = false;
+                c.axisMask = 0; c.sliders = 0;
                 if (FAILED(c.device->EnumObjects(&Objects, &c, DIDFT_ALL)) || c.objectFailure)
                     throw std::runtime_error("DirectInput channel enumeration failed");
                 std::sort(c.controls.begin(), c.controls.end(), [](const auto& a, const auto& b) {
