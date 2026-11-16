@@ -662,7 +662,9 @@ int main()
         generalProvider.invokes == 0);
     model = session.Dispatch(MakeCommand(CommandKind::Invoke, "general", "run"));
     CHECK(model.error.empty() && generalProvider.invokes == 1 && model.selectedControlId == "run");
-    CHECK(session.Dispatch(MakeCommand(CommandKind::Apply, "general")).dirty == false && generalProvider.applies == 1);
+    // Apply and Cancel stay on the same setting, so tuning can carry on from where it was.
+    model = session.Dispatch(MakeCommand(CommandKind::Apply, "general"));
+    CHECK(!model.dirty && generalProvider.applies == 1 && model.selectedControlId == "run");
 
     // Draft-mutating actions pin the same page transaction as writes and
     // compound edits. A successful action becomes dirty; Cancel resolves the
@@ -676,8 +678,9 @@ int main()
     model = session.Dispatch(MakeCommand(CommandKind::Invoke, "general", "mutate"));
     CHECK(model.error.empty() && model.dirty && generalProvider.invokes == 3 &&
         publicApi->unregisterModule("test.module") == Result::Rejected);
-    CHECK(!session.Dispatch(MakeCommand(CommandKind::Cancel, "general")).dirty &&
-        generalProvider.cancels == cancelsBeforeMutatingAction + 2);
+    model = session.Dispatch(MakeCommand(CommandKind::Cancel, "general"));
+    CHECK(!model.dirty && generalProvider.cancels == cancelsBeforeMutatingAction + 2 &&
+        model.selectedControlId == "mutate");
 
     // The page registered through the legacy query receives the same transaction
     // semantics as the product-registered page.

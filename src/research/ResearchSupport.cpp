@@ -902,6 +902,17 @@ namespace AbsoluteControlPanelResearch::ResearchSupport
                         std::format("id={} command={} sent={}", commandId, command, sent));
                     return;
                 }
+                // Holds or releases the real left mouse button, for dragging: test_mouse_button:<0 or 1>.
+                if (command.starts_with("test_mouse_button:")) {
+                    a_lastCommandId = commandId;
+                    INPUT input{};
+                    input.type = INPUT_MOUSE;
+                    input.mi.dwFlags = command.ends_with(":1") ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP;
+                    const auto sent = ::SendInput(1, &input, sizeof(INPUT));
+                    EvidenceLog::Event(sent == 1 ? "research_probe_command_dispatched" : "research_input_rejected",
+                        std::format("id={} command={} sent={}", commandId, command, sent));
+                    return;
+                }
                 // Reports the player's position, for measuring how far a key moved them.
                 if (command == "player_probe") {
                     a_lastCommandId = commandId;

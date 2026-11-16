@@ -43,11 +43,14 @@ The sidebar lists pages under system headings such as Flight and On Foot. A page
 with `group` on its descriptor. Known headings come first in a fixed order, and pages without one
 follow. If more than one module is loaded, each gets a row and only the active module's pages show.
 
-The sidebar also splits long pages. If a page has more rows than fit, at least two group headers,
-no composition and no live components, its headers are listed under it and the settings area shows
-one section at a time. Moving through the controls crosses between sections, and clicking a section
-jumps to its first control. No shipped page qualifies yet, so `menu-sections` tests this with a
-test-only page.
+The sidebar also splits long pages. If a page has more rows than fit and at least two group headers,
+its headers are listed under it and the settings area shows one section at a time. Moving through the
+controls crosses between sections, and clicking a section jumps to its first control. A live graph
+stays pinned above the section. Composition pages, grids and the head pose surface place their own
+rows, so they don't get sections. HOTAS's Throttle Setup and Devices pages use this today.
+
+What fits is measured on each redraw from the space left under the page's pinned controls and live
+panels, so opening a live panel shrinks the list instead of hiding the selection.
 
 The source-built component foundation renders measured semantic rows for toggles, sliders, choices,
 actions, and bindings, plus selected-setting help and a compact input-aware command footer. Thirteen

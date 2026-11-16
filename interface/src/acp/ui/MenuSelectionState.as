@@ -7,6 +7,8 @@ package acp.ui
         public var activePageIndex:int = 0;
         public var selectedRow:int = 0;
         public var firstVisibleRow:int = 0;
+        // Rows that fit below whatever the page pins. The renderer measures this on each redraw.
+        public var viewportRows:int = PanelLayout.VISIBLE_ROWS;
         public var focusRegion:int = PanelLayout.FOCUS_CONTROLS;
         public var focusedAction:int = 0;
         private var preserveSemanticViewport:Boolean = false;
@@ -120,11 +122,15 @@ package acp.ui
                 firstVisibleRow = 0;
                 return;
             }
-            var visibleRows:int = current.liveComponents != null &&
-                current.liveComponents.length > 0 ? 5 : PanelLayout.VISIBLE_ROWS;
             var rows:Array = controlRows(current);
-            if (isPinnedControl(current.controls[selectedRow])) return;
             if (rows.length == 0) return;
+            if (isPinnedControl(current.controls[selectedRow])) {
+                // Selecting a pinned control shows the first section, which may not hold this row.
+                if (int(rows[layoutRowForControl(rows, firstVisibleRow)][0]) != firstVisibleRow) {
+                    firstVisibleRow = int(rows[0][0]);
+                }
+                return;
+            }
             var selectedLayout:int = layoutRowForControl(rows, selectedRow);
             if (Boolean(current.compositionEnhanced)) {
                 if (preserveSemanticViewport) {
@@ -139,11 +145,11 @@ package acp.ui
             }
             var firstLayout:int = layoutRowForControl(rows, firstVisibleRow);
             if (selectedLayout < firstLayout) firstLayout = selectedLayout;
-            if (selectedLayout > firstLayout + visibleRows - 1) {
-                firstLayout = selectedLayout - visibleRows + 1;
+            if (selectedLayout > firstLayout + viewportRows - 1) {
+                firstLayout = selectedLayout - viewportRows + 1;
             }
             firstLayout = Math.max(0, Math.min(firstLayout,
-                Math.max(0, rows.length - visibleRows)));
+                Math.max(0, rows.length - viewportRows)));
             firstVisibleRow = int(rows[firstLayout][0]);
         }
 
@@ -199,12 +205,23 @@ package acp.ui
         }
 
         // A page only gets sections when its rows don't all fit and its headers split it in two
-        // or more. Composed pages and pages with live surfaces lay themselves out.
+        // or more. A live graph can stay pinned above them. Composed pages, grids and the head
+        // pose surface place their own rows.
+        private function placesOwnRows(current:Object):Boolean
+        {
+            if (Boolean(current.compositionEnhanced)) return true;
+            if (current.liveComponents == null) return false;
+            for each (var component:Object in current.liveComponents) {
+                var kind:uint = uint(component.kind);
+                if (kind == 2 || kind == 4) return true;
+            }
+            return false;
+        }
+
         private function sectionsFromRows(current:Object, rows:Array):Array
         {
-            if (current == null || Boolean(current.compositionEnhanced) ||
-                (current.liveComponents != null && current.liveComponents.length > 0) ||
-                rows.length <= PanelLayout.VISIBLE_ROWS) return [];
+            if (current == null || placesOwnRows(current) ||
+                rows.length <= viewportRows) return [];
             var result:Array = [];
             for (var index:int = 0; index < rows.length; ++index) {
                 var first:int = int(rows[index][0]);
@@ -216,7 +233,7 @@ package acp.ui
                     continue;
                 }
                 if (result.length == 0) {
-                    result.push({"title":String(current.title), "start":0,
+                    result.push({"title":"General", "start":0,
                         "end":current.controls.length, "firstControl":first});
                 } else if (int(result[result.length - 1].firstControl) < 0) {
                     result[result.length - 1].firstControl = first;
@@ -254,7 +271,7 @@ package acp.ui
                     var found:Array = sections(entry);
                     var activeIndex:int = activeSection(found);
                     for (var section:int = 0; section < found.length; ++section) {
-                        items.push({"type":"section", "title":String(found[section].title),
+                        items.push({"type":"section", "title":sectionTitle(String(found[section].title)),
                             "control":entry.controls[int(found[section].firstControl)],
                             "index":int(found[section].firstControl),
                             "selected":section == activeIndex,
@@ -263,6 +280,13 @@ package acp.ui
                 }
             }
             return items;
+        }
+
+        // Page headers are often written in capitals, which would shout in the sidebar.
+        private function sectionTitle(label:String):String
+        {
+            return label == label.toUpperCase() ?
+                label.charAt(0) + label.substr(1).toLowerCase() : label;
         }
 
         private function pageRows(current:Object):Array
@@ -384,7 +408,8 @@ package acp.ui
                     ordered.push(int(pinned[pinnedIndex].index));
                 }
             }
-            var rows:Array = controlRows(current);
+            // The whole page, so that moving crosses from one section into the next.
+            var rows:Array = pageRows(current);
             for (var row:int = 0; row < rows.length; ++row) {
                 for (var item:int = 0; item < rows[row].length; ++item) {
                     var candidateIndex:int = int(rows[row][item]);

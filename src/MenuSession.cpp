@@ -902,11 +902,14 @@ namespace AbsoluteControlPanelResearch::MenuSession
                         SetError("Apply failed"); return BuildSnapshot();
                     }
                     transaction_.Reset();
-                    dirtyModuleId_.clear(); dirtyPageId_.clear(); selectedControlId_.clear();
+                    dirtyModuleId_.clear(); dirtyPageId_.clear();
                 } else if (IsDirty()) {
+                    // Stay on the same setting, so tuning can carry on from where it was.
+                    const auto selected = selectedControlId_;
                     if (!RollbackDirtyPage()) {
                         SetError("Cancel failed"); return BuildSnapshot();
                     }
+                    selectedControlId_ = selected;
                 } else {
                     if (MenuApiHost::Cancel(*page) !=
                         AbsoluteControlPanelApi::Result::Ok) {

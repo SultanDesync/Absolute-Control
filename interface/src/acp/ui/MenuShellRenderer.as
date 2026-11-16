@@ -143,7 +143,6 @@ package acp.ui
                 PanelLayout.WORKSPACE_WIDTH - 20, 28);
             if (current == null) return;
 
-            drawSidebar(state);
             VectorTextRenderer.addText(rowLayer, String(current.title), 0, -38, 19,
                 PanelTheme.TEXT, true);
             var pinnedHeight:Number = drawPinnedContext(model, state, current);
@@ -156,9 +155,13 @@ package acp.ui
             var availableHeight:Number = PanelLayout.ROWS_BOTTOM -
                 PanelLayout.ROWS_Y - gridHeight - anchorHeight;
             availableHeight -= pinnedHeight;
-            var visibleRows:int = semantic ? Math.max(1,
-                Math.floor(availableHeight / rowHeight)) :
-                (gridHeight > 0 ? 5 : PanelLayout.VISIBLE_ROWS);
+            var fittingRows:int = Math.max(1, Math.floor(availableHeight / rowHeight));
+            if (!semantic && fittingRows != state.viewportRows) {
+                state.viewportRows = fittingRows;
+                state.normalize();
+            }
+            // After measuring, because whether a page has sections depends on what fits.
+            drawSidebar(state);
             var controlRows:Array = state.controlRows(current);
             var firstLayoutRow:int = 0;
             for (var rowSearch:int = 0; rowSearch < controlRows.length;
@@ -1949,7 +1952,8 @@ package acp.ui
                 token = "%.3f";
             }
             var number:String = value.toFixed(digits);
-            return format.length == 0 ? number : format.split(token).join(number);
+            return format.length == 0 ? number :
+                format.split(token).join(number).split("%%").join("%");
         }
 
         private function rangePosition(value:Number, minimum:Number,
@@ -2020,6 +2024,12 @@ package acp.ui
                 }
             }
             if (component.markers != null) {
+                var selectedPage:Object = activeSelectionState == null ? null :
+                    activeSelectionState.page();
+                var selectedControl:Object = selectedPage == null || selectedPage.controls == null ?
+                    null : selectedPage.controls[activeSelectionState.selectedRow];
+                var selectedControlId:String = selectedControl == null ? "" :
+                    String(selectedControl.controlId);
                 for (var markerIndex:int = 0;
                      markerIndex < component.markers.length; ++markerIndex) {
                     var marker:Object = component.markers[markerIndex];
@@ -2028,7 +2038,8 @@ package acp.ui
                     var markerColor:uint = roleColor(uint(marker.visualRole));
                     var editable:Boolean = String(marker.controlId).length > 0;
                     var selected:Boolean = editable &&
-                        String(marker.controlId) == hits.activeRangeControlId;
+                        (String(marker.controlId) == hits.activeRangeControlId ||
+                         String(marker.controlId) == selectedControlId);
                     card.graphics.lineStyle(selected ? 4 : 2, markerColor);
                     card.graphics.moveTo(markerX, trackY - 3);
                     card.graphics.lineTo(markerX, trackY + trackHeight + 3);
@@ -2059,16 +2070,29 @@ package acp.ui
                 }
             }
             var valueY:Number = trackY + trackHeight + 6;
+            // On a pinned card the reading sits beside the lever, and the scale ends sit at the
+            // ends of the track unless the reading has reached them.
+            var maximumX:Number = pinned ? trackX + trackWidth - 40 : width - 86;
+            var readingX:Number = 12;
+            if (pinned) {
+                readingX = trackX + rangePosition(Number(component.liveValue),
+                    minimum, maximum, trackWidth) + 10;
+                if (readingX + 56 > trackX + trackWidth) readingX -= 76;
+            }
             VectorTextRenderer.addText(card,
                 formattedLiveValue(Number(component.liveValue),
-                    String(component.valueFormat)), 12, valueY, 13,
+                    String(component.valueFormat)), readingX, valueY, 13,
                 Boolean(component.liveAvailable) ? PanelTheme.TEXT : PanelTheme.DIM_TEXT);
-            VectorTextRenderer.addText(card,
-                formattedLiveValue(minimum, String(component.valueFormat)),
-                width - 174, valueY, 12, PanelTheme.DIM_TEXT);
-            VectorTextRenderer.addText(card,
-                formattedLiveValue(maximum, String(component.valueFormat)),
-                width - 86, valueY, 12, PanelTheme.DIM_TEXT);
+            if (!pinned || readingX > trackX + 56) {
+                VectorTextRenderer.addText(card,
+                    formattedLiveValue(minimum, String(component.valueFormat)),
+                    pinned ? trackX : width - 174, valueY, 12, PanelTheme.DIM_TEXT);
+            }
+            if (!pinned || readingX + 56 < maximumX) {
+                VectorTextRenderer.addText(card,
+                    formattedLiveValue(maximum, String(component.valueFormat)),
+                    maximumX, valueY, 12, PanelTheme.DIM_TEXT);
+            }
             if (pinned && component.bands != null) {
                 var legendCount:int = 0;
                 for each (var labeledBand:Object in component.bands) {
@@ -2121,8 +2145,8 @@ package acp.ui
                     hasShapedOutput ?
                         "DRAG EDGES  /  WHITE = INPUT  /  GREEN = SHAPED OUTPUT" :
                         "DRAG COLOURED LANDMARKS  /  WHITE = PHYSICAL LEVER",
-                    12, 23, 11, PanelTheme.MUTED_TEXT, true,
-                    width - 24, 16);
+                    300, 10, 11, PanelTheme.MUTED_TEXT, true,
+                    width - 420, 16);
             }
             if (record && current != null && component.markers != null) {
                 var hasEditable:Boolean = false;
@@ -2665,7 +2689,7 @@ package acp.ui
             button.graphics.endFill();
             button.y = yPosition;
             VectorTextRenderer.addText(button,
-                VectorTextRenderer.fit(String(item.title), 26), 34, 8, 15,
+                VectorTextRenderer.fit(String(item.title), 38), 34, 8, 15,
                 selected ? PanelTheme.CYAN : PanelTheme.MUTED_TEXT, selected);
             moduleLayer.addChild(button);
             if (Boolean(item.selectable)) {
@@ -2783,12 +2807,14 @@ package acp.ui
                     selected ? PanelTheme.CYAN : PanelTheme.BORDER);
                 button.graphics.beginFill(selected ? PanelTheme.SELECTED_FILL :
                     PanelTheme.BUTTON_FILL);
-                button.graphics.drawRoundRect(0, 0, width, 60, 6, 6);
+                // An action has no value line, so it fits inside the row.
+                var labelOnly:Boolean = uint(control.kind) == 4;
+                button.graphics.drawRoundRect(0, 0, width, labelOnly ? 34 : 60, 6, 6);
                 button.graphics.endFill();
                 button.buttonMode = Boolean(control.available);
                 VectorTextRenderer.addText(button,
                     VectorTextRenderer.fit(String(control.label), 30),
-                    14, 6, 15, Boolean(control.available) ? PanelTheme.TEXT :
+                    14, labelOnly ? 8 : 6, 15, Boolean(control.available) ? PanelTheme.TEXT :
                     PanelTheme.DISABLED_TEXT, selected);
                 if (uint(control.kind) != 4) {
                     var displayed:String = ControlWidgets.displayValue(control);
