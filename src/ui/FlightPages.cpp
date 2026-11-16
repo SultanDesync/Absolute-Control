@@ -8,6 +8,7 @@
 #include "runtime/BackendRuntime.h"
 #include "runtime/ButtonCapture.h"
 #include "runtime/ControlSettings.h"
+#include "runtime/FlightAxes.h"
 #include "runtime/FlightTelemetry.h"
 #include "runtime/ShipBindings.h"
 
@@ -43,9 +44,11 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
             Axis,    // A binding recorded by moving an axis.
             Button,  // A binding recorded by pressing a button or hat.
             Toggle,
-            Percent, // A fraction in the file, shown as a whole percentage.
-            Travel,  // A lever position 0 to 65535 in the file, shown as a percentage of travel.
-            Action   // Sets another row from where the lever is right now.
+            Percent, // A percentage, in the file and on the page.
+            Action,  // Sets another row from where the lever is right now.
+            Text,    // A line to read, kept in the row's target.
+            Choice,  // One of the row's choices, saved by its name.
+            Reset    // Puts every flight setting back to a new install's.
         };
 
         struct Row
@@ -56,11 +59,14 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
             double fallback{};
             int minimum{}, maximum{}, step{ 1 };
             std::string target; // For an action: the row it sets.
+            // For a choice: the name saved in the file, then what the page shows. The first
+            // is used when nothing is saved.
+            std::vector<std::pair<std::string, std::string>> choices;
         };
 
         struct Page
         {
-            std::string pageId, name, description;
+            std::string pageId, name, description, group;
             std::vector<Row> rows;
             std::vector<Api::ControlDescriptorV1> controls;
             std::mutex mutex;
@@ -68,6 +74,9 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
             Rt::AxisCapture axisCapture;
             Rt::ButtonCapture buttonCapture;
         };
+
+        // Every page, so one of them can clear what the others have pending.
+        std::vector<Page*> g_pages;
 
         template <std::size_t N>
         void Copy(char (&destination)[N], std::string_view source) noexcept
@@ -141,6 +150,18 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
             return std::format("{} · {} (not connected)", binding.device, what);
         }
 
+        // Which of a row's choices the saved text names.
+        std::size_t ChoiceIndex(const Row& row, std::string_view stored)
+        {
+            stored = Trim(stored);
+            for (std::size_t index = 0; index < row.choices.size(); ++index) {
+                if (std::ranges::equal(std::string_view(row.choices[index].first), stored, [](char a, char b) {
+                        return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
+                    })) return index;
+            }
+            return 0;
+        }
+
         const Row* Find(const Page& page, std::string_view id)
         {
             const auto found = std::ranges::find_if(page.rows, [&](const Row& row) { return row.id == id; });
@@ -155,8 +176,7 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
             const auto stored = Stored(page, *row);
             switch (row->kind) {
             case Kind::Toggle: return (stored ? IsTrue(*stored) : row->fallback != 0) ? 1 : 0;
-            case Kind::Percent: return std::clamp(Number(stored.value_or(""), row->fallback) * 100.0, 0.0, 200.0);
-            case Kind::Travel: return std::clamp(Number(stored.value_or(""), row->fallback) / 655.35, 0.0, 100.0);
+            case Kind::Percent: return std::clamp(Number(stored.value_or(""), row->fallback), 0.0, 200.0);
             default: return 0;
             }
         }
@@ -371,18 +391,21 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
                     break;
                 case Kind::Percent:
                     output->kind = Api::ValueKind::Integer;
-                    output->integerValue = std::clamp<std::int64_t>(std::llround(Number(stored.value_or(""), row->fallback) * 100.0),
-                        row->minimum, row->maximum);
-                    break;
-                case Kind::Travel:
-                    output->kind = Api::ValueKind::Integer;
-                    output->integerValue = std::clamp<std::int64_t>(std::llround(Number(stored.value_or(""), row->fallback) / 655.35),
+                    output->integerValue = std::clamp<std::int64_t>(std::llround(Number(stored.value_or(""), row->fallback)),
                         row->minimum, row->maximum);
                     break;
                 case Kind::Axis:
                 case Kind::Button:
                     output->kind = Api::ValueKind::String;
                     Copy(output->stringValue, BindingLabel(stored.value_or(""), row->kind == Kind::Axis));
+                    break;
+                case Kind::Text:
+                    output->kind = Api::ValueKind::String;
+                    Copy(output->stringValue, row->target);
+                    break;
+                case Kind::Choice:
+                    output->kind = Api::ValueKind::Integer;
+                    output->integerValue = static_cast<std::int64_t>(ChoiceIndex(*row, stored.value_or("")));
                     break;
                 default:
                     return Api::Result::NotFound;
@@ -406,10 +429,10 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
                     page.draft[row->id] = value->booleanValue ? "true" : "false";
                 } else if (row->kind == Kind::Percent && value->kind == Api::ValueKind::Integer &&
                     integer >= row->minimum && integer <= row->maximum) {
-                    page.draft[row->id] = std::format("{:.2f}", static_cast<double>(integer) / 100.0);
-                } else if (row->kind == Kind::Travel && value->kind == Api::ValueKind::Integer &&
-                    integer >= row->minimum && integer <= row->maximum) {
-                    page.draft[row->id] = std::format("{}", std::llround(static_cast<double>(integer) * 655.35));
+                    page.draft[row->id] = std::format("{}", integer);
+                } else if (row->kind == Kind::Choice && value->kind == Api::ValueKind::Integer &&
+                    integer >= 0 && static_cast<std::size_t>(integer) < row->choices.size()) {
+                    page.draft[row->id] = row->choices[static_cast<std::size_t>(integer)].first;
                 } else if ((row->kind == Kind::Axis || row->kind == Kind::Button) && value->kind == Api::ValueKind::String) {
                     // Empty clears the binding. Anything else has to be a binding that can be read.
                     const std::string token{ Trim(value->stringValue) };
@@ -427,6 +450,27 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
             }
         }
 
+        Api::Result __cdecl ReadChoices(void* context, const char* rawId, Api::ChoiceOptionV1* options,
+            std::uint32_t capacity, std::uint32_t* count) noexcept
+        {
+            if (!context || !rawId || !options || !count) return Api::Result::InvalidArgument;
+            try {
+                auto& page = *static_cast<Page*>(context);
+                const std::scoped_lock lock{ page.mutex };
+                const auto* row = Find(page, rawId);
+                if (!row || row->kind != Kind::Choice) return Api::Result::NotFound;
+                if (row->choices.size() > capacity) return Api::Result::CapacityExceeded;
+                for (std::size_t index = 0; index < row->choices.size(); ++index) {
+                    options[index].value = static_cast<std::int64_t>(index);
+                    Copy(options[index].label, row->choices[index].second);
+                }
+                *count = static_cast<std::uint32_t>(row->choices.size());
+                return Api::Result::Ok;
+            } catch (...) {
+                return Api::Result::Rejected;
+            }
+        }
+
         // "Set from lever": puts a zone where the lever is right now.
         Api::Result __cdecl InvokeAction(void* context, const char* rawId) noexcept
         {
@@ -435,13 +479,26 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
                 auto& page = *static_cast<Page*>(context);
                 const std::scoped_lock lock{ page.mutex };
                 const auto* row = Find(page, rawId);
+                if (row && row->kind == Kind::Reset) {
+                    // The menu has already asked the player to confirm.
+                    auto& settings = Rt::ControlSettings::Instance();
+                    const bool saved = settings.Reset();
+                    settings.Publish();
+                    for (auto* other : g_pages) {
+                        if (other == &page) continue;
+                        const std::scoped_lock otherLock{ other->mutex };
+                        other->draft.clear();
+                        SyncViews(*other);
+                    }
+                    EvidenceLog::Event("flight_settings_reset", std::format("saved={}", saved ? 1 : 0));
+                    return saved ? Api::Result::Ok : Api::Result::WriteFailure;
+                }
                 const auto* target = row && row->kind == Kind::Action ? Find(page, row->target) : nullptr;
                 if (!target) return Api::Result::NotFound;
                 const auto travel = LeverTravel();
                 if (!travel) return Api::Result::Rejected; // No lever bound, or it isn't connected.
                 const auto percent = std::clamp<double>(std::round(*travel), target->minimum, target->maximum);
-                page.draft[target->id] = target->kind == Kind::Travel ? std::format("{}", std::llround(percent * 655.35)) :
-                    std::format("{:.2f}", percent / 100.0);
+                page.draft[target->id] = std::format("{}", std::llround(percent));
                 SyncViews(page);
                 EvidenceLog::Event("flight_set_from_lever", std::format("control={} travel={:.0f}", target->id, percent));
                 return Api::Result::Ok;
@@ -567,25 +624,21 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
             return { Kind::Header, std::move(id), std::move(label), std::move(description) };
         }
 
-        // The rows every stick axis has: its binding, what it's doing now, and its shaping.
+        // The rows every stick axis has: its binding and its shaping. The section is the
+        // one the axis has in the settings file.
         void AddAxis(std::vector<Row>& rows, std::string_view id, std::string_view title, std::string_view about,
-            std::string_view axisKey, std::string_view invertKey, bool invertDefault, std::string_view sensitivityKey,
-            std::string_view deadzoneKey, double deadzoneDefault, std::string_view saturationKey)
+            std::string_view section, double deadzoneDefault)
         {
-            const std::string name(id);
+            const std::string name(id), where(section);
             rows.push_back(Header(name + "-group", std::string(title), std::string(about)));
-            rows.push_back({ Kind::Axis, name + "-axis", "Axis", "Move the axis you want to use. Delete clears it.", "Hardware", std::string(axisKey) });
-
-            rows.push_back({ Kind::Toggle, name + "-invert", "Invert", "Swap the axis's direction.", "Hardware", std::string(invertKey),
-                invertDefault ? 1.0 : 0.0 });
-            if (!sensitivityKey.empty()) {
-                rows.push_back({ Kind::Percent, name + "-sensitivity", "Sensitivity (%)", "Scales the output. 100 is one to one.",
-                    "Hardware", std::string(sensitivityKey), 1.0, 10, 200, 5 });
-            }
+            rows.push_back({ Kind::Axis, name + "-axis", "Axis", "Move the axis you want to use, or click its bar above. Delete clears it.", where, "Axis" });
+            rows.push_back({ Kind::Toggle, name + "-invert", "Invert", "Swap the axis's direction.", where, "Invert" });
+            rows.push_back({ Kind::Percent, name + "-sensitivity", "Sensitivity (%)", "Scales the output. 100 is one to one.",
+                where, "Sensitivity", 100, 10, 200, 5 });
             rows.push_back({ Kind::Percent, name + "-deadzone", "Deadzone (%)", "Travel around the centre that does nothing.",
-                "Hardware", std::string(deadzoneKey), deadzoneDefault, 0, 50, 1 });
+                where, "Deadzone", deadzoneDefault, 0, 50, 1 });
             rows.push_back({ Kind::Percent, name + "-saturation", "Full output at (%)", "Travel at which the output reaches full. Lower it for a shorter throw.",
-                "Hardware", std::string(saturationKey), 1.0, 5, 100, 5 });
+                where, "FullOutputAt", 100, 5, 100, 5 });
         }
 
         Row SetFromLever(std::string id, std::string label, std::string description, std::string target)
@@ -600,56 +653,49 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
             std::vector<Row> rows;
             rows.push_back(Header("throttle-group", "Lever", "A lever that sets thrust by its position. The graph above shows where it is and how its travel is divided."));
             rows.push_back({ Kind::Axis, "throttle-axis", "Axis", "Move the lever you want to use. Delete clears it and gives the throttle back to the keys.",
-                "Hardware", "iThrottleAxis" });
-            rows.push_back({ Kind::Toggle, "throttle-invert", "Invert", "Swap which end of the lever is full thrust.", "Hardware", "bInvertThrottle" });
+                "Throttle", "Axis" });
+            rows.push_back({ Kind::Toggle, "throttle-invert", "Invert", "Swap which end of the lever is full thrust.", "Throttle", "Invert" });
             rows.push_back({ Kind::Percent, "throttle-idle", "Idle band (%)", "Travel at the bottom of the lever that stays at zero thrust. Not used with the reverse zone on.",
-                "Normalization", "fIdlePlateau", 0.05, 0, 50, 1 });
+                "Throttle", "IdleBand", 5, 0, 50, 1 });
             rows.push_back(SetFromLever("throttle-idle-set", "Set idle band from lever", "Rest the lever where thrust should begin, then choose this.", "throttle-idle"));
             rows.push_back({ Kind::Percent, "throttle-saturation", "Full thrust at (%)", "How much of the travel above the idle band it takes to reach full thrust.",
-                "Hardware", "fThrottleSaturation", 1.0, 5, 100, 5 });
+                "Throttle", "FullThrustAt", 100, 5, 100, 5 });
 
             rows.push_back(Header("reverse-group", "Reverse zone", "The bottom of the lever reverses the ship once it has slowed. With it on, the lever's middle is half thrust."));
-            rows.push_back({ Kind::Toggle, "zone-reverse", "Reverse zone", "Pulling the lever below this zone reverses the ship.",
-                "Normalization", "bUnipolarReverse" });
+            rows.push_back({ Kind::Toggle, "zone-reverse", "Reverse zone", "Pulling the lever below this zone reverses the ship.", "Throttle", "ReverseZone" });
             rows.push_back(SetFromLever("zone-reverse-set", "Set zone from lever", "Hold the lever where the zone should sit, then choose this. You can also drag its marker on the graph.", "zone-reverse-at"));
-            rows.push_back({ Kind::Travel, "zone-reverse-at", "Zone centre (%)", "Where the zone sits, as travel from the bottom of the lever.",
-                "Normalization", "iReverseZoneCenter", 3000, 0, 50, 1 });
-            rows.push_back({ Kind::Travel, "zone-reverse-width", "Zone half-width (%)", "Reverse starts this far below the centre, and thrust this far above it.",
-                "Normalization", "iReverseZoneDeadzone", 3000, 0, 25, 1 });
+            rows.push_back({ Kind::Percent, "zone-reverse-at", "Zone centre (%)", "Where the zone sits, as travel from the bottom of the lever.",
+                "Throttle", "ReverseZoneCentre", Rt::kDefaultReverseZoneCentre, 0, 50, 1 });
+            rows.push_back({ Kind::Percent, "zone-reverse-width", "Zone half-width (%)", "Reverse starts this far below the centre, and thrust this far above it.",
+                "Throttle", "ReverseZoneWidth", Rt::kDefaultReverseZoneWidth, 0, 25, 1 });
 
             rows.push_back(Header("boost-group", "Boost zone", "The top of the lever presses your booster key."));
-            rows.push_back({ Kind::Toggle, "zone-boost", "Boost zone", "Pushing the lever past this zone fires the boosters.",
-                "Normalization", "bBoostZone" });
+            rows.push_back({ Kind::Toggle, "zone-boost", "Boost zone", "Pushing the lever past this zone fires the boosters.", "Throttle", "BoostZone" });
             rows.push_back(SetFromLever("zone-boost-set", "Set zone from lever", "Hold the lever where boost should begin to feel right, then choose this. You can also drag its marker on the graph.", "zone-boost-at"));
-            rows.push_back({ Kind::Travel, "zone-boost-at", "Zone centre (%)", "Where the zone sits, as travel from the bottom of the lever.",
-                "Normalization", "iBoostZoneCenter", 62000, 50, 100, 1 });
-            rows.push_back({ Kind::Travel, "zone-boost-width", "Zone half-width (%)", "Boosters fire this far above the centre. With the reverse zone on, full thrust is reached this far below it.",
-                "Normalization", "iBoostZoneDeadzone", 2000, 0, 25, 1 });
+            rows.push_back({ Kind::Percent, "zone-boost-at", "Zone centre (%)", "Where the zone sits, as travel from the bottom of the lever.",
+                "Throttle", "BoostZoneCentre", Rt::kDefaultBoostZoneCentre, 50, 100, 1 });
+            rows.push_back({ Kind::Percent, "zone-boost-width", "Zone half-width (%)", "Boosters fire this far above the centre. With the reverse zone on, full thrust is reached this far below it.",
+                "Throttle", "BoostZoneWidth", Rt::kDefaultBoostZoneWidth, 0, 25, 1 });
             return rows;
         }
 
         std::vector<Row> AxisRows()
         {
             std::vector<Row> rows;
-            AddAxis(rows, "pitch", "Pitch", "Nose up and down.", "iPitchAxis", "bInvertPitch", true,
-                "fPitchSensitivity", "fPitchDeadzone", 0.0, "fPitchSaturation");
-            AddAxis(rows, "yaw", "Yaw", "Nose left and right.", "iYawAxis", "bInvertYaw", false,
-                "fYawSensitivity", "fYawDeadzone", 0.0, "fYawSaturation");
-            AddAxis(rows, "roll", "Roll", "Works together with sideways strafe.", "iRollAxis", "bInvertRoll", false,
-                "fRollSensitivity", "fRollDeadzone", 0.0, "fRollSaturation");
-            AddAxis(rows, "strafe-side", "Strafe sideways", "Slide left and right. Your flight mode key is held for you while you strafe.",
-                "iStrafeLatAxis", "bInvertStrafeLat", false, "fStrafeSensitivity", "fStrafeDeadzone", 0.05, "fStrafeSaturation");
-            // One sensitivity setting covers both strafe axes, so it's only shown once.
-            AddAxis(rows, "strafe-up", "Strafe up and down", "Slide up and down. Shares its sensitivity with sideways strafe.",
-                "iStrafeVertAxis", "bInvertStrafeVert", false, {}, "fStrafeVertDeadzone", 0.05, "fStrafeVertSaturation");
+            AddAxis(rows, "pitch", "Pitch", "Nose up and down.", "Pitch", 0);
+            AddAxis(rows, "yaw", "Yaw", "Nose left and right.", "Yaw", 0);
+            AddAxis(rows, "roll", "Roll", "Works together with sideways strafe.", "Roll", 0);
+            AddAxis(rows, "strafe-side", "Strafe sideways", "Slide left and right. Your flight mode key is held for you while you strafe.", "StrafeSideways", 5);
+            AddAxis(rows, "strafe-up", "Strafe up and down", "Slide up and down.", "StrafeVertical", 5);
             return rows;
         }
+
         std::vector<Row> ButtonRows()
         {
             std::vector<Row> rows;
             rows.push_back(Header("buttons-about", "Ship buttons", "Each button presses the key the game has for that action, so your in-game key bindings still decide what it does."));
             rows.push_back({ Kind::Toggle, "buttons-enabled", "Enabled", "Turn every ship button off without losing the bindings.",
-                "ShipButtons", "bShipButtonsEnabled", 1.0 });
+                "ShipButtons", "Enabled", 1.0 });
 
             struct Group
             {
@@ -669,10 +715,58 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
                 for (const auto actionId : kNativeShipButtonActions) {
                     const auto* action = FindShipAction(actionId);
                     if (!action || action->group != group.group) continue;
+                    const auto index = static_cast<std::size_t>(action - kShipActionCatalog.data());
+                    const bool targetButton = actionId == "PreviousTargetSystem" || actionId == "NextTargetSystem";
+                    if (actionId == "PreviousTargetSystem") {
+                        Row choice{ Kind::Choice, "target-cycle", "Cycle target system with",
+                            "How you pick a target's system in Targeting Mode. Power buttons: Previous and Next System do both there. "
+                            "An axis: push it for one step, then let it centre. Own buttons: the two rows below.",
+                            "ShipButtons", "CycleTargetSystemWith" };
+                        choice.choices = { { "PowerButtons", "Power buttons" }, { "Roll", "Roll axis" }, { "Yaw", "Yaw axis" },
+                            { "StrafeSideways", "Strafe sideways axis" }, { "OwnButtons", "Own buttons" } };
+                        // The menu treats a choice as a range of whole numbers, one per option.
+                        choice.maximum = static_cast<int>(choice.choices.size()) - 1;
+                        rows.push_back(std::move(choice));
+                    }
                     rows.push_back({ Kind::Button, "button-" + std::string(action->actionId), std::string(action->displayLabel),
-                        "Press the button or hat you want to use. Delete clears it.", "ShipButtons", std::string(action->sourceIniKey) });
+                        targetButton ? "Only used when Cycle target system with is set to Own buttons. Press the button or hat you want to use. Delete clears it." :
+                            "Press the button or hat you want to use. Delete clears it.",
+                        "ShipButtons", std::string(Rt::ShipSettingKey(index)) });
                 }
             }
+            return rows;
+        }
+        Row Line(std::string id, std::string label, std::string description, std::string text)
+        {
+            Row row{ Kind::Text, std::move(id), std::move(label), std::move(description) };
+            row.maximum = 255;
+            row.target = std::move(text);
+            return row;
+        }
+
+        // Where the settings came from, what an import couldn't bring, and the way out.
+        std::vector<Row> SettingsRows()
+        {
+            std::vector<Row> rows;
+            const auto report = Rt::ControlSettings::Instance().Report();
+            rows.push_back(Header("settings-about", "Settings file", "Everything on the Flight pages is saved in one file, AbsoluteControl.ini, beside the plugin. It is the only settings file Absolute Control reads."));
+            if (report.imported) {
+                rows.push_back(Line("import-from", "Imported from", "Your AbsoluteHOTAS settings were copied in once. Those files are not read again, so editing them changes nothing.",
+                    report.date.empty() ? report.from : std::format("{} on {}", report.from, report.date)));
+                rows.push_back(Line("import-result", "Result", "Bindings and tuning for features Absolute Control has were carried over.",
+                    report.dropped.empty() ? "Everything was carried over" :
+                    std::format("{} {} not carried over, listed below", report.dropped.size(), report.dropped.size() == 1 ? "setting was" : "settings were")));
+                // The menu shows the first of them; all of them are in the file's [Import] section.
+                constexpr std::size_t kShown = 12;
+                for (std::size_t index = 0; index < report.dropped.size() && index < kShown; ++index) {
+                    rows.push_back(Line(std::format("import-line-{}", index + 1), std::format("Not carried {}", index + 1),
+                        "Set this up again in the menu if you still want it.", report.dropped[index]));
+                }
+            } else {
+                rows.push_back(Line("import-from", "Set up", "Nothing was imported from AbsoluteHOTAS.", "In this menu"));
+            }
+            rows.push_back(Header("fresh-group", "Start fresh", "If anything seems broken after an update or an import, starting fresh is more reliable than repairing old settings."));
+            rows.push_back({ Kind::Reset, "settings-reset", "Reset flight settings", "Clears every binding and setting on the Flight pages, back to a new install. Walk speed is not changed. This can't be undone." });
             return rows;
         }
 
@@ -687,11 +781,19 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
                 control.flags = Api::kBindingController | Api::kBindingClearable;
                 break;
             case Kind::Toggle: control.kind = Api::ControlKind::Toggle; break;
-            case Kind::Percent:
-            case Kind::Travel: control.kind = Api::ControlKind::IntegerSlider; break;
+            case Kind::Percent: control.kind = Api::ControlKind::IntegerSlider; break;
+            case Kind::Choice: control.kind = Api::ControlKind::Choice; break;
             case Kind::Action:
                 control.kind = Api::ControlKind::Action;
                 control.flags = Api::kControlMutatesDraft;
+                break;
+            case Kind::Text:
+                control.kind = Api::ControlKind::TextInput;
+                control.flags = Api::kControlReadOnly;
+                break;
+            case Kind::Reset:
+                control.kind = Api::ControlKind::Action;
+                control.flags = Api::kControlRequiresConfirmation;
                 break;
             }
             Copy(control.controlId, row.id);
@@ -711,13 +813,14 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
             Api::PageDescriptorV1 descriptor;
             Copy(descriptor.moduleId, kModuleId);
             Copy(descriptor.pageId, page.pageId);
-            Copy(descriptor.group, "Flight");
+            Copy(descriptor.group, page.group);
             Copy(descriptor.displayName, page.name);
             Copy(descriptor.description, page.description);
             descriptor.context = &page;
             descriptor.readValue = &ReadValue;
             descriptor.writeDraft = &WriteDraft;
             descriptor.invokeAction = &InvokeAction;
+            descriptor.readChoiceOptions = &ReadChoices;
             descriptor.beginBindingCapture = &BeginCapture;
             descriptor.pollBindingCapture = &PollCapture;
             descriptor.cancelBindingCapture = &CancelCapture;
@@ -740,12 +843,15 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
                 return;
             }
             // The menu keeps pointers into these for as long as the game runs.
-            static Page throttle{ "throttle", "Throttle", "Bind the lever and set its zones by feel.", ThrottleRows() };
-            static Page axes{ "flight-axes", "Flight Axes", "Bind and shape pitch, yaw, roll and strafe.", AxisRows() };
-            static Page buttons{ "ship-buttons", "Ship Buttons", "Bind buttons and hats to ship actions.", ButtonRows() };
+            static Page throttle{ "throttle", "Throttle", "Bind the lever and set its zones by feel.", "Flight", ThrottleRows() };
+            static Page axes{ "flight-axes", "Flight Axes", "Bind and shape pitch, yaw, roll and strafe.", "Flight", AxisRows() };
+            static Page buttons{ "ship-buttons", "Ship Buttons", "Bind buttons and hats to ship actions.", "Flight", ButtonRows() };
+            static Page settings{ "settings-file", "Settings File", "Where your settings came from, and how to start fresh.", "Setup", SettingsRows() };
+            g_pages = { &throttle, &axes, &buttons, &settings };
             RegisterPage(*api, throttle);
             RegisterPage(*api, axes);
             RegisterPage(*api, buttons);
+            RegisterPage(*api, settings);
             {
                 const std::scoped_lock lock{ throttle.mutex, axes.mutex };
                 SyncViews(throttle);

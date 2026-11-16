@@ -99,6 +99,7 @@ local release_sources = {
     "src/runtime/FlightSignals.cpp",
     "src/runtime/LegacyHotasToken.cpp",
     "src/runtime/RuntimeCompatibility.cpp",
+    "src/runtime/SettingsImport.cpp",
     "src/runtime/ShipBindings.cpp",
     "src/runtime/ShipControlCore.cpp",
     "src/runtime/ShipControlLoop.cpp",
@@ -224,7 +225,8 @@ target("ship_control_test", function()
     add_includedirs("include")
     add_files("src/runtime/ButtonCapture.cpp", "src/runtime/ControlMapReader.cpp",
         "src/runtime/ControlSettings.cpp", "src/runtime/DeviceStore.cpp",
-        "src/runtime/LegacyHotasToken.cpp", "src/runtime/ShipBindings.cpp",
+        "src/runtime/FlightAxes.cpp", "src/runtime/LegacyHotasToken.cpp",
+        "src/runtime/SettingsImport.cpp", "src/runtime/ShipBindings.cpp",
         "src/runtime/ShipControlCore.cpp", "src/runtime/ShipOutputs.cpp",
         "tests/ShipControlTests.cpp")
     add_syslinks("user32")
@@ -237,6 +239,17 @@ target("flight_axes_test", function()
     add_includedirs("include")
     add_files("src/runtime/FlightAxes.cpp", "src/runtime/LegacyHotasToken.cpp",
         "src/runtime/ShipBindings.cpp", "tests/FlightAxesTests.cpp")
+end)
+
+-- Shows what the one-time settings import would produce from AbsoluteHOTAS files.
+target("import_preview", function()
+    set_kind("binary")
+    set_default(false)
+    add_includedirs("include")
+    add_files("src/runtime/ControlMapReader.cpp", "src/runtime/FlightAxes.cpp", "src/runtime/LegacyHotasToken.cpp",
+        "src/runtime/SettingsImport.cpp", "src/runtime/ShipBindings.cpp", "src/runtime/ShipOutputs.cpp",
+        "tools/ImportPreview.cpp")
+    add_syslinks("user32")
 end)
 
 target("walk_speed_test", function()

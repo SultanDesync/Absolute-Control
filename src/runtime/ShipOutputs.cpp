@@ -63,12 +63,13 @@ namespace AbsoluteControl::Runtime
     std::vector<ResolvedShipOutput> ResolveShipOutputs(const IniValues& ini,
         std::span<const ControlMap::Record> records)
     {
-        const auto sync = ini.Get("General", "bSyncShipOutputsFromControlMap");
-        const bool followRebinds = !sync || TrimLower(*sync) != "false";
+        const auto follow = ini.Get("ShipButtons", "FollowGameRebinds");
+        const bool followRebinds = !follow || TrimLower(*follow) != "false";
 
         std::vector<ResolvedShipOutput> outputs;
         outputs.reserve(kShipActionCatalog.size());
-        for (const auto& action : kShipActionCatalog) {
+        for (std::size_t index = 0; index < kShipActionCatalog.size(); ++index) {
+            const auto& action = kShipActionCatalog[index];
             if (action.recommendedMethod == ShipControlMethod::Context) {
                 outputs.push_back({ action.vanillaOutput, KeyboardResolutionSource::FixedContext });
                 continue;
@@ -79,7 +80,7 @@ namespace AbsoluteControl::Runtime
                     action.controlMapAction, action.vanillaOutput);
                 resolved.source = KeyboardResolutionSource::ControlMapCustom;
             }
-            if (const auto text = ini.Get("ShipButtonOutputs", action.legacyOutputIniKey)) {
+            if (const auto text = ini.Get("ShipButtonKeys", ShipSettingKey(index))) {
                 if (const auto parsed = ParseShipOutput(*text)) {
                     resolved.output = *parsed;
                     resolved.source = KeyboardResolutionSource::LegacyManualOverride;

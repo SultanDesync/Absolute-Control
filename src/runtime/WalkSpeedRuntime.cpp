@@ -1,6 +1,7 @@
 #include "runtime/WalkSpeedRuntime.h"
 
 #include "EvidenceLog.h"
+#include "runtime/ControlSettings.h"
 #include "ui/WalkGaugeMenu.h"
 
 #include <atomic>
@@ -53,7 +54,6 @@ namespace AbsoluteControl::Runtime::WalkSpeedRuntime
 
         std::mutex g_mutex;
         WalkSpeedSettings g_settings;
-        std::filesystem::path g_writePath;
 
         [[nodiscard]] bool IsOnFootCamera(std::uint32_t state) noexcept
         {
@@ -69,19 +69,16 @@ namespace AbsoluteControl::Runtime::WalkSpeedRuntime
             return process == ::GetCurrentProcessId();
         }
 
+        // Walk speed lives in the [WalkSpeed] section of Absolute Control's one settings file.
         [[nodiscard]] bool WriteSettings(const WalkSpeedSettings& settings) noexcept
         {
             try {
-                auto temporary = g_writePath;
-                temporary += ".tmp";
-                {
-                    std::ofstream stream{ temporary, std::ios::out | std::ios::trunc };
-                    stream << FormatWalkSpeedSettings(settings);
-                    stream.flush();
-                    if (!stream) return false;
-                }
-                if (::MoveFileExW(temporary.c_str(), g_writePath.c_str(),
-                        MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) == FALSE) return false;
+                auto& file = ControlSettings::Instance();
+                ForEachIniEntry(FormatWalkSpeedSettings(settings),
+                    [&](std::string_view section, std::string_view key, std::string_view value) {
+                        file.Set(section, key, value);
+                    });
+                if (!file.Save()) return false;
                 Log::Event("walk_settings_saved", std::format("speed={:.2f}", settings.speed));
                 return true;
             } catch (...) {
@@ -258,16 +255,12 @@ namespace AbsoluteControl::Runtime::WalkSpeedRuntime
         }
     }
 
-    void Install(const std::filesystem::path& readFile, const std::filesystem::path& writeFile) noexcept
+    void Install() noexcept
     {
         try {
             {
                 const std::scoped_lock lock{ g_mutex };
-                g_writePath = writeFile;
-                IniValues ini;
-                std::ifstream stream{ readFile, std::ios::binary };
-                if (stream) ini.Merge(std::string{ std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>() });
-                g_settings = ParseWalkSpeedSettings(ini);
+                g_settings = ParseWalkSpeedSettings(ControlSettings::Instance().Merged());
                 g_speed.store(g_settings.speed, std::memory_order_release);
                 Log::Event("walk_settings", std::format("enabled={} axis={} wheel={} keys={} step={:.2f} speed={:.3f}",
                     g_settings.enabled ? 1 : 0, g_settings.axis, static_cast<std::uint32_t>(g_settings.wheelModifier),

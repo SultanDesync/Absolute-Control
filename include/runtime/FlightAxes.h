@@ -79,7 +79,27 @@ namespace AbsoluteControl::Runtime
         std::vector<std::string> ignored; // Settings in the file for features this build lacks.
     };
 
+    // Absolute Control's own file. Positions, widths and sensitivities are percentages:
+    //   [General]  Enabled
+    //   [Throttle] Axis, Invert, Sensitivity, FullThrustAt, IdleBand, ReverseZone,
+    //              ReverseZoneCentre, ReverseZoneWidth, BoostZone, BoostZoneCentre,
+    //              BoostZoneWidth, HoldForBoost, ReverseBelowSpeed, ReverseAxis,
+    //              ReverseAxisInvert, Centred, CentreDetent, CentreDetentWidth
+    //   [Pitch] [Yaw] [Roll] [StrafeSideways] [StrafeVertical]
+    //              Axis, Invert, Sensitivity, Deadzone, FullOutputAt; [Roll] also Enabled
+    //   [Steering] ThroughAimPoint, AimSensitivity
     [[nodiscard]] FlightConfig LoadFlightConfig(const IniValues& ini);
+    // Every setting above, so a written file reads back as the same configuration.
+    [[nodiscard]] std::vector<SettingEntry> WriteFlightConfig(const FlightConfig& config);
+    // AbsoluteHOTAS's files, for the one-time import. Settings for features this build
+    // lacks are listed in the result's `ignored`.
+    [[nodiscard]] FlightConfig LoadHotasFlightConfig(const IniValues& ini);
+
+    // Where a new setup starts, as percentages of the lever's travel.
+    inline constexpr float kDefaultReverseZoneCentre = 7.0F;
+    inline constexpr float kDefaultReverseZoneWidth = 3.0F;
+    inline constexpr float kDefaultBoostZoneCentre = 95.0F;
+    inline constexpr float kDefaultBoostZoneWidth = 2.0F;
 
     // Axis positions off the bus, -1 to 1. Nothing for an axis that is unbound or missing.
     struct FlightInputs

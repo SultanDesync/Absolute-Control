@@ -1,5 +1,6 @@
 #include "NativeMenuProbe.h"
 #include "runtime/BackendRuntime.h"
+#include "runtime/ControlSettings.h"
 #include "runtime/ShipControlLoop.h"
 #include "runtime/WalkSpeedRuntime.h"
 #include "ui/FlightPages.h"
@@ -71,19 +72,22 @@ namespace
                 // Test runs read fixed settings and save elsewhere. A saved copy in MO2's
                 // overwrite folder would hide the fixed file, and real settings stay untouched.
                 const bool testInput = UseTestInput();
-                AbsoluteControl::Runtime::WalkSpeedRuntime::Install(testInput ?
-                    "Data/SFSE/Plugins/AbsoluteControlTestWalkSpeed.ini" :
-                    "Data/SFSE/Plugins/AbsoluteControlWalkSpeed.ini", testInput ?
-                    "Data/SFSE/Plugins/AbsoluteControlTestWalkSpeed.saved.ini" :
-                    "Data/SFSE/Plugins/AbsoluteControlWalkSpeed.ini");
+                // One settings file. The first start with no file of our own imports the
+                // AbsoluteHOTAS files and walk speed's old file into it, once. A test run
+                // imports its fixed files every time and saves elsewhere, so real settings
+                // stay untouched.
+                AbsoluteControl::Runtime::ControlSettings::Instance().Load(testInput ?
+                    "Data/SFSE/Plugins/AbsoluteControlTest.saved.ini" : "Data/SFSE/Plugins/AbsoluteControl.ini",
+                    ShipBindingFiles(), testInput ? "Data/SFSE/Plugins/AbsoluteControlTestWalkSpeed.ini" :
+                    "Data/SFSE/Plugins/AbsoluteControlWalkSpeed.ini", testInput);
+                AbsoluteControl::Runtime::WalkSpeedRuntime::Install();
                 AbsoluteControlPanelResearch::Ui::WalkSpeedPage::Register();
                 AbsoluteControlPanelResearch::Ui::WalkGaugeMenu::Register();
 #if defined(ACP_ENABLE_RESEARCH_TOOLS)
                 if (testInput) AbsoluteControlPanelResearch::TestMenuPage::Register();
 #endif
                 // A test run saves elsewhere, so real settings stay untouched.
-                AbsoluteControl::Runtime::StartShipControlLoop(ShipBindingFiles(), testInput ?
-                    "Data/SFSE/Plugins/AbsoluteControlTest.saved.ini" : "Data/SFSE/Plugins/AbsoluteControl.ini");
+                AbsoluteControl::Runtime::StartShipControlLoop();
                 AbsoluteControlPanelResearch::Ui::FlightPages::Register();
             }
         }

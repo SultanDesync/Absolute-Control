@@ -78,6 +78,38 @@ namespace AbsoluteControl::Runtime
             return outputs;
         }
 
+        // How a target's system is picked in Targeting Mode. The game uses its own pair of
+        // keys for it there (A and D unless rebound), which are flight keys everywhere else,
+        // so none of these press anything outside Targeting Mode.
+        enum class TargetCycle
+        {
+            PowerButtons, // Previous and Next System press both their own key and the target's.
+            Roll,         // A push of the axis is one step.
+            Yaw,
+            StrafeSideways,
+            OwnButtons    // Previous and Next Target System.
+        };
+
+        TargetCycle LoadTargetCycle(const IniValues& ini)
+        {
+            std::string text = ini.Get("ShipButtons", "CycleTargetSystemWith").value_or("");
+            std::erase_if(text, [](char c) { return c == ' ' || c == '\t' || c == '\r'; });
+            for (char& c : text) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
+            if (text == "roll") return TargetCycle::Roll;
+            if (text == "yaw") return TargetCycle::Yaw;
+            if (text == "strafesideways") return TargetCycle::StrafeSideways;
+            if (text == "ownbuttons") return TargetCycle::OwnButtons;
+            return TargetCycle::PowerButtons;
+        }
+
+        std::size_t ActionIndex(std::string_view actionId)
+        {
+            for (std::size_t index = 0; index < kShipActionCatalog.size(); ++index) {
+                if (kShipActionCatalog[index].actionId == actionId) return index;
+            }
+            return kShipActionCatalog.size();
+        }
+
         // Keys go to whichever window has focus, so nothing is pressed unless it's the game's.
         bool GameHasFocus()
         {
@@ -187,20 +219,27 @@ namespace AbsoluteControl::Runtime
             std::uint64_t next_{};
         };
     }
-    void StartShipControlLoop(const std::vector<std::filesystem::path>& bindingFiles,
-        const std::filesystem::path& settingsFile) noexcept
+    void StartShipControlLoop() noexcept
     {
         try {
             // Process lifetime, like NativeBackend: never join a worker under the loader lock.
             static auto* service = new CooperativeService;
             auto& settings = ControlSettings::Instance();
-            settings.Load(bindingFiles, settingsFile);
-            Log::Event("ship_bindings_loaded", std::format("files={}", settings.Sources()));
+            {
+                const auto report = settings.Report();
+                Log::Event("settings_loaded", std::format("origin={} imported_from={} not_carried={}",
+                    settings.Origin(), report.from, report.dropped.size()));
+                if (settings.Origin() == "imported") {
+                    for (const auto& line : report.dropped) Log::Event("settings_not_carried", line);
+                }
+            }
 
             // Only the loop's thread touches these once it is running.
             auto held = std::make_shared<HeldOutputs>(&SendOutput);
             auto outputs = std::make_shared<std::vector<ResolvedShipOutput>>();
             auto boostButton = std::make_shared<bool>(false);
+            auto targeting = std::make_shared<bool>(false);
+            auto targetCycle = std::make_shared<TargetCycle>(TargetCycle::PowerButtons);
             // AbsoluteZero steers pitch and yaw through the same aim point.
             const bool mouseSteeringOwned = ::GetModuleHandleW(L"AbsoluteZero.dll") != nullptr;
 
@@ -213,13 +252,27 @@ namespace AbsoluteControl::Runtime
             // Everything that comes from the settings and the game's key bindings. Run again
             // whenever either changes, so the menu and the game's own rebind screen both take
             // effect without a restart.
-            const auto load = [held, outputs, boostButton, mouseSteeringOwned]() {
+            const auto load = [held, outputs, boostButton, targeting, targetCycle, mouseSteeringOwned]() {
                 const auto ini = ControlSettings::Instance().Merged();
                 *outputs = LoadOutputs(ini);
+                *targetCycle = LoadTargetCycle(ini);
+                Log::Event("target_cycle", std::format("mode={}", static_cast<int>(*targetCycle)));
                 Loaded loaded;
                 loaded.core = std::make_shared<ShipControlCore>(LoadShipBindings(ini),
-                    [held, outputs, boostButton](std::string_view actionId, bool down) {
+                    [held, outputs, boostButton, targeting, targetCycle](std::string_view actionId, bool down) {
                         Log::Event("ship_action_intent", std::format("action={} held={}", actionId, down ? 1 : 0));
+                        const bool previousTarget = actionId == "PreviousTargetSystem";
+                        // The target's own buttons: only when chosen, and only in Targeting Mode.
+                        // A release always goes through.
+                        if (down && (previousTarget || actionId == "NextTargetSystem") &&
+                            (!*targeting || *targetCycle != TargetCycle::OwnButtons)) return;
+                        // The power buttons also step the target's system in Targeting Mode.
+                        if (*targetCycle == TargetCycle::PowerButtons && (actionId == "PreviousSystem" || actionId == "NextSystem")) {
+                            const auto target = ActionIndex(actionId == "PreviousSystem" ? "PreviousTargetSystem" : "NextTargetSystem");
+                            if (target < outputs->size() && (!down || *targeting)) {
+                                held->Set((*outputs)[target].output, static_cast<std::uint32_t>(2000 + target), down);
+                            }
+                        }
                         if (actionId == "FireBoosters") *boostButton = down;
                         // Bindings, outputs and the catalog share one order.
                         for (std::size_t index = 0; index < outputs->size(); ++index) {
@@ -257,10 +310,15 @@ namespace AbsoluteControl::Runtime
             const auto firstGeneration = settings.Generation();
 
             const bool started = service->Start(
-                [load, first, firstStamp, firstGeneration, rebindPath, held, outputs, boostButton, mouseSteeringOwned](
+                [load, first, firstStamp, firstGeneration, rebindPath, held, outputs, boostButton, targeting, targetCycle, mouseSteeringOwned](
                     std::stop_token stop, const std::shared_ptr<CallbackGate>&) {
                     constexpr std::uint32_t kStrafeOwner = 1000;
                     constexpr std::uint32_t kBoostZoneOwner = 1001;
+                    constexpr std::uint32_t kTargetAxisOwner = 1002;
+                    // An axis used to step the target's system: one short key press per push.
+                    bool targetAxisArmed = true;
+                    std::optional<ShipActionOutputSpec> targetPulse;
+                    std::uint64_t targetPulseEnd{};
                     const auto outputFor = [&](std::string_view actionId) {
                         for (std::size_t index = 0; index < outputs->size(); ++index) {
                             if (kShipActionCatalog[index].actionId == actionId) return (*outputs)[index].output;
@@ -294,6 +352,7 @@ namespace AbsoluteControl::Runtime
                             stamp = RebindStamp(rebindPath);
                             // Let go of everything first: a held key or a bound axis may be about to change.
                             held->ReleaseAll();
+                            targetPulse.reset();
                             FlightOutput::Suspend();
                             *boostButton = false;
                             flightLive = false;
@@ -317,6 +376,7 @@ namespace AbsoluteControl::Runtime
                             observation.targeting = signals->tm != 0;
                             observation.inputActive = signals->active != 0 && GameHasFocus();
                         }
+                        *targeting = observation.targeting;
                         core->Tick(devices, observation, now);
                         identifier.Tick(devices, now);
                         WalkSpeedRuntime::Tick(signals, core->AxisValue(), now);
@@ -339,6 +399,31 @@ namespace AbsoluteControl::Runtime
                         }
                         telemetry.reverse.store(frame.reverse, std::memory_order_relaxed);
                         telemetry.boost.store(frame.boost, std::memory_order_relaxed);
+
+                        {
+                            float push{};
+                            switch (*targetCycle) {
+                            case TargetCycle::Roll: push = frame.splitRoll; break;
+                            case TargetCycle::Yaw: push = frame.yaw; break;
+                            case TargetCycle::StrafeSideways: push = frame.splitStrafe; break;
+                            default: break;
+                            }
+                            if (targetPulse && now >= targetPulseEnd) {
+                                held->Set(*targetPulse, kTargetAxisOwner, false);
+                                targetPulse.reset();
+                            }
+                            // It has to come back towards the centre before it can step again.
+                            if (std::abs(push) < 0.25F) {
+                                targetAxisArmed = true;
+                            } else if (targetAxisArmed && !targetPulse && std::abs(push) >= 0.5F &&
+                                observation.targeting && core->GateOpen()) {
+                                targetAxisArmed = false;
+                                targetPulse = outputFor(push < 0 ? "PreviousTargetSystem" : "NextTargetSystem");
+                                targetPulseEnd = now + 80'000'000;
+                                held->Set(*targetPulse, kTargetAxisOwner, true);
+                                Log::Event("target_axis_step", std::format("push={:.2f}", push));
+                            }
+                        }
 
                         // Camera state 0xA is the take-off, docking and undocking cutscene.
                         const bool allowed = current.flightOutput && core->GateOpen() && signals &&

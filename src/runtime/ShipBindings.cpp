@@ -178,7 +178,46 @@ namespace AbsoluteControl::Runtime
         return ParseBinding(actionId, token, true);
     }
 
+    std::string_view ShipSettingKey(std::size_t actionIndex) noexcept
+    {
+        if (actionIndex >= kShipActionCatalog.size()) return {};
+        // Saved under what the player sees: weapons count from one, and "Ship Action 1" is
+        // named for what it does.
+        const auto id = kShipActionCatalog[actionIndex].actionId;
+        if (id == "ShipAction1") return "TargetingDockTravel";
+        if (id == "FireWeapon0") return "WeaponGroup1";
+        if (id == "FireWeapon1") return "WeaponGroup2";
+        if (id == "FireWeapon2") return "WeaponGroup3";
+        return id;
+    }
+
     ShipBindingConfig LoadShipBindings(const IniValues& ini)
+    {
+        ShipBindingConfig config;
+        const auto enabled = ini.Get("ShipButtons", "Enabled");
+        config.enabled = !enabled || Lower(*enabled) != "false";
+        config.bindings.reserve(kShipActionCatalog.size());
+        for (std::size_t index = 0; index < kShipActionCatalog.size(); ++index) {
+            const auto token = ini.Get("ShipButtons", ShipSettingKey(index));
+            config.bindings.push_back(ParseShipBinding(kShipActionCatalog[index].actionId, token ? *token : std::string{}));
+        }
+        return config;
+    }
+
+    std::vector<SettingEntry> WriteShipBindings(const ShipBindingConfig& config)
+    {
+        std::vector<SettingEntry> entries;
+        entries.push_back({ "ShipButtons", "Enabled", config.enabled ? "true" : "false" });
+        for (std::size_t index = 0; index < kShipActionCatalog.size() && index < config.bindings.size(); ++index) {
+            const auto& binding = config.bindings[index];
+            // Only a binding that can be read is carried; anything else is left unbound.
+            entries.push_back({ "ShipButtons", std::string(ShipSettingKey(index)),
+                binding.status == BindingStatus::Bound ? std::string(Trim(binding.token)) : std::string{} });
+        }
+        return entries;
+    }
+
+    ShipBindingConfig LoadHotasShipBindings(const IniValues& ini)
     {
         ShipBindingConfig config;
         const auto enabled = ini.Get("ShipButtons", "bShipButtonsEnabled");

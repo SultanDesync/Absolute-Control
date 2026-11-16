@@ -65,7 +65,7 @@ struct ShipActionDefinition {
     ShipActionOutputSpec vanillaOutput;
 };
 
-inline constexpr std::array<ShipActionDefinition, 23> kShipActionCatalog{
+inline constexpr std::array<ShipActionDefinition, 25> kShipActionCatalog{
     ShipActionDefinition{ "FireBoosters", "Fire Boosters", ShipActionGroup::FlightSystems,
         ShipControlMethod::KeyboardCompatibility, kDirectOrKeyboard, "iFireBoostersButton", "sFireBoostersOutput",
         "ShipHUD", "Boosters", { ShipActionOutputKind::Keyboard, 0x2A, false } },
@@ -135,6 +135,15 @@ inline constexpr std::array<ShipActionDefinition, 23> kShipActionCatalog{
     ShipActionDefinition{ "AutopilotOnOff", "Autopilot On / Off", ShipActionGroup::FlightSystems,
         ShipControlMethod::KeyboardCompatibility, kDirectOrKeyboard, "iAutopilotOnOffButton", "sAutopilotOnOffOutput",
         "ShipHUD_CruiseMode", "LockCourse", { ShipActionOutputKind::Keyboard, 0x39, false } },
+    // In Targeting Mode the game picks the target's subsystem with A and D. The arrow keys
+    // keep moving the player's own power there, so these are buttons of their own: both
+    // are needed while targeting. AbsoluteHOTAS had no setting for them.
+    ShipActionDefinition{ "PreviousTargetSystem", "Previous Target System", ShipActionGroup::NavigationContext,
+        ShipControlMethod::KeyboardCompatibility, kDirectOrKeyboard, "iPreviousTargetSystemButton", "sPreviousTargetSystemOutput",
+        "ShipHUD", "SelectLeft", { ShipActionOutputKind::Keyboard, 0x1E, false } },
+    ShipActionDefinition{ "NextTargetSystem", "Next Target System", ShipActionGroup::NavigationContext,
+        ShipControlMethod::KeyboardCompatibility, kDirectOrKeyboard, "iNextTargetSystemButton", "sNextTargetSystemOutput",
+        "ShipHUD", "SelectRight", { ShipActionOutputKind::Keyboard, 0x20, false } },
 };
 
 constexpr const ShipActionDefinition* FindShipAction(std::string_view actionId) noexcept
@@ -146,11 +155,11 @@ constexpr const ShipActionDefinition* FindShipAction(std::string_view actionId) 
 
 // Canonical Ship Buttons order mirrors Starfield's native ship-control list.
 // Presentation never follows internal action names or dispatch implementation.
-inline constexpr std::array<std::string_view, 23> kNativeShipButtonActions{
+inline constexpr std::array<std::string_view, 25> kNativeShipButtonActions{
     "FireBoosters", "SwitchFlightModes", "TogglePov",
     "FireWeapon0", "FireWeapon1", "FireWeapon2", "ShipAction1",
     "SelectTarget", "IncreaseSystemPower", "DecreaseSystemPower",
-    "PreviousSystem", "NextSystem", "OpenScanner", "Repair",
+    "PreviousSystem", "NextSystem", "PreviousTargetSystem", "NextTargetSystem", "OpenScanner", "Repair",
     "ShipAlternateControlHold", "Cruise", "Cancel", "UndockTakeOff",
     "GetUp", "ExitShipFromCockpit", "ZoomCameraIn", "ZoomCameraOut",
     "AutopilotOnOff",

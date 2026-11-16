@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <iostream>
 
 #define CHECK(...) do { if (!(__VA_ARGS__)) { \
@@ -103,7 +104,7 @@ namespace
 
     bool TestLoad()
     {
-        const auto defaults = LoadFlightConfig({});
+        const auto defaults = LoadHotasFlightConfig({});
         CHECK(defaults.enabled && defaults.throttle.status == BindingStatus::Unbound && defaults.ignored.empty());
         CHECK(defaults.pitchShape.invert && !defaults.yawShape.invert && defaults.rollEnabled && defaults.holdForBoost);
         CHECK(defaults.throttleConfig.unipolar && Near(defaults.throttleConfig.idlePlateau, 0.05F));
@@ -119,7 +120,7 @@ namespace
             "[DualStick]\nbAccumulatorThrottle = true\nbHoldForBoost = false\nfReverseGateVelocity = 12\n"
             "[DigitalAxes]\niDigitalRollLeftButton = Stick@4\niDigitalRollRightButton = -1\n"
             "[Buttons]\nbAlwaysOn = false\n[Gate]\nPilotGateMode = Full\nPilotSignal = Auto\n");
-        const auto config = LoadFlightConfig(ini);
+        const auto config = LoadHotasFlightConfig(ini);
         CHECK(config.throttle.status == BindingStatus::Bound && config.throttle.device == "Throttle" &&
             config.throttle.channel == "axis/2");
         CHECK(config.pitch.channel == "axis/1" && config.roll.status == BindingStatus::Unbound);
@@ -132,9 +133,9 @@ namespace
         CHECK(!config.steerThroughAim && Near(config.aimSensitivity, 1.5F) && Near(config.reverseGateVelocity, 12.0F));
         IniValues aimOnly;
         aimOnly.Merge("[Aim]\nbSourceObjectAim = true\niAimYawAxis = \n");
-        CHECK(LoadFlightConfig(aimOnly).steerThroughAim);
+        CHECK(LoadHotasFlightConfig(aimOnly).steerThroughAim);
         aimOnly.Merge("[Aim]\nbHOSAMMode = true\n");
-        CHECK(!LoadFlightConfig(aimOnly).steerThroughAim);
+        CHECK(!LoadHotasFlightConfig(aimOnly).steerThroughAim);
         const auto ignored = [&](std::string_view name) { return std::ranges::find(config.ignored, name) != config.ignored.end(); };
         CHECK(ignored("Aim/iAimYawAxis") && ignored("Aim/bHOSAMMode") && ignored("DualStick/bAccumulatorThrottle"));
         CHECK(ignored("DigitalAxes/iDigitalRollLeftButton") && !ignored("DigitalAxes/iDigitalRollRightButton"));
@@ -142,7 +143,7 @@ namespace
         CHECK(config.ignored.size() == 6);
 
         ini.Merge("[Injection]\nbEnableInjection = false\n");
-        CHECK(!LoadFlightConfig(ini).enabled);
+        CHECK(!LoadHotasFlightConfig(ini).enabled);
         return true;
     }
 
@@ -200,11 +201,74 @@ namespace
         CHECK(!frame.throttleBound && !frame.reverse);
         return true;
     }
+    // Absolute Control's own file: its defaults, and that what the import writes reads back
+    // as the configuration the HOTAS files described.
+    bool TestOwnFormat()
+    {
+        const auto fresh = LoadFlightConfig({});
+        CHECK(fresh.enabled && fresh.throttle.status == BindingStatus::Unbound && fresh.ignored.empty());
+        CHECK(!fresh.pitchShape.invert && Near(fresh.strafeLateralShape.deadzone, 0.05F) && fresh.rollEnabled && fresh.holdForBoost);
+        CHECK(fresh.throttleConfig.unipolar && Near(fresh.throttleConfig.idlePlateau, 0.05F) && !fresh.steerThroughAim);
+        // A new setup's zones work as soon as they are switched on.
+        CHECK(fresh.throttleConfig.reverseZoneCenter - fresh.throttleConfig.reverseZoneDeadzone > 0);
+        CHECK(fresh.throttleConfig.boostZoneCenter + fresh.throttleConfig.boostZoneDeadzone < 65535);
+
+        IniValues own;
+        own.Merge("[Throttle]\nAxis = Lever@0x32\nIdleBand = 10\nReverseZone = true\nReverseZoneCentre = 7.5\nBoostZoneWidth = 4\n"
+            "[Pitch]\nAxis = Stick@0x31\nInvert = true\nSensitivity = 80\nDeadzone = 12\nFullOutputAt = 90\n[Roll]\nEnabled = false\n");
+        const auto read = LoadFlightConfig(own);
+        CHECK(read.throttle.channel == "axis/2" && Near(read.throttleConfig.idlePlateau, 0.10F) && read.throttleConfig.unipolarReverse);
+        CHECK(read.throttleConfig.reverseZoneCenter == 4915 && read.throttleConfig.boostZoneDeadzone == 2621);
+        CHECK(read.pitch.channel == "axis/1" && read.pitchShape.invert && Near(read.pitchShape.sensitivity, 0.8F));
+        CHECK(Near(read.pitchShape.deadzone, 0.12F) && Near(read.pitchShape.saturation, 0.9F) && !read.rollEnabled);
+
+        IniValues hotas;
+        hotas.Merge("[Hardware]\niThrottleAxis = S-TECS@0x32\niPitchAxis = Stick@0x31\niRollAxis = Pedals@0x33\niStrafeLatAxis = #0@0x30\n"
+            "bInvertPitch = true\nbInvertRoll = true\nfPitchSensitivity = 0.8\nfYawDeadzone = 0.1\nfRollSaturation = 0.85\n"
+            "fStrafeSensitivity = 0.6\nfStrafeVertDeadzone = 0.08\nbInvertThrottle = true\nfThrottleSaturation = 0.9\n"
+            "[Normalization]\nbUnipolarReverse = true\niReverseZoneCenter = 4832\niReverseZoneDeadzone = 3538\nfIdlePlateau = 0.07\n"
+            "bBoostZone = true\niBoostZoneCenter = 61083\niBoostZoneDeadzone = 3407\niDetentCenter = 32768\niDetentDeadzone = 500\n"
+            "[Injection]\nbRollEnabled = false\n[DualStick]\nbHoldForBoost = false\nfReverseGateVelocity = 12\n"
+            "[Aim]\nbSourceObjectAim = true\nfAimSensitivity = 1.5\n");
+        const auto before = LoadHotasFlightConfig(hotas);
+        IniValues written;
+        for (const auto& entry : WriteFlightConfig(before)) written.Set(entry.section, entry.key, entry.value);
+        const auto after = LoadFlightConfig(written);
+
+        CHECK(after.enabled == before.enabled && after.rollEnabled == before.rollEnabled && after.holdForBoost == before.holdForBoost);
+        CHECK(after.steerThroughAim == before.steerThroughAim && Near(after.aimSensitivity, before.aimSensitivity));
+        CHECK(Near(after.reverseGateVelocity, before.reverseGateVelocity));
+        CHECK(after.throttle.channel == before.throttle.channel && after.throttle.device == before.throttle.device);
+        CHECK(after.pitch.channel == "axis/1" && after.roll.channel == "axis/3" && after.yaw.status == BindingStatus::Unbound);
+        // A binding in a form that can't be read is left unbound, not copied across broken.
+        CHECK(before.strafeLateral.status == BindingStatus::Unsupported && after.strafeLateral.status == BindingStatus::Unbound);
+        const auto sameShape = [](const AxisShape& a, const AxisShape& b) {
+            return a.invert == b.invert && Near(a.sensitivity, b.sensitivity) && Near(a.deadzone, b.deadzone) && Near(a.saturation, b.saturation);
+        };
+        CHECK(sameShape(after.pitchShape, before.pitchShape) && sameShape(after.yawShape, before.yawShape));
+        CHECK(sameShape(after.rollShape, before.rollShape) && sameShape(after.strafeLateralShape, before.strafeLateralShape));
+        CHECK(sameShape(after.strafeVerticalShape, before.strafeVerticalShape));
+        const auto& a = after.throttleConfig;
+        const auto& b = before.throttleConfig;
+        CHECK(a.invert == b.invert && a.unipolar == b.unipolar && a.unipolarReverse == b.unipolarReverse && a.boostZone == b.boostZone);
+        CHECK(Near(a.sensitivity, b.sensitivity) && Near(a.saturation, b.saturation) && Near(a.idlePlateau, b.idlePlateau));
+        // Lever positions are kept as percentages to three decimals: within one unit of 65535.
+        const auto close = [](long left, long right) { return std::abs(left - right) <= 1; };
+        CHECK(close(a.reverseZoneCenter, b.reverseZoneCenter) && close(a.reverseZoneDeadzone, b.reverseZoneDeadzone));
+        CHECK(close(a.boostZoneCenter, b.boostZoneCenter) && close(a.boostZoneDeadzone, b.boostZoneDeadzone));
+        CHECK(close(a.detentCenter, b.detentCenter) && close(a.detentDeadzone, b.detentDeadzone));
+        // The lever behaves the same before and after.
+        for (const long raw : { 0L, 1000L, 5000L, 9000L, 20000L, 32768L, 50000L, 58000L, 63000L, 65535L }) {
+            const auto x = EvaluateThrottle(b, At(raw)), y = EvaluateThrottle(a, At(raw));
+            CHECK(Near(x.throttle, y.throttle, 0.001F) && x.reverse == y.reverse && x.boost == y.boost);
+        }
+        return true;
+    }
 }
 
 int main()
 {
-    if (!TestShape() || !TestThrottle() || !TestReverseAxis() || !TestLoad() || !TestFrame()) return 1;
+    if (!TestShape() || !TestThrottle() || !TestReverseAxis() || !TestLoad() || !TestFrame() || !TestOwnFormat()) return 1;
     std::cout << "flight axes tests passed\n";
     return 0;
 }

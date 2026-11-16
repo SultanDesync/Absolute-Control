@@ -17,8 +17,8 @@ namespace AbsoluteControl::Runtime::WalkSpeedRuntime
         bool ready{}; // Enabled, on foot, and the game is taking movement input.
     };
 
-    // Loads settings and hooks on-foot movement. Normally both files are the same one.
-    void Install(const std::filesystem::path& readFile, const std::filesystem::path& writeFile) noexcept;
+    // Reads the [WalkSpeed] settings, which must already be loaded, and hooks on-foot movement.
+    void Install() noexcept;
 
     [[nodiscard]] WalkSpeedSettings Settings();
     // Stores everything except the saved speed, which belongs to the wheel and keys.

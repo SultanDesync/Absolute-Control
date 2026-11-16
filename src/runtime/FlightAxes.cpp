@@ -4,6 +4,7 @@
 #include <array>
 #include <charconv>
 #include <cmath>
+#include <format>
 #include <string_view>
 #include <utility>
 
@@ -184,7 +185,143 @@ namespace AbsoluteControl::Runtime
         return value > config.activation;
     }
 
+    namespace
+    {
+        constexpr double kTravelPerPercent = 655.35;
+
+        // A percentage in the file, as the fraction the maths uses.
+        float Fraction(const IniValues& ini, std::string_view section, std::string_view key, float fallback, float low, float high)
+        {
+            return std::clamp(Float(ini, section, key, fallback * 100.0F) / 100.0F, low, high);
+        }
+
+        // A percentage of the lever's travel in the file, as a position 0 to 65535.
+        long Travel(const IniValues& ini, std::string_view section, std::string_view key, float fallbackPercent)
+        {
+            return std::lround(std::clamp<double>(Float(ini, section, key, fallbackPercent), 0, 100) * kTravelPerPercent);
+        }
+
+        AxisShape ReadShape(const IniValues& ini, std::string_view section, float deadzoneDefault)
+        {
+            AxisShape shape;
+            shape.invert = Bool(ini, section, "Invert", false);
+            shape.sensitivity = Float(ini, section, "Sensitivity", 100.0F) / 100.0F;
+            shape.deadzone = Fraction(ini, section, "Deadzone", deadzoneDefault, 0.0F, 0.95F);
+            shape.saturation = Fraction(ini, section, "FullOutputAt", 1.0F, 0.05F, 1.0F);
+            return shape;
+        }
+
+        // Up to three decimals, without trailing zeros.
+        std::string Text(double value)
+        {
+            auto text = std::format("{:.3f}", value);
+            text.erase(text.find_last_not_of('0') + 1);
+            if (text.ends_with('.')) text.pop_back();
+            return text;
+        }
+
+        std::string Text(bool value) { return value ? "true" : "false"; }
+
+        // Only a binding that can be read is carried; anything else is left unbound.
+        std::string Token(const ConfiguredBinding& binding)
+        {
+            if (binding.status != BindingStatus::Bound) return {};
+            const auto first = binding.token.find_first_not_of(" \t");
+            return first == std::string::npos ? std::string{} :
+                binding.token.substr(first, binding.token.find_last_not_of(" \t") - first + 1);
+        }
+    }
+
     FlightConfig LoadFlightConfig(const IniValues& ini)
+    {
+        FlightConfig config;
+        config.enabled = Bool(ini, "General", "Enabled", true);
+        config.throttle = Axis(ini, "Throttle", "Axis", "Throttle");
+        config.pitch = Axis(ini, "Pitch", "Axis", "Pitch");
+        config.yaw = Axis(ini, "Yaw", "Axis", "Yaw");
+        config.roll = Axis(ini, "Roll", "Axis", "Roll");
+        config.strafeLateral = Axis(ini, "StrafeSideways", "Axis", "StrafeLateral");
+        config.strafeVertical = Axis(ini, "StrafeVertical", "Axis", "StrafeVertical");
+        config.reverse = Axis(ini, "Throttle", "ReverseAxis", "Reverse");
+
+        config.pitchShape = ReadShape(ini, "Pitch", 0.0F);
+        config.yawShape = ReadShape(ini, "Yaw", 0.0F);
+        config.rollShape = ReadShape(ini, "Roll", 0.0F);
+        config.strafeLateralShape = ReadShape(ini, "StrafeSideways", 0.05F);
+        config.strafeVerticalShape = ReadShape(ini, "StrafeVertical", 0.05F);
+
+        auto& throttle = config.throttleConfig;
+        throttle.invert = Bool(ini, "Throttle", "Invert", false);
+        throttle.sensitivity = Float(ini, "Throttle", "Sensitivity", 100.0F) / 100.0F;
+        throttle.saturation = Fraction(ini, "Throttle", "FullThrustAt", 1.0F, 0.05F, 1.0F);
+        throttle.idlePlateau = Fraction(ini, "Throttle", "IdleBand", 0.05F, 0.0F, 0.95F);
+        throttle.unipolar = !Bool(ini, "Throttle", "Centred", false);
+        throttle.unipolarReverse = Bool(ini, "Throttle", "ReverseZone", false);
+        throttle.reverseZoneCenter = Travel(ini, "Throttle", "ReverseZoneCentre", kDefaultReverseZoneCentre);
+        throttle.reverseZoneDeadzone = Travel(ini, "Throttle", "ReverseZoneWidth", kDefaultReverseZoneWidth);
+        throttle.boostZone = Bool(ini, "Throttle", "BoostZone", false);
+        throttle.boostZoneCenter = Travel(ini, "Throttle", "BoostZoneCentre", kDefaultBoostZoneCentre);
+        throttle.boostZoneDeadzone = Travel(ini, "Throttle", "BoostZoneWidth", kDefaultBoostZoneWidth);
+        throttle.detentCenter = Travel(ini, "Throttle", "CentreDetent", 50.0F);
+        throttle.detentDeadzone = Travel(ini, "Throttle", "CentreDetentWidth", 0.763F);
+
+        config.reverseAxis.invert = Bool(ini, "Throttle", "ReverseAxisInvert", false);
+        config.rollEnabled = Bool(ini, "Roll", "Enabled", true);
+        config.holdForBoost = Bool(ini, "Throttle", "HoldForBoost", true);
+        config.reverseGateVelocity = std::clamp(Float(ini, "Throttle", "ReverseBelowSpeed", 5.0F), 0.0F, 100.0F);
+        config.steerThroughAim = Bool(ini, "Steering", "ThroughAimPoint", false);
+        config.aimSensitivity = Float(ini, "Steering", "AimSensitivity", 100.0F) / 100.0F;
+        return config;
+    }
+
+    std::vector<SettingEntry> WriteFlightConfig(const FlightConfig& config)
+    {
+        std::vector<SettingEntry> entries;
+        const auto add = [&](std::string_view section, std::string_view key, std::string value) {
+            entries.push_back({ std::string(section), std::string(key), std::move(value) });
+        };
+        const auto& throttle = config.throttleConfig;
+        add("General", "Enabled", Text(config.enabled));
+
+        add("Throttle", "Axis", Token(config.throttle));
+        add("Throttle", "Invert", Text(throttle.invert));
+        add("Throttle", "Sensitivity", Text(throttle.sensitivity * 100.0));
+        add("Throttle", "FullThrustAt", Text(throttle.saturation * 100.0));
+        add("Throttle", "IdleBand", Text(throttle.idlePlateau * 100.0));
+        add("Throttle", "ReverseZone", Text(throttle.unipolarReverse));
+        add("Throttle", "ReverseZoneCentre", Text(throttle.reverseZoneCenter / kTravelPerPercent));
+        add("Throttle", "ReverseZoneWidth", Text(throttle.reverseZoneDeadzone / kTravelPerPercent));
+        add("Throttle", "BoostZone", Text(throttle.boostZone));
+        add("Throttle", "BoostZoneCentre", Text(throttle.boostZoneCenter / kTravelPerPercent));
+        add("Throttle", "BoostZoneWidth", Text(throttle.boostZoneDeadzone / kTravelPerPercent));
+        add("Throttle", "HoldForBoost", Text(config.holdForBoost));
+        add("Throttle", "ReverseBelowSpeed", Text(static_cast<double>(config.reverseGateVelocity)));
+        add("Throttle", "ReverseAxis", Token(config.reverse));
+        add("Throttle", "ReverseAxisInvert", Text(config.reverseAxis.invert));
+        add("Throttle", "Centred", Text(!throttle.unipolar));
+        add("Throttle", "CentreDetent", Text(throttle.detentCenter / kTravelPerPercent));
+        add("Throttle", "CentreDetentWidth", Text(throttle.detentDeadzone / kTravelPerPercent));
+
+        const auto axis = [&](std::string_view section, const ConfiguredBinding& binding, const AxisShape& shape) {
+            add(section, "Axis", Token(binding));
+            add(section, "Invert", Text(shape.invert));
+            add(section, "Sensitivity", Text(shape.sensitivity * 100.0));
+            add(section, "Deadzone", Text(shape.deadzone * 100.0));
+            add(section, "FullOutputAt", Text(shape.saturation * 100.0));
+        };
+        axis("Pitch", config.pitch, config.pitchShape);
+        axis("Yaw", config.yaw, config.yawShape);
+        axis("Roll", config.roll, config.rollShape);
+        add("Roll", "Enabled", Text(config.rollEnabled));
+        axis("StrafeSideways", config.strafeLateral, config.strafeLateralShape);
+        axis("StrafeVertical", config.strafeVertical, config.strafeVerticalShape);
+
+        add("Steering", "ThroughAimPoint", Text(config.steerThroughAim));
+        add("Steering", "AimSensitivity", Text(config.aimSensitivity * 100.0));
+        return entries;
+    }
+
+    FlightConfig LoadHotasFlightConfig(const IniValues& ini)
     {
         FlightConfig config;
         config.enabled = Bool(ini, "General", "bEnabled", true) && Bool(ini, "Injection", "bEnableInjection", true);

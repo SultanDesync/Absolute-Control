@@ -23,8 +23,9 @@ namespace AbsoluteControl::Runtime
     [[nodiscard]] std::optional<ShipActionOutputSpec> ParseShipOutput(std::string_view text);
 
     // The key or mouse button each catalog action presses, in catalog order. An action's
-    // output is the game's default, then the player's own rebind, then an explicit
-    // [ShipButtonOutputs] value. Context actions always press the game's fixed key.
+    // output is the game's default, then the player's own rebind (unless [ShipButtons]
+    // FollowGameRebinds is false), then an explicit [ShipButtonKeys] value under the
+    // action's setting key. Context actions always press the game's fixed key.
     [[nodiscard]] std::vector<ResolvedShipOutput> ResolveShipOutputs(const IniValues& ini,
         std::span<const ControlMap::Record> records);
 

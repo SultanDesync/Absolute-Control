@@ -9,6 +9,12 @@
 
 namespace AbsoluteControl::Runtime
 {
+    // One "key = value" line and the section it belongs to.
+    struct SettingEntry
+    {
+        std::string section, key, value;
+    };
+
     // Calls back with each "key = value" line of INI text and the section it sits in.
     void ForEachIniEntry(std::string_view text,
         const std::function<void(std::string_view section, std::string_view key, std::string_view value)>& entry);
@@ -49,5 +55,12 @@ namespace AbsoluteControl::Runtime
     [[nodiscard]] ConfiguredBinding ParseShipBinding(std::string_view actionId, std::string_view token);
     // The same forms for an axis: Device Name@0x32, {GUID}@axis:0x32 and guid:{GUID}@0x32.
     [[nodiscard]] ConfiguredBinding ParseAxisBinding(std::string_view actionId, std::string_view token);
+    // Absolute Control's own file: [ShipButtons] Enabled, and one key per action.
     [[nodiscard]] ShipBindingConfig LoadShipBindings(const IniValues& ini);
+    [[nodiscard]] std::vector<SettingEntry> WriteShipBindings(const ShipBindingConfig& config);
+    // The key an action is saved under, by catalog index. "Ship Action 1" is saved as what
+    // it does.
+    [[nodiscard]] std::string_view ShipSettingKey(std::size_t actionIndex) noexcept;
+    // AbsoluteHOTAS's files, for the one-time import: [ShipButtons] i...Button keys.
+    [[nodiscard]] ShipBindingConfig LoadHotasShipBindings(const IniValues& ini);
 }

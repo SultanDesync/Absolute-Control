@@ -21,6 +21,8 @@
 #include <limits>
 #include <optional>
 #include <ranges>
+#include <mutex>
+#include <vector>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -225,6 +227,8 @@ namespace AbsoluteControlPanelResearch::Scaleform
                         PollRefresh();
                         FlushDeferredModel();
                         if (closing || !protocol.HasAppliedModel()) break;
+                        FlushPointerEvents();
+                        if (closing) break;
                         // Live data is a frame-coalesced active-page patch. It
                         // never rebuilds provider controls or the menu shell,
                         // so a smooth meter does not turn into a 60 Hz full
@@ -546,29 +550,89 @@ namespace AbsoluteControlPanelResearch::Scaleform
                 if (!Input::ResolvePointerStage(point, stageX, stageY, failureEvent)) return;
 
 
-                if (!movie || !movie->asMovieRoot || !menuObj.IsObject()) {
-                    EvidenceLog::Event(failureEvent, "movie root unavailable");
+                static_cast<void>(method);
+                // The game advances this movie on its own threads, and the pointer is
+                // polled on another. Calling into the movie from here raced with that
+                // advance and crashed inside Scaleform (2026-11-03 and 2026-11-16). The
+                // event waits for the movie's next frame, which runs on the advancing thread.
+                QueuePointerEvent({ a_phase, false, 0, point, stageX, stageY });
+            }
+
+            struct PointerEvent
+            {
+                Input::PointerPhase phase{};
+                bool wheel{};
+                std::int32_t direction{};
+                POINT point{};
+                double stageX{};
+                double stageY{};
+            };
+
+            void QueuePointerEvent(const PointerEvent& a_event)
+            {
+                const std::scoped_lock lock{ pointerQueueMutex };
+                // Only the latest position matters between two frames.
+                if (!a_event.wheel && a_event.phase == Input::PointerPhase::Move && !pointerQueue.empty() &&
+                    !pointerQueue.back().wheel && pointerQueue.back().phase == Input::PointerPhase::Move) {
+                    pointerQueue.back() = a_event;
                     return;
                 }
-                RE::Scaleform::GFx::Value args[2]{
-                    RE::Scaleform::GFx::Value(stageX),
-                    RE::Scaleform::GFx::Value(stageY)
-                };
-                RE::Scaleform::GFx::Value handled;
-                const bool invoked =
-                    menuObj.Invoke(method, &handled, args, std::size(args));
-                const bool hit = invoked && handled.IsBoolean() && handled.GetBoolean();
-                if (a_phase != Input::PointerPhase::Move) {
+                // A stalled movie must not let presses pile up without limit.
+                if (pointerQueue.size() < 64) pointerQueue.push_back(a_event);
+            }
 
-                    EvidenceLog::Event(
-                        hit ? (a_phase == Input::PointerPhase::Down ? "pointer_down_hit" :
-                                                               "pointer_up_hit") :
-                              (a_phase == Input::PointerPhase::Down ? "pointer_down_missed" :
-                                                               "pointer_up_missed"),
-                        std::format(
-                            "client={},{} stage={:.1f},{:.1f} owner=scaleform "
-                            "invoked={}",
-                            point.x, point.y, stageX, stageY, invoked));
+            void ClearPointerEvents()
+            {
+                const std::scoped_lock lock{ pointerQueueMutex };
+                pointerQueue.clear();
+            }
+
+            // Runs from the movie's frame heartbeat, on the thread that is advancing it.
+            void FlushPointerEvents()
+            {
+                std::vector<PointerEvent> events;
+                {
+                    const std::scoped_lock lock{ pointerQueueMutex };
+                    events.swap(pointerQueue);
+                }
+                for (const auto& event : events) {
+                    if (closing || !menuShown || !pointerInputArmed || !protocol.HasAppliedModel()) return;
+                    if (!movie || !movie->asMovieRoot || !menuObj.IsObject()) return;
+                    RE::Scaleform::GFx::Value handled;
+                    if (event.wheel) {
+                        RE::Scaleform::GFx::Value args[3]{
+                            RE::Scaleform::GFx::Value(event.stageX),
+                            RE::Scaleform::GFx::Value(event.stageY),
+                            RE::Scaleform::GFx::Value(event.direction)
+                        };
+                        const bool invoked = menuObj.Invoke("handlePointerWheel", &handled, args, std::size(args));
+                        const bool hit = invoked && handled.IsBoolean() && handled.GetBoolean();
+                        EvidenceLog::Event(
+                            hit ? "mouse_wheel_hit" : "mouse_wheel_missed",
+                            std::format(
+                                "client={},{} stage={:.1f},{:.1f} direction={} invoked={}",
+                                event.point.x, event.point.y, event.stageX, event.stageY, event.direction, invoked));
+                        continue;
+                    }
+                    const auto method = event.phase == Input::PointerPhase::Down ? "handlePointerDown" :
+                        (event.phase == Input::PointerPhase::Move ? "handlePointerMove" : "handlePointerUp");
+                    RE::Scaleform::GFx::Value args[2]{
+                        RE::Scaleform::GFx::Value(event.stageX),
+                        RE::Scaleform::GFx::Value(event.stageY)
+                    };
+                    const bool invoked = menuObj.Invoke(method, &handled, args, std::size(args));
+                    const bool hit = invoked && handled.IsBoolean() && handled.GetBoolean();
+                    if (event.phase != Input::PointerPhase::Move) {
+                        EvidenceLog::Event(
+                            hit ? (event.phase == Input::PointerPhase::Down ? "pointer_down_hit" :
+                                                                   "pointer_up_hit") :
+                                  (event.phase == Input::PointerPhase::Down ? "pointer_down_missed" :
+                                                                   "pointer_up_missed"),
+                            std::format(
+                                "client={},{} stage={:.1f},{:.1f} owner=scaleform "
+                                "invoked={}",
+                                event.point.x, event.point.y, event.stageX, event.stageY, invoked));
+                    }
                 }
             }
 
@@ -586,24 +650,8 @@ namespace AbsoluteControlPanelResearch::Scaleform
                 double stageX{};
                 double stageY{};
                 if (!Input::ResolvePointerStage(point, stageX, stageY, "mouse_wheel_rejected")) return;
-                if (!movie || !movie->asMovieRoot || !menuObj.IsObject()) {
-                    EvidenceLog::Event("mouse_wheel_rejected", "movie root unavailable");
-                    return;
-                }
-                RE::Scaleform::GFx::Value args[3]{
-                    RE::Scaleform::GFx::Value(stageX),
-                    RE::Scaleform::GFx::Value(stageY),
-                    RE::Scaleform::GFx::Value(a_direction)
-                };
-                RE::Scaleform::GFx::Value handled;
-                const bool invoked = menuObj.Invoke(
-                    "handlePointerWheel", &handled, args, std::size(args));
-                const bool hit = invoked && handled.IsBoolean() && handled.GetBoolean();
-                EvidenceLog::Event(
-                    hit ? "mouse_wheel_hit" : "mouse_wheel_missed",
-                    std::format(
-                        "client={},{} stage={:.1f},{:.1f} direction={} invoked={}",
-                        point.x, point.y, stageX, stageY, a_direction, invoked));
+                // Delivered on the movie's next frame, like every other pointer event.
+                QueuePointerEvent({ Input::PointerPhase::Move, true, a_direction, point, stageX, stageY });
             }
 
             [[nodiscard]] bool SetString(RE::Scaleform::GFx::Value& a_object,
@@ -1369,6 +1417,7 @@ namespace AbsoluteControlPanelResearch::Scaleform
                 LiveComponents::HostRegistry().SetMenuActive(true);
                 closing = false;
                 pointerInputArmed = false;
+                ClearPointerEvents();
                 pointerReleaseObserved = false;
                 EvidenceLog::Event(
                     "bridge_pointer_barrier_started", "reason=menu-shown");
@@ -1380,6 +1429,7 @@ namespace AbsoluteControlPanelResearch::Scaleform
                 menuShown = false;
                 LiveComponents::HostRegistry().SetMenuActive(false);
                 pointerInputArmed = false;
+                ClearPointerEvents();
                 pointerReleaseObserved = false;
                 openOrigin = Ui::MenuOpenOrigin::None;
                 // Discard an origin queued by a duplicate Show while this
@@ -1443,6 +1493,9 @@ namespace AbsoluteControlPanelResearch::Scaleform
             bool closing{};
             bool menuShown{};
             bool pointerInputArmed{};
+            // Pointer events wait here for the movie's next frame.
+            std::mutex pointerQueueMutex;
+            std::vector<PointerEvent> pointerQueue;
             bool pointerReleaseObserved{};
             Ui::MenuOpenOrigin openOrigin{ Ui::MenuOpenOrigin::None };
 

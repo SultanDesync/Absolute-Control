@@ -110,8 +110,9 @@ Walk speed has two suites, both for that same profile:
 
 - `walk-speed` needs no hardware. It measures how far a movement key moves the player at each axis
   position, and tests Alt + wheel, the speed keys, saving, the gauge and its menu toggle. Test runs
-  read `test-walk-speed.ini` and save to a separate file, which ends up in the run's folder, so your
-  real settings aren't touched.
+  import `test-bindings.ini` and `test-walk-speed.ini` afresh each time and save to a separate
+  file, `AbsoluteControlTest.saved.ini`, which ends up in the run's folder, so your real settings
+  aren't touched.
 - `walk-speed-curve` needs no hardware. It records how far a movement key moves the player at 23 speeds,
   to show the game's response curve. It only measures, so read the distances from the evidence.
 - `walk-speed-devices` starts the axis capture with real controllers connected, checks that nothing

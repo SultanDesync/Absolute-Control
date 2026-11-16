@@ -844,8 +844,9 @@ function Save-RunArtifacts {
         Move-Item -LiteralPath $dump -Destination $target -Force
         $moved += $target
     }
-    # A test run's saved walk speed settings show the save worked through MO2's virtual files.
-    $savedSettings = Join-Path $Context.Config.mo2BaseDirectory 'overwrite\SFSE\Plugins\AbsoluteControlTestWalkSpeed.saved.ini'
+    # A test run's saved settings show the save worked through MO2's virtual files. Flight,
+    # buttons and walk speed all share the one file.
+    $savedSettings = Join-Path $Context.Config.mo2BaseDirectory 'overwrite\SFSE\Plugins\AbsoluteControlTest.saved.ini'
     if (Test-Path -LiteralPath $savedSettings) {
         Move-Item -LiteralPath $savedSettings -Destination $Context.RunDirectory -Force
     }

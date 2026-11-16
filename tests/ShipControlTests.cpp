@@ -2,6 +2,8 @@
 #include "runtime/ButtonCapture.h"
 #include "runtime/ButtonRouter.h"
 #include "runtime/ControlSettings.h"
+#include "runtime/FlightAxes.h"
+#include "runtime/SettingsImport.h"
 #include "runtime/PilotSignal.h"
 #include "runtime/ShipBindings.h"
 #include "runtime/ShipControlCore.h"
@@ -95,7 +97,7 @@ namespace
 
         IniValues ini;
         ini.Merge("[ShipButtons]\nbShipButtonsEnabled = true\niShipAction1Button = Stick@18\n");
-        const auto loaded = LoadShipBindings(ini);
+        const auto loaded = LoadHotasShipBindings(ini);
         CHECK(loaded.enabled && loaded.bindings.size() == kShipActionCatalog.size());
         std::size_t bound{};
         for (const auto& binding : loaded.bindings) {
@@ -105,7 +107,7 @@ namespace
         }
         CHECK(bound == 1);
         ini.Merge("[ShipButtons]\nbShipButtonsEnabled = FALSE\n");
-        CHECK(!LoadShipBindings(ini).enabled);
+        CHECK(!LoadHotasShipBindings(ini).enabled);
         return true;
     }
 
@@ -571,7 +573,7 @@ namespace
         const auto file = ControlMap::Parse(Section({ { "ShipHUD", "Cruise", 1, 0x004B, 0 },
             { "ShipHUD", "Up", 1, 0x004B, 0 }, { "ShipHUD", "RepairShip", 1, 0x004B, 0 } }));
         IniValues ini;
-        ini.Merge("[ShipButtonOutputs]\nsRepairOutput = key:0x21\nsTogglePovOutput = nonsense\n");
+        ini.Merge("[ShipButtonKeys]\nRepair = key:0x21\nTogglePov = nonsense\n");
         auto outputs = ResolveShipOutputs(ini, file.records);
         CHECK(outputs.size() == kShipActionCatalog.size());
         // Untouched actions press the game's default.
@@ -591,7 +593,7 @@ namespace
         const auto& power = outputs[ActionIndex("IncreaseSystemPower")];
         CHECK(power.output.code == 0x48 && power.output.extended && power.source == KeyboardResolutionSource::FixedContext);
 
-        ini.Merge("[General]\nbSyncShipOutputsFromControlMap = false\n");
+        ini.Merge("[ShipButtons]\nFollowGameRebinds = false\n");
         outputs = ResolveShipOutputs(ini, file.records);
         CHECK(outputs[ActionIndex("Cruise")].output.code == 0x14);
         return true;
@@ -646,6 +648,50 @@ namespace
         return true;
     }
 
+    bool TestImport()
+    {
+        IniValues hotas;
+        hotas.Merge("[General]\nbSyncShipOutputsFromControlMap = false\n"
+            "[Hardware]\niThrottleAxis = Lever@0x32\niPitchAxis = #0@0x31\n"
+            "[ShipButtons]\niShipAction1Button = Stick@14\niCruiseButton = Lever@26\niRepairButton = 42\niGetUpButton = -1\n"
+            "iFireWeapon0Button = Stick@1\niFireWeapon1Button = Stick@2\n"
+            "[ShipButtonOutputs]\nsRepairOutput = key:0x21\nsCruiseOutput = nonsense\n"
+            "[DualStick]\nbAccumulatorThrottle = true\n[MenuControls]\niMenuUpButton = Stick@5\n");
+        const auto imported = ImportHotasSettings(hotas);
+        IniValues own;
+        for (const auto& entry : imported.entries) own.Set(entry.section, entry.key, entry.value);
+
+        // Names say what they are, and "Ship Action 1" is saved as what it does.
+        CHECK(own.Get("Throttle", "Axis") == "Lever@0x32" && own.Get("Pitch", "Axis") == "");
+        CHECK(own.Get("ShipButtons", "TargetingDockTravel") == "Stick@14" && own.Get("ShipButtons", "Cruise") == "Lever@26");
+        CHECK(own.Get("ShipButtons", "Repair") == "" && own.Get("ShipButtons", "GetUp") == "" && own.Get("ShipButtons", "Enabled") == "true");
+        // Weapons are numbered as the game shows them, and each key still reaches its own action.
+        CHECK(own.Get("ShipButtons", "WeaponGroup1") == "Stick@1" && own.Get("ShipButtons", "WeaponGroup2") == "Stick@2");
+        CHECK(!own.Get("ShipButtons", "FireWeapon0") && LoadShipBindings(own).bindings[ActionIndex("FireWeapon1")].channel == "button/1");
+        CHECK(own.Get("ShipButtons", "FollowGameRebinds") == "false");
+        CHECK(own.Get("ShipButtonKeys", "Repair") == "key:0x21" && !own.Get("ShipButtonKeys", "Cruise"));
+        // Every action has a line in the file, bound or not.
+        for (std::size_t index = 0; index < kShipActionCatalog.size(); ++index) CHECK(own.Get("ShipButtons", ShipSettingKey(index)));
+
+        // The new readers see what the HOTAS files meant.
+        const auto buttons = LoadShipBindings(own);
+        CHECK(buttons.enabled && buttons.bindings[ActionIndex("ShipAction1")].channel == "button/13");
+        CHECK(buttons.bindings[ActionIndex("Cruise")].channel == "button/25" && buttons.bindings[ActionIndex("Repair")].status == BindingStatus::Unbound);
+        CHECK(ResolveShipOutputs(own, {})[ActionIndex("Repair")].output.code == 0x21);
+
+        // What couldn't come across is said in words: two cut features and two bindings in a
+        // form that depends on the order devices happen to be listed in.
+        const auto dropped = [&](std::string_view text) {
+            return std::ranges::any_of(imported.dropped, [&](const std::string& line) { return line.find(text) != std::string::npos; });
+        };
+        CHECK(imported.dropped.size() == 4);
+        CHECK(dropped("[DualStick] bAccumulatorThrottle") && dropped("[MenuControls] iMenuUpButton"));
+        CHECK(dropped("Pitch axis \"#0@0x31\"") && dropped("Repair Ship button \"42\""));
+        // An unbound button is not a loss.
+        CHECK(!dropped("Get Up"));
+        return true;
+    }
+
     bool TestControlSettings()
     {
         namespace fs = std::filesystem;
@@ -653,51 +699,92 @@ namespace
         fs::remove_all(folder);
         fs::create_directories(folder);
         const auto base = folder / "AbsoluteHOTAS.ini", custom = folder / "AbsoluteHOTAS_Custom.ini", own = folder / "AbsoluteControl.ini";
-        const std::string baseText = "[Hardware]\niPitchAxis = Stick@0x31\nfPitchDeadzone = 0.10\n[ShipButtons]\niCruiseButton = Stick@26\n";
+        const std::string baseText = "[Hardware]\niPitchAxis = Stick@0x31\nfPitchDeadzone = 0.10\n[ShipButtons]\niCruiseButton = Stick@26\n"
+            "[DualStick]\nbAccumulatorThrottle = true\n";
+        const auto text = [](const fs::path& file) {
+            std::ifstream stream{ file, std::ios::binary };
+            return std::string(std::istreambuf_iterator<char>(stream), {});
+        };
+        auto& settings = ControlSettings::Instance();
+
+        // A new install: nothing to import, defaults, and no file written until something changes.
+        settings.Load(own, { base, custom });
+        CHECK(settings.Origin() == "defaults" && !settings.Report().imported && !fs::exists(own));
+        CHECK(LoadFlightConfig(settings.Merged()).pitch.status == BindingStatus::Unbound);
+
+        // HOTAS files and no file of our own: imported once, the later file winning.
         std::ofstream(base, std::ios::binary) << baseText;
         std::ofstream(custom, std::ios::binary) << "[Hardware]\nfPitchDeadzone = 0.20\n";
+        settings.Load(own, { base, custom, folder / "missing.ini" });
+        CHECK(settings.Origin() == "imported" && fs::exists(own));
+        CHECK(settings.Get("Pitch", "Axis") == "Stick@0x31" && settings.Get("pitch", "deadzone") == "20");
+        CHECK(settings.Get("ShipButtons", "Cruise") == "Stick@26");
+        auto report = settings.Report();
+        CHECK(report.imported && report.from == "AbsoluteHOTAS.ini, AbsoluteHOTAS_Custom.ini" && report.date.size() == 10);
+        CHECK(report.dropped.size() == 1 && report.dropped[0].find("bAccumulatorThrottle") != std::string::npos);
+        // The file says what it is and how to get out of trouble, and keeps its sections together.
+        const auto written = text(own);
+        CHECK(written.find("only settings file") != std::string::npos && written.find("delete this file") != std::string::npos);
+        CHECK(written.find("[Throttle]") < written.find("[Pitch]") && written.find("[Pitch]") < written.find("[ShipButtons]"));
+        CHECK(written.find("[Import]") != std::string::npos && written.find("[Pitch]") == written.rfind("[Pitch]"));
+        // The HOTAS files are never written.
+        CHECK(text(base) == baseText);
 
-        auto& settings = ControlSettings::Instance();
-        settings.Load({ base, custom, folder / "missing.ini" }, own);
-        CHECK(settings.Sources() == "AbsoluteHOTAS.ini,AbsoluteHOTAS_Custom.ini");
-        CHECK(settings.Get("Hardware", "iPitchAxis") == "Stick@0x31" && settings.Get("hardware", "fpitchdeadzone") == "0.20");
-
-        // The menu's changes win, an empty value unbinds, and only Control's own file is written.
+        // The menu's changes go to our file only. An empty value unbinds.
         const auto before = settings.Generation();
-        settings.Set("Hardware", "fPitchDeadzone", "0.05");
-        settings.Set("ShipButtons", "iCruiseButton", "");
-        settings.Set("Hardware", "iRollAxis", "Pedals@0x33");
-        CHECK(settings.Get("Hardware", "fPitchDeadzone") == "0.05" && settings.Get("ShipButtons", "iCruiseButton") == "");
-        CHECK(LoadShipBindings(settings.Merged()).bindings[FindShipAction("Cruise") - kShipActionCatalog.data()].status == BindingStatus::Unbound);
+        settings.Set("Pitch", "Deadzone", "5");
+        settings.Set("ShipButtons", "Cruise", "");
+        settings.Set("Roll", "Axis", "Pedals@0x33");
+        CHECK(LoadShipBindings(settings.Merged()).bindings[ActionIndex("Cruise")].status == BindingStatus::Unbound);
         CHECK(settings.Save());
         settings.Publish();
-        CHECK(settings.Generation() == before + 1);
-        {
-            // Closed again before the folder is removed.
-            std::ifstream check{ base, std::ios::binary };
-            CHECK(std::string(std::istreambuf_iterator<char>(check), {}) == baseText);
-        }
+        CHECK(settings.Generation() == before + 1 && text(base) == baseText);
 
-        // A fresh load reads the saved file last.
-        settings.Load({ base, custom }, own);
-        CHECK(settings.Sources() == "AbsoluteHOTAS.ini,AbsoluteHOTAS_Custom.ini,AbsoluteControl.ini");
-        CHECK(settings.Get("Hardware", "fPitchDeadzone") == "0.05" && settings.Get("Hardware", "iRollAxis") == "Pedals@0x33");
-        CHECK(settings.Get("ShipButtons", "iCruiseButton") == "" && settings.Get("Hardware", "iPitchAxis") == "Stick@0x31");
-        // A second save keeps what the first one wrote.
-        settings.Set("Hardware", "bInvertRoll", "true");
+        // From now on only our file is read: changing the HOTAS files does nothing.
+        std::ofstream(custom, std::ios::binary) << "[Hardware]\nfPitchDeadzone = 0.40\niYawAxis = Stick@0x30\n";
+        settings.Load(own, { base, custom });
+        CHECK(settings.Origin() == "file");
+        CHECK(settings.Get("Pitch", "Deadzone") == "5" && settings.Get("Roll", "Axis") == "Pedals@0x33");
+        CHECK(settings.Get("ShipButtons", "Cruise") == "" && settings.Get("Yaw", "Axis") == "");
+        // The import's record survives, so the menu can show it on any later launch.
+        report = settings.Report();
+        CHECK(report.imported && report.dropped.size() == 1);
+        CHECK(text(own).find("[Pitch]") == text(own).rfind("[Pitch]"));
+
+        // Starting fresh leaves an empty file behind, so nothing is imported a second time.
+        CHECK(settings.Reset() && fs::exists(own));
+        CHECK(!settings.Get("Pitch", "Axis") && !settings.Report().imported);
+        settings.Load(own, { base, custom });
+        CHECK(settings.Origin() == "file" && !settings.Get("Pitch", "Axis") && !settings.Report().imported);
+
+        // Walk speed used to keep its own file. It is copied in once, and a reset leaves it alone.
+        const auto walk = folder / "AbsoluteControlWalkSpeed.ini";
+        std::ofstream(walk, std::ios::binary) << "; old file\n[WalkSpeed]\nEnabled=true\nSpeed=0.750\n[Other]\nKey=1\n";
+        settings.Load(own, { base }, walk);
+        CHECK(settings.Get("WalkSpeed", "Speed") == "0.750" && !settings.Get("Other", "Key"));
+        settings.Set("WalkSpeed", "Speed", "0.500");
+        settings.Set("Pitch", "Axis", "Stick@0x31");
         CHECK(settings.Save());
-        settings.Load({ base }, own);
-        CHECK(settings.Get("Hardware", "iRollAxis") == "Pedals@0x33" && settings.Get("Hardware", "bInvertRoll") == "true");
+        std::ofstream(walk, std::ios::binary) << "[WalkSpeed]\nSpeed=0.100\n";
+        settings.Load(own, { base }, walk);
+        CHECK(settings.Get("WalkSpeed", "Speed") == "0.500");
+        CHECK(settings.Reset() && settings.Get("WalkSpeed", "Speed") == "0.500" && !settings.Get("Pitch", "Axis"));
+
+        // A test run imports every time, whatever was saved before.
+        settings.Set("Pitch", "Axis", "Other@0x30");
+        CHECK(settings.Save());
+        settings.Load(own, { base }, {}, true);
+        CHECK(settings.Origin() == "imported" && settings.Get("Pitch", "Axis") == "Stick@0x31");
         fs::remove_all(folder);
         return true;
     }
 }
-
 int main()
 {
     if (!TestIni() || !TestTokens() || !TestCatalogAndLoad() || !TestPilotSignal() ||
         !TestRouter() || !TestCore() || !TestCoreConfigProblems() || !TestControlMap() ||
-        !TestOutputs() || !TestHeldOutputs() || !TestBindingNumbers() || !TestControlSettings()) return 1;
+        !TestOutputs() || !TestHeldOutputs() || !TestBindingNumbers() || !TestImport() ||
+        !TestControlSettings()) return 1;
     std::cout << "ship control tests passed\n";
     return 0;
 }
