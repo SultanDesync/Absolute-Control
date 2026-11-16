@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <map>
 #include <optional>
 #include <string>
@@ -8,11 +9,16 @@
 
 namespace AbsoluteControl::Runtime
 {
-    // Read-only view of the existing HOTAS INI files. Later files override earlier ones.
+    // Calls back with each "key = value" line of INI text and the section it sits in.
+    void ForEachIniEntry(std::string_view text,
+        const std::function<void(std::string_view section, std::string_view key, std::string_view value)>& entry);
+
+    // INI values by section and key, without regard to case. Later values override earlier ones.
     class IniValues
     {
     public:
         void Merge(std::string_view text);
+        void Set(std::string_view section, std::string_view key, std::string_view value);
         [[nodiscard]] std::optional<std::string> Get(std::string_view section, std::string_view key) const;
 
     private:

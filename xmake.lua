@@ -89,7 +89,9 @@ local release_sources = {
     "src/interop/OSFUICompatibility.cpp",
     "src/runtime/ProbeRuntimeState.cpp",
     "src/runtime/BackendRuntime.cpp",
+    "src/runtime/ButtonCapture.cpp",
     "src/runtime/ControlMapReader.cpp",
+    "src/runtime/ControlSettings.cpp",
     "src/runtime/DeviceStore.cpp",
     "src/runtime/DirectInputProvider.cpp",
     "src/runtime/FlightAxes.cpp",
@@ -106,6 +108,7 @@ local release_sources = {
     "src/runtime/WalkSpeedRuntime.cpp",
     "src/scaleform/ScaleformMenuBridge.cpp",
     "src/ui/ControlPanelMenu.cpp",
+    "src/ui/FlightPages.cpp",
     "src/ui/MenuAudioIntegration.cpp",
     "src/ui/MenuMessaging.cpp",
     "src/ui/PauseMenuIntegration.cpp",
@@ -219,7 +222,8 @@ target("ship_control_test", function()
     set_default(false)
     add_tests("bindings_pilot_signal_and_routing")
     add_includedirs("include")
-    add_files("src/runtime/ControlMapReader.cpp", "src/runtime/DeviceStore.cpp",
+    add_files("src/runtime/ButtonCapture.cpp", "src/runtime/ControlMapReader.cpp",
+        "src/runtime/ControlSettings.cpp", "src/runtime/DeviceStore.cpp",
         "src/runtime/LegacyHotasToken.cpp", "src/runtime/ShipBindings.cpp",
         "src/runtime/ShipControlCore.cpp", "src/runtime/ShipOutputs.cpp",
         "tests/ShipControlTests.cpp")

@@ -4,9 +4,11 @@
 #include "ShipActionCatalog.h"
 #include "runtime/BackendRuntime.h"
 #include "runtime/ControlMapReader.h"
+#include "runtime/ControlSettings.h"
 #include "runtime/CooperativeService.h"
 #include "runtime/FlightAxes.h"
 #include "runtime/FlightOutput.h"
+#include "runtime/FlightTelemetry.h"
 #include "runtime/FlightSignals.h"
 #include "runtime/ShipControlCore.h"
 #include "runtime/ShipOutputs.h"
@@ -36,22 +38,6 @@ namespace AbsoluteControl::Runtime
 
         constexpr auto kTickInterval = std::chrono::milliseconds(8);
 
-        IniValues LoadIni(const std::vector<std::filesystem::path>& files)
-        {
-            IniValues ini;
-            std::string sources;
-            for (const auto& file : files) {
-                std::ifstream stream{ file, std::ios::binary };
-                if (!stream) continue;
-                ini.Merge(std::string{ std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>() });
-                if (!sources.empty()) sources += ',';
-                sources += file.filename().string();
-            }
-            Log::Event("ship_bindings_loaded", std::format("files={}", sources));
-            return ini;
-        }
-
-        // The player's own key and mouse rebinds, so a button presses whatever they chose.
         std::filesystem::path RebindPath()
         {
             PWSTR documents{};
@@ -201,53 +187,77 @@ namespace AbsoluteControl::Runtime
             std::uint64_t next_{};
         };
     }
-    void StartShipControlLoop(const std::vector<std::filesystem::path>& bindingFiles) noexcept
+    void StartShipControlLoop(const std::vector<std::filesystem::path>& bindingFiles,
+        const std::filesystem::path& settingsFile) noexcept
     {
         try {
             // Process lifetime, like NativeBackend: never join a worker under the loader lock.
             static auto* service = new CooperativeService;
-            const auto ini = std::make_shared<const IniValues>(LoadIni(bindingFiles));
-            // Only the loop's thread touches the held keys, through the sink and on the way out.
-            auto held = std::make_shared<HeldOutputs>(&SendOutput);
-            const auto rebindPath = RebindPath();
-            const auto rebindStamp = RebindStamp(rebindPath);
-            // Replaced on the loop's thread when the game saves new key bindings.
-            const auto outputs = std::make_shared<std::vector<ResolvedShipOutput>>(LoadOutputs(*ini));
-            auto boostButton = std::make_shared<bool>(false);
-            auto core = std::make_shared<ShipControlCore>(LoadShipBindings(*ini),
-                [held, outputs, boostButton](std::string_view actionId, bool down) {
-                    Log::Event("ship_action_intent", std::format("action={} held={}", actionId, down ? 1 : 0));
-                    if (actionId == "FireBoosters") *boostButton = down;
-                    // Bindings, outputs and the catalog share one order.
-                    for (std::size_t index = 0; index < outputs->size(); ++index) {
-                        if (kShipActionCatalog[index].actionId != actionId) continue;
-                        held->Set((*outputs)[index].output, static_cast<std::uint32_t>(index), down);
-                        return;
-                    }
-                },
-                [](std::string_view event, std::string_view detail) { Log::Event(event, detail); });
+            auto& settings = ControlSettings::Instance();
+            settings.Load(bindingFiles, settingsFile);
+            Log::Event("ship_bindings_loaded", std::format("files={}", settings.Sources()));
 
-            // Flight axes take slots 1 to 7; slot 0 stays the walk speed axis.
-            const auto flight = std::make_shared<const FlightConfig>(LoadFlightConfig(*ini));
-            const std::array<const ConfiguredBinding*, 7> axes{ &flight->throttle, &flight->pitch, &flight->yaw,
-                &flight->roll, &flight->strafeLateral, &flight->strafeVertical, &flight->reverse };
-            bool anyAxis{};
-            for (std::size_t index = 0; index < axes.size(); ++index) {
-                core->SetAxisBinding(index + 1, *axes[index]);
-                anyAxis = anyAxis || axes[index]->status != BindingStatus::Unbound;
-            }
-            for (const auto& name : flight->ignored) Log::Event("flight_setting_ignored", std::format("setting={}", name));
-            // The game's code is only patched for someone who has a flight axis bound.
-            const bool flightOutput = flight->enabled && anyAxis;
-            const auto installed = flightOutput ? FlightOutput::Install() : FlightOutput::InstallResult{};
+            // Only the loop's thread touches these once it is running.
+            auto held = std::make_shared<HeldOutputs>(&SendOutput);
+            auto outputs = std::make_shared<std::vector<ResolvedShipOutput>>();
+            auto boostButton = std::make_shared<bool>(false);
             // AbsoluteZero steers pitch and yaw through the same aim point.
             const bool mouseSteeringOwned = ::GetModuleHandleW(L"AbsoluteZero.dll") != nullptr;
-            Log::Event("flight_config", std::format("enabled={} axes={} output={} gates={} shared={} store_hooks={} split={} aim={} zero={} ignored={}",
-                flight->enabled ? 1 : 0, anyAxis ? 1 : 0, flightOutput ? 1 : 0, installed.steeringGates ? 1 : 0, installed.sharedGate ? 1 : 0,
-                installed.storeHooks, installed.splitHook ? 1 : 0, flight->steerThroughAim ? 1 : 0, mouseSteeringOwned ? 1 : 0, flight->ignored.size()));
+
+            struct Loaded
+            {
+                std::shared_ptr<ShipControlCore> core;
+                std::shared_ptr<const FlightConfig> flight;
+                bool flightOutput{};
+            };
+            // Everything that comes from the settings and the game's key bindings. Run again
+            // whenever either changes, so the menu and the game's own rebind screen both take
+            // effect without a restart.
+            const auto load = [held, outputs, boostButton, mouseSteeringOwned]() {
+                const auto ini = ControlSettings::Instance().Merged();
+                *outputs = LoadOutputs(ini);
+                Loaded loaded;
+                loaded.core = std::make_shared<ShipControlCore>(LoadShipBindings(ini),
+                    [held, outputs, boostButton](std::string_view actionId, bool down) {
+                        Log::Event("ship_action_intent", std::format("action={} held={}", actionId, down ? 1 : 0));
+                        if (actionId == "FireBoosters") *boostButton = down;
+                        // Bindings, outputs and the catalog share one order.
+                        for (std::size_t index = 0; index < outputs->size(); ++index) {
+                            if (kShipActionCatalog[index].actionId != actionId) continue;
+                            held->Set((*outputs)[index].output, static_cast<std::uint32_t>(index), down);
+                            return;
+                        }
+                    },
+                    [](std::string_view event, std::string_view detail) { Log::Event(event, detail); });
+
+                // Flight axes take slots 1 to 7; slot 0 stays the walk speed axis.
+                const auto flight = std::make_shared<const FlightConfig>(LoadFlightConfig(ini));
+                const std::array<const ConfiguredBinding*, 7> axes{ &flight->throttle, &flight->pitch, &flight->yaw,
+                    &flight->roll, &flight->strafeLateral, &flight->strafeVertical, &flight->reverse };
+                bool anyAxis{};
+                for (std::size_t index = 0; index < axes.size(); ++index) {
+                    loaded.core->SetAxisBinding(index + 1, *axes[index]);
+                    anyAxis = anyAxis || axes[index]->status != BindingStatus::Unbound;
+                }
+                for (const auto& name : flight->ignored) Log::Event("flight_setting_ignored", std::format("setting={}", name));
+                // The game's code is only patched for someone who has a flight axis bound.
+                loaded.flightOutput = flight->enabled && anyAxis;
+                const auto installed = loaded.flightOutput ? FlightOutput::Install() : FlightOutput::InstallResult{};
+                Log::Event("flight_config", std::format("enabled={} axes={} output={} gates={} shared={} store_hooks={} split={} aim={} zero={} ignored={}",
+                    flight->enabled ? 1 : 0, anyAxis ? 1 : 0, loaded.flightOutput ? 1 : 0, installed.steeringGates ? 1 : 0,
+                    installed.sharedGate ? 1 : 0, installed.storeHooks, installed.splitHook ? 1 : 0,
+                    flight->steerThroughAim ? 1 : 0, mouseSteeringOwned ? 1 : 0, flight->ignored.size()));
+                loaded.flight = flight;
+                return loaded;
+            };
+
+            const auto rebindPath = RebindPath();
+            const auto first = std::make_shared<const Loaded>(load());
+            const auto firstStamp = RebindStamp(rebindPath);
+            const auto firstGeneration = settings.Generation();
 
             const bool started = service->Start(
-                [core, held, outputs, boostButton, flight, flightOutput, mouseSteeringOwned, ini, rebindPath, rebindStamp](
+                [load, first, firstStamp, firstGeneration, rebindPath, held, outputs, boostButton, mouseSteeringOwned](
                     std::stop_token stop, const std::shared_ptr<CallbackGate>&) {
                     constexpr std::uint32_t kStrafeOwner = 1000;
                     constexpr std::uint32_t kBoostZoneOwner = 1001;
@@ -257,36 +267,48 @@ namespace AbsoluteControl::Runtime
                         }
                         return ShipActionOutputSpec{};
                     };
+                    auto current = *first;
                     auto strafeKey = outputFor("SwitchFlightModes");
                     auto boostKey = outputFor("FireBoosters");
-                    auto stamp = rebindStamp;
+                    auto stamp = firstStamp;
+                    auto generation = firstGeneration;
                     std::uint64_t nextRebindCheck{};
-                    const auto axis = [&](std::size_t slot) -> std::optional<float> {
-                        const auto value = core->AxisValue(slot);
-                        return value ? std::optional<float>(static_cast<float>(*value)) : std::nullopt;
-                    };
 
                     const auto& devices = NativeBackend().Devices();
-                    std::string axisToken;
+                    auto& telemetry = FlightTelemetry::Shared();
+                    std::optional<std::string> axisToken;
                     bool flightLive{};
                     InputIdentifier identifier;
                     while (!stop.stop_requested()) {
-                        if (auto token = WalkSpeedRuntime::AxisToken(); token != axisToken) {
-                            axisToken = std::move(token);
-                            core->SetAxisBinding(ParseAxisBinding("WalkSpeed", axisToken));
-                        }
                         const auto now = BackendRuntime::Now();
-                        if (now >= nextRebindCheck) {
+                        // The game saves a rebind to its file; the menu bumps the generation.
+                        bool changed = ControlSettings::Instance().Generation() != generation;
+                        const char* reason = "settings_applied";
+                        if (!changed && now >= nextRebindCheck) {
                             nextRebindCheck = now + 1'000'000'000;
-                            if (const auto current = RebindStamp(rebindPath); current != stamp) {
-                                stamp = current;
-                                // Let go of everything first: a held key may be about to change.
-                                held->ReleaseAll();
-                                *outputs = LoadOutputs(*ini);
-                                strafeKey = outputFor("SwitchFlightModes");
-                                boostKey = outputFor("FireBoosters");
-                                Log::Event("ship_outputs_reloaded", "reason=control_map_changed");
-                            }
+                            changed = RebindStamp(rebindPath) != stamp;
+                            reason = "control_map_changed";
+                        }
+                        if (changed) {
+                            generation = ControlSettings::Instance().Generation();
+                            stamp = RebindStamp(rebindPath);
+                            // Let go of everything first: a held key or a bound axis may be about to change.
+                            held->ReleaseAll();
+                            FlightOutput::Suspend();
+                            *boostButton = false;
+                            flightLive = false;
+                            current = load();
+                            strafeKey = outputFor("SwitchFlightModes");
+                            boostKey = outputFor("FireBoosters");
+                            axisToken.reset();
+                            Log::Event("ship_outputs_reloaded", std::format("reason={}", reason));
+                        }
+                        const auto& core = current.core;
+                        const auto& flight = current.flight;
+
+                        if (auto token = WalkSpeedRuntime::AxisToken(); !axisToken || token != *axisToken) {
+                            axisToken = std::move(token);
+                            core->SetAxisBinding(ParseAxisBinding("WalkSpeed", *axisToken));
                         }
                         const auto signals = ReadFlightSignals();
                         PilotObservation observation;
@@ -299,27 +321,44 @@ namespace AbsoluteControl::Runtime
                         identifier.Tick(devices, now);
                         WalkSpeedRuntime::Tick(signals, core->AxisValue(), now);
 
-                        if (flightOutput) {
-                            // Camera state 0xA is the take-off, docking and undocking cutscene.
-                            const bool allowed = core->GateOpen() && signals && signals->clusterAddress && signals->cam != 0xA;
-                            if (allowed != flightLive) {
-                                flightLive = allowed;
-                                Log::Event("flight_gate", std::format("open={}", allowed ? 1 : 0));
-                            }
-                            if (allowed) {
-                                const FlightInputs inputs{ axis(1), axis(2), axis(3), axis(4), axis(5), axis(6), axis(7) };
-                                const auto frame = ComputeFlightFrame(*flight, inputs);
-                                FlightOutput::Apply(*flight, frame, { signals->managerAddress, signals->clusterAddress },
-                                    frame.boost || *boostButton, mouseSteeringOwned, now);
-                                // Strafing needs the game's flight mode key held, and the lever's
-                                // boost zone presses the booster key.
-                                held->Set(strafeKey, kStrafeOwner, frame.strafeModifier);
-                                held->Set(boostKey, kBoostZoneOwner, frame.boost);
-                            } else {
-                                FlightOutput::Suspend();
-                                held->Set(strafeKey, kStrafeOwner, false);
-                                held->Set(boostKey, kBoostZoneOwner, false);
-                            }
+                        // Worked out every tick, piloting or not, so the menu can show an axis
+                        // responding while it is being set up.
+                        const auto axis = [&](std::size_t slot) -> std::optional<float> {
+                            const auto value = core->AxisValue(slot);
+                            return value ? std::optional<float>(static_cast<float>(*value)) : std::nullopt;
+                        };
+                        const FlightInputs inputs{ axis(1), axis(2), axis(3), axis(4), axis(5), axis(6), axis(7) };
+                        const auto frame = ComputeFlightFrame(*flight, inputs);
+                        const std::array<std::optional<float>, 7> positions{ inputs.throttle, inputs.pitch, inputs.yaw,
+                            inputs.roll, inputs.strafeLateral, inputs.strafeVertical, inputs.reverse };
+                        const std::array<float, 7> shaped{ frame.throttle, frame.pitch, frame.yaw, frame.splitRoll,
+                            frame.splitStrafe, frame.vertical, frame.reverse ? 1.0F : 0.0F };
+                        for (std::size_t index = 0; index < positions.size(); ++index) {
+                            FlightTelemetry::SetPosition(index, positions[index]);
+                            telemetry.output[index].store(shaped[index], std::memory_order_relaxed);
+                        }
+                        telemetry.reverse.store(frame.reverse, std::memory_order_relaxed);
+                        telemetry.boost.store(frame.boost, std::memory_order_relaxed);
+
+                        // Camera state 0xA is the take-off, docking and undocking cutscene.
+                        const bool allowed = current.flightOutput && core->GateOpen() && signals &&
+                            signals->clusterAddress && signals->cam != 0xA;
+                        telemetry.piloting.store(allowed, std::memory_order_relaxed);
+                        if (current.flightOutput && allowed != flightLive) {
+                            flightLive = allowed;
+                            Log::Event("flight_gate", std::format("open={}", allowed ? 1 : 0));
+                        }
+                        if (allowed) {
+                            FlightOutput::Apply(*flight, frame, { signals->managerAddress, signals->clusterAddress },
+                                frame.boost || *boostButton, mouseSteeringOwned, now);
+                            // Strafing needs the game's flight mode key held, and the lever's boost
+                            // zone presses the booster key.
+                            held->Set(strafeKey, kStrafeOwner, frame.strafeModifier);
+                            held->Set(boostKey, kBoostZoneOwner, frame.boost);
+                        } else if (current.flightOutput) {
+                            FlightOutput::Suspend();
+                            held->Set(strafeKey, kStrafeOwner, false);
+                            held->Set(boostKey, kBoostZoneOwner, false);
                         }
                         if (!InterruptibleWait(stop, kTickInterval)) break;
                     }

@@ -100,7 +100,11 @@ package acp.ui
             var local:Point = view.globalToLocal(new Point(stageX, stageY));
             var fraction:Number = Math.max(0, Math.min(1,
                 local.x / Math.max(1, Number(target.payload.trackWidth))));
-            var selection:Object = rangeControlAt(current, component, fraction);
+            // Only a pinned graph lets a click anywhere in a zone take hold of its landmark.
+            // On a small bar a click has to land on the landmark itself, so a click on the
+            // bar can mean something else.
+            var pinned:Boolean = (uint(component.interactionFlags) & (1 << 8)) != 0;
+            var selection:Object = rangeControlAt(current, component, fraction, pinned);
             if (selection == null) return false;
             var control:Object = selection.control;
             var marker:Object = selection.marker;
@@ -155,7 +159,7 @@ package acp.ui
         }
 
         private function rangeControlAt(current:Object, component:Object,
-            fraction:Number):Object
+            fraction:Number, zones:Boolean):Object
         {
             var minimum:Number = Number(component.minimum);
             var maximum:Number = Number(component.maximum);
@@ -177,7 +181,7 @@ package acp.ui
             if (best != null && bestDistance <= 0.035) {
                 return {"control":best, "marker":bestMarker};
             }
-            if (component.bands == null) return null;
+            if (!zones || component.bands == null) return null;
             for each (var band:Object in component.bands) {
                 if (uint(band.semantic) == 2 || value < Number(band.minimum) ||
                     value > Number(band.maximum)) continue;

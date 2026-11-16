@@ -2,6 +2,7 @@
 #include "runtime/BackendRuntime.h"
 #include "runtime/ShipControlLoop.h"
 #include "runtime/WalkSpeedRuntime.h"
+#include "ui/FlightPages.h"
 #include "ui/WalkGaugeMenu.h"
 #include "ui/WalkSpeedPage.h"
 
@@ -80,7 +81,10 @@ namespace
 #if defined(ACP_ENABLE_RESEARCH_TOOLS)
                 if (testInput) AbsoluteControlPanelResearch::TestMenuPage::Register();
 #endif
-                AbsoluteControl::Runtime::StartShipControlLoop(ShipBindingFiles());
+                // A test run saves elsewhere, so real settings stay untouched.
+                AbsoluteControl::Runtime::StartShipControlLoop(ShipBindingFiles(), testInput ?
+                    "Data/SFSE/Plugins/AbsoluteControlTest.saved.ini" : "Data/SFSE/Plugins/AbsoluteControl.ini");
+                AbsoluteControlPanelResearch::Ui::FlightPages::Register();
             }
         }
     }

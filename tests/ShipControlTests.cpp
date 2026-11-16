@@ -1,5 +1,7 @@
 #include "ShipActionCatalog.h"
+#include "runtime/ButtonCapture.h"
 #include "runtime/ButtonRouter.h"
+#include "runtime/ControlSettings.h"
 #include "runtime/PilotSignal.h"
 #include "runtime/ShipBindings.h"
 #include "runtime/ShipControlCore.h"
@@ -9,6 +11,9 @@
 #include <array>
 #include <cstring>
 #include <format>
+#include <iterator>
+#include <fstream>
+#include <filesystem>
 #include <initializer_list>
 #include <iostream>
 #include <set>
@@ -629,13 +634,70 @@ namespace
         CHECK(sent.size() == 8);
         return true;
     }
+    bool TestBindingNumbers()
+    {
+        CHECK(BindingNumberForChannel("button/0") == 1 && BindingNumberForChannel("button/127") == 128);
+        CHECK(BindingNumberForChannel("button/128") == 0 && BindingNumberForChannel("button/") == 0);
+        CHECK(BindingNumberForChannel("pov/0/direction/up") == 129 && BindingNumberForChannel("pov/0/direction/left") == 132);
+        CHECK(BindingNumberForChannel("pov/3/direction/left") == 144 && BindingNumberForChannel("pov/4/direction/up") == 0);
+        CHECK(BindingNumberForChannel("pov/0") == 0 && BindingNumberForChannel("axis/1") == 0);
+        // What a recording saves reads back as the same channel.
+        CHECK(ParseShipBinding("A", "Stick@132").channel == "pov/0/direction/left");
+        return true;
+    }
+
+    bool TestControlSettings()
+    {
+        namespace fs = std::filesystem;
+        const auto folder = fs::temp_directory_path() / "absolute-control-settings-test";
+        fs::remove_all(folder);
+        fs::create_directories(folder);
+        const auto base = folder / "AbsoluteHOTAS.ini", custom = folder / "AbsoluteHOTAS_Custom.ini", own = folder / "AbsoluteControl.ini";
+        const std::string baseText = "[Hardware]\niPitchAxis = Stick@0x31\nfPitchDeadzone = 0.10\n[ShipButtons]\niCruiseButton = Stick@26\n";
+        std::ofstream(base, std::ios::binary) << baseText;
+        std::ofstream(custom, std::ios::binary) << "[Hardware]\nfPitchDeadzone = 0.20\n";
+
+        auto& settings = ControlSettings::Instance();
+        settings.Load({ base, custom, folder / "missing.ini" }, own);
+        CHECK(settings.Sources() == "AbsoluteHOTAS.ini,AbsoluteHOTAS_Custom.ini");
+        CHECK(settings.Get("Hardware", "iPitchAxis") == "Stick@0x31" && settings.Get("hardware", "fpitchdeadzone") == "0.20");
+
+        // The menu's changes win, an empty value unbinds, and only Control's own file is written.
+        const auto before = settings.Generation();
+        settings.Set("Hardware", "fPitchDeadzone", "0.05");
+        settings.Set("ShipButtons", "iCruiseButton", "");
+        settings.Set("Hardware", "iRollAxis", "Pedals@0x33");
+        CHECK(settings.Get("Hardware", "fPitchDeadzone") == "0.05" && settings.Get("ShipButtons", "iCruiseButton") == "");
+        CHECK(LoadShipBindings(settings.Merged()).bindings[FindShipAction("Cruise") - kShipActionCatalog.data()].status == BindingStatus::Unbound);
+        CHECK(settings.Save());
+        settings.Publish();
+        CHECK(settings.Generation() == before + 1);
+        {
+            // Closed again before the folder is removed.
+            std::ifstream check{ base, std::ios::binary };
+            CHECK(std::string(std::istreambuf_iterator<char>(check), {}) == baseText);
+        }
+
+        // A fresh load reads the saved file last.
+        settings.Load({ base, custom }, own);
+        CHECK(settings.Sources() == "AbsoluteHOTAS.ini,AbsoluteHOTAS_Custom.ini,AbsoluteControl.ini");
+        CHECK(settings.Get("Hardware", "fPitchDeadzone") == "0.05" && settings.Get("Hardware", "iRollAxis") == "Pedals@0x33");
+        CHECK(settings.Get("ShipButtons", "iCruiseButton") == "" && settings.Get("Hardware", "iPitchAxis") == "Stick@0x31");
+        // A second save keeps what the first one wrote.
+        settings.Set("Hardware", "bInvertRoll", "true");
+        CHECK(settings.Save());
+        settings.Load({ base }, own);
+        CHECK(settings.Get("Hardware", "iRollAxis") == "Pedals@0x33" && settings.Get("Hardware", "bInvertRoll") == "true");
+        fs::remove_all(folder);
+        return true;
+    }
 }
 
 int main()
 {
     if (!TestIni() || !TestTokens() || !TestCatalogAndLoad() || !TestPilotSignal() ||
         !TestRouter() || !TestCore() || !TestCoreConfigProblems() || !TestControlMap() ||
-        !TestOutputs() || !TestHeldOutputs()) return 1;
+        !TestOutputs() || !TestHeldOutputs() || !TestBindingNumbers() || !TestControlSettings()) return 1;
     std::cout << "ship control tests passed\n";
     return 0;
 }

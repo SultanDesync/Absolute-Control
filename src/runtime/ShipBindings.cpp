@@ -115,7 +115,8 @@ namespace AbsoluteControl::Runtime
         }
     }
 
-    void IniValues::Merge(std::string_view text)
+    void ForEachIniEntry(std::string_view text,
+        const std::function<void(std::string_view section, std::string_view key, std::string_view value)>& entry)
     {
         if (text.starts_with("\xEF\xBB\xBF")) text.remove_prefix(3);
         std::string section;
@@ -130,8 +131,20 @@ namespace AbsoluteControl::Runtime
             }
             const auto separator = line.find('=');
             if (separator == std::string_view::npos) continue;
-            values_[ValueKey(section, Trim(line.substr(0, separator)))] = std::string(Trim(line.substr(separator + 1)));
+            entry(section, Trim(line.substr(0, separator)), Trim(line.substr(separator + 1)));
         }
+    }
+
+    void IniValues::Merge(std::string_view text)
+    {
+        ForEachIniEntry(text, [this](std::string_view section, std::string_view key, std::string_view value) {
+            Set(section, key, value);
+        });
+    }
+
+    void IniValues::Set(std::string_view section, std::string_view key, std::string_view value)
+    {
+        values_[ValueKey(section, key)] = std::string(value);
     }
 
     std::optional<std::string> IniValues::Get(std::string_view section, std::string_view key) const

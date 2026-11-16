@@ -141,7 +141,7 @@ package
             if (kind == "disabled") return true;
             if (liveSurfaceInput.handlePointer(kind, target, stageX, stageY,
                 shell, pointer, sliderWrites, model, selection, syncFocus,
-                sendSelectPage, redraw)) return true;
+                sendSelectPage, redraw, send)) return true;
             if (kind == "dirtyDecision") {
                 dirtyDecisionCursor = int(target.index);
                 sendPage(String(target.payload));
