@@ -1,6 +1,6 @@
 set_xmakever("3.0.0")
 
-local product_version = "1.0.0-dev"
+local product_version = "1.0.0-rc.1"
 
 set_project("AbsoluteControl")
 set_version(product_version)

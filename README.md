@@ -3,11 +3,10 @@
 Flight controls for Starfield: HOTAS and joystick flight, mouse steering, and head
 tracking, built on one input bus and configured through a native in-game menu.
 
-> **Status: rewrite in progress (`rewrite` branch). Nothing here is released.**
-> The current release is Absolute Suite / Absolute Control **0.3.0-beta.1**. Its
-> source is on [`release/0.3`](../../tree/release/0.3) and tag `v0.3.0-beta.1`.
-> HOTAS 5.2.0, Head Tracking 1.0.0-beta.1, AbsoluteZero 1.3.0 and Absolute Power
-> 0.3.0-alpha stay frozen in their own repositories until this rewrite replaces them.
+> **Status: 1.0.0-rc.1, a release candidate built from the `rewrite` branch.** It replaces
+> AbsoluteHOTAS and Absolute Head Tracking: remove both before installing it. AbsoluteZero
+> stays a separate mod and works beside it. The 0.3 suite's source is on
+> [`release/0.3`](../../tree/release/0.3) and tag `v0.3.0-beta.1`.
 
 ## Why a rewrite
 
@@ -33,7 +32,7 @@ Only the current Steam release of Starfield is supported (1.16.244 today).
 ```text
 device providers ──► input bus ──► bindings + profiles ──► flight / camera outputs
  DirectInput          copied frames,                         one writer per output
- OpenTrack (planned)  device identity,
+ OpenTrack            device identity,
                       lifecycle, capture
                             │
                             ▼
@@ -48,7 +47,10 @@ device providers ──► input bus ──► bindings + profiles ──► fli
   appended after the existing pause-menu rows, preserving their order, and coexists with
   OSF UI. See [PauseMenu compatibility](docs/PAUSE-MENU-COMPATIBILITY.md) and
   [OSF UI compatibility](docs/OSF-UI-COMPATIBILITY.md).
-- **Head tracking** becomes an OpenTrack provider publishing yaw, pitch and roll channels.
+- **Head tracking** is an OpenTrack provider publishing yaw, pitch and roll axes. Look
+  yaw, pitch and roll each take two bound axes that add, so a tracker and a mini stick share
+  one pipeline. The cockpit camera hook and the weapon field-of-fire limit come from Absolute
+  Head Tracking 1.0.0-beta.1.
 - **Mouse steering** is configured by INI, presets and a few hotkeys, plus one menu page.
 
 The menu depends on about 20 engine mappings recovered for 1.16.244 that CommonLibSF does
@@ -59,14 +61,17 @@ mappings upstream is the main lever for reducing that cost.
 
 The design record behind these choices is in [`docs/history/`](docs/history/).
 
-## What exists today
+## What's in 1.0.0-rc.1
 
-- The input runtime (`DeviceStore`, `BackendRuntime`, `DirectInputProvider`, `HeadlessCore`,
-  `LegacyHotasToken`).
-- The native menu host and UI from the 0.3 line plus the unreleased September work: OSF UI
-  coexistence, pause-menu viewport auto-fit, the **ABSOLUTE CONTROL** label and the
-  title-screen entry. That work was validated only with the research host, not as a release.
-- No flight outputs or HOTAS pages yet; the menu currently hosts no flight-control modules.
+- Six flight axes with shaping, a lever throttle with idle, reverse, cruise and boost zones,
+  roll and sideways strafe together, and the pilot gate.
+- 25 ship buttons that press the game's own keys and follow in-game rebinds, with target
+  system cycling.
+- The reticle: the mouse, the flight stick, its own axes, or held centred.
+- Head tracking through OpenTrack, mini-stick look, and the weapon field-of-fire limit.
+- Walk speed on an axis.
+- One settings file, `AbsoluteControl.ini`, with a one-time import of AbsoluteHOTAS and
+  Absolute Head Tracking settings, and a native menu page for each area.
 
 ## Building
 
@@ -87,12 +92,10 @@ name so it replaces the installed host in place:
 
 - `build/windows/x64/releasedbg/AbsoluteControlPanel.dll` → `Data/SFSE/Plugins/`
 - `config/AbsoluteControlPanel.ini` → `Data/SFSE/Plugins/`
-- `interface/dist/AbsoluteControlPanelMenu.swf` → `Data/Interface/`
+- `interface/dist/AbsoluteControlPanelMenu.swf` and `AbsoluteWalkGauge.swf` → `Data/Interface/`
 
 ## Known gaps
 
-- `interface/tests/Test-SourceArchitecture.ps1` fails: the September UI work grew the
-  ActionScript document coordinator to 530 lines, past the test's size budget.
 - Release acceptance for the September menu work is still open: both load orders with OSF UI,
   21:9 and 32:9, keyboard/mouse/controller activation and 25 open/close cycles. OSF UI is now
   2.0.0; coexistence was tested against 1.6.0.
