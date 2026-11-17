@@ -40,6 +40,23 @@ namespace AbsoluteControl::Runtime::FlightTelemetry
         Shared().position[axis].store(value ? *value : std::numeric_limits<float>::quiet_NaN(), std::memory_order_relaxed);
     }
 
+    // Looking around: yaw, pitch and roll in degrees.
+    struct LookState
+    {
+        std::array<std::atomic<float>, 3> tracker{}; // The angle inputs alone, from their centre.
+        std::array<std::atomic<float>, 3> output{};  // Where the camera is turned.
+        std::atomic<bool> reporting{};  // Some bound look input is reporting.
+        std::atomic<bool> on{ true };   // Not switched off with the toggle.
+        std::atomic<bool> turning{};    // The camera is being turned right now.
+        std::atomic<bool> ready{};      // The camera and field-of-fire hooks are in.
+    };
+
+    inline LookState& Look()
+    {
+        static LookState state;
+        return state;
+    }
+
     inline std::optional<float> Position(std::size_t axis)
     {
         const float value = Shared().position[axis].load(std::memory_order_relaxed);

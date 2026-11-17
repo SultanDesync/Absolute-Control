@@ -1,5 +1,7 @@
 #include "runtime/AxisCapture.h"
 
+#include "runtime/ShipBindings.h"
+
 #include <algorithm>
 #include <charconv>
 #include <cmath>
@@ -21,25 +23,24 @@ namespace AbsoluteControl::Runtime
             return text.substr(first, text.find_last_not_of(' ') - first + 1);
         }
 
-        [[nodiscard]] std::optional<std::uint32_t> AxisNumber(std::string_view channel) noexcept
-        {
-            if (!channel.starts_with("axis/")) return std::nullopt;
-            channel.remove_prefix(5);
-            std::uint32_t axis{};
-            const auto [end, error] = std::from_chars(channel.data(), channel.data() + channel.size(), axis);
-            if (error != std::errc{} || end != channel.data() + channel.size() || axis > 7) return std::nullopt;
-            return axis;
-        }
-
-        [[nodiscard]] bool IsUsableAxis(const D::Sample& sample) noexcept
+        [[nodiscard]] bool IsUsableAxis(const D::Sample& sample)
         {
             return sample.shape == D::Shape::Scalar && sample.validity == D::Validity::Valid &&
-                (sample.flags & D::kCalibrationRangeKnown) && AxisNumber(sample.channel);
+                (sample.flags & D::kCalibrationRangeKnown) && AxisTokenControl(sample.channel);
+        }
+
+        // A head tracker's axis reads -1 to 1 over a whole turn, so a quarter of that would be a
+        // 45 degree turn of the head. Tracker axes count from a smaller move.
+        [[nodiscard]] double Movement(std::string_view channel)
+        {
+            const auto control = AxisTokenControl(channel);
+            return control && !control->starts_with("0x") ? AxisCapture::kTrackerMovement : AxisCapture::kMovement;
         }
 
         // Names survive a replug better than ids, so use the name unless two devices share it.
-        [[nodiscard]] std::string MakeToken(const DeviceSnapshot& snapshot, std::string_view physical, std::uint32_t axis)
+        [[nodiscard]] std::string MakeToken(const DeviceSnapshot& snapshot, std::string_view physical, std::string_view channel)
         {
+            const auto axis = AxisTokenControl(channel).value_or("");
             std::string_view name;
             for (const auto& description : snapshot.devices) {
                 if (physical == description.device.physical) name = Trim(description.device.displayName);
@@ -48,8 +49,8 @@ namespace AbsoluteControl::Runtime
                 return Trim(description.device.displayName) == name;
             });
             return name.empty() || sameName > 1 ?
-                std::format("guid:{}@0x{:02X}", physical, 0x30 + axis) :
-                std::format("{}@0x{:02X}", name, 0x30 + axis);
+                std::format("guid:{}@{}", physical, axis) :
+                std::format("{}@{}", name, axis);
         }
     }
 
@@ -94,8 +95,9 @@ namespace AbsoluteControl::Runtime
                 Key key{ description.device.physical, sample.channel };
                 // Where each axis rests when first seen is its starting point, not zero.
                 const auto [entry, added] = start_.try_emplace(key, sample.value[0]);
-                const auto move = std::abs(sample.value[0] - entry->second);
-                if (move >= kMovement && move > biggestMove) {
+                // Compared as a share of what counts, so a tracker's smaller move can win.
+                const auto move = std::abs(sample.value[0] - entry->second) / Movement(sample.channel);
+                if (move >= 1.0 && move > biggestMove) {
                     biggest = std::move(key);
                     biggestMove = move;
                 }
@@ -108,7 +110,7 @@ namespace AbsoluteControl::Runtime
             moving_ = std::move(biggest);
             movingSince_ = now;
         } else if (now - movingSince_ >= kHoldNanoseconds) {
-            token_ = MakeToken(snapshot, moving_->first, *AxisNumber(moving_->second));
+            token_ = MakeToken(snapshot, moving_->first, moving_->second);
             state_ = State::Captured;
         }
         return state_;

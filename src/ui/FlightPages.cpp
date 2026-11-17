@@ -62,6 +62,8 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
             // For a choice: the name saved in the file, then what the page shows. The first
             // is used when nothing is saved.
             std::vector<std::pair<std::string, std::string>> choices;
+            // A number saved negative and shown positive, such as how far left the head can turn.
+            bool negate{};
         };
 
         struct Page
@@ -125,7 +127,10 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
 
             std::string what;
             unsigned number{};
-            if (axis && ::sscanf_s(binding.channel.c_str(), "axis/%u", &number) == 1) {
+            const auto control = axis ? Rt::AxisTokenControl(binding.channel) : std::nullopt;
+            if (control && !control->starts_with("0x")) {
+                what = *control; // A head tracker's axis: OpenTrack · Yaw.
+            } else if (axis && ::sscanf_s(binding.channel.c_str(), "axis/%u", &number) == 1) {
                 what = std::format("Axis {}", number + 1);
             } else if (const auto button = Rt::BindingNumberForChannel(binding.channel); button >= 129) {
                 constexpr std::array<std::string_view, 4> kDirections{ "up", "right", "down", "left" };
@@ -209,9 +214,37 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
             { "reticle", "aim-pitch", "Reticle up and down", Telemetry::AimPitch },
         } };
 
+        // A look axis's bar: where the view is turned, -180 to 180 degrees across the bar, with
+        // its limits. Yaw and lean are drawn with right to the right, which the game counts as negative.
+        struct LookView
+        {
+            const char* prefix;
+            const char* title;
+            std::size_t axis;
+            float mirror;
+            std::atomic<float> low{}, high{};
+            std::atomic<std::uint64_t> sequence{};
+        };
+        std::array<LookView, 3> g_looks{ {
+            { "look-yaw", "Looking left and right", 0, -1.0F, { -85.0F }, { 85.0F } },
+            { "look-pitch", "Looking up and down", 1, 1.0F, { -60.0F }, { 60.0F } },
+            { "look-roll", "Leaning", 2, -1.0F, { -45.0F }, { 45.0F } },
+        } };
+        constexpr double kLookBarDegrees = 1.8; // 180 degrees is the end of the bar.
+
         void SyncViews(const Page& page)
         {
-            if (page.pageId == "throttle") {
+            if (page.pageId == "look") {
+                for (auto& look : g_looks) {
+                    const std::string prefix{ look.prefix };
+                    const auto number = [&](std::string_view id, double fallback) {
+                        const auto* row = Find(page, id);
+                        return row ? Number(Stored(page, *row).value_or(""), fallback) : fallback;
+                    };
+                    look.low = static_cast<float>(std::clamp(number(prefix + "-low", look.low), -180.0, 0.0));
+                    look.high = static_cast<float>(std::clamp(number(prefix + "-high", look.high), 0.0, 180.0));
+                }
+            } else if (page.pageId == "throttle") {
                 g_throttle.idle = static_cast<float>(Shown(page, "throttle-idle"));
                 g_throttle.saturation = static_cast<float>(Shown(page, "throttle-saturation"));
                 g_throttle.invert = Shown(page, "throttle-invert") != 0;
@@ -398,6 +431,38 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
             FillFrame(*frame, position, StickRange(stick), stick.sequence.fetch_add(1, std::memory_order_relaxed) + 1);
             return Live::Result::Ok;
         }
+        Range LookRange(const LookView& look) noexcept
+        {
+            using Band = Live::RangeBandSemantic;
+            using Role = Live::VisualRole;
+            Range range;
+            double from = look.low.load(std::memory_order_relaxed) / kLookBarDegrees;
+            double to = look.high.load(std::memory_order_relaxed) / kLookBarDegrees;
+            if (look.mirror < 0) {
+                const double flipped = -to;
+                to = -from;
+                from = flipped;
+            }
+            range.Band(Band::Dead, Role::Neutral, -100, from, "Past the limit");
+            range.Band(Band::Active, Role::Accent, from, to, "");
+            range.Band(Band::Dead, Role::Neutral, to, 100, "Past the limit");
+            range.Marker(Live::RangeMarkerSemantic::Center, 0, "centre", "");
+            return range;
+        }
+
+        Live::Result __cdecl ReadLookFrame(void* context, Live::LiveFrameV1* frame) noexcept
+        {
+            if (!context || !frame || frame->structSize < Live::kLiveFrameV1BaseSize) return Live::Result::InvalidArgument;
+            auto& look = *static_cast<LookView*>(context);
+            const auto& state = Telemetry::Look();
+            std::optional<float> value;
+            if (state.reporting.load(std::memory_order_relaxed)) {
+                value = static_cast<float>(std::clamp(state.output[look.axis].load(std::memory_order_relaxed) * look.mirror / kLookBarDegrees, -100.0, 100.0));
+            }
+            FillFrame(*frame, value, LookRange(look), look.sequence.fetch_add(1, std::memory_order_relaxed) + 1);
+            return Live::Result::Ok;
+        }
+
         Api::Result __cdecl ReadValue(void* context, const char* rawId, Api::ValueV1* output) noexcept
         {
             if (!context || !rawId || !output || output->structSize < sizeof(Api::ValueV1)) return Api::Result::InvalidArgument;
@@ -412,15 +477,19 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
                     output->kind = Api::ValueKind::Boolean;
                     output->booleanValue = (stored ? IsTrue(*stored) : row->fallback != 0) ? 1 : 0;
                     break;
-                case Kind::Percent:
+                case Kind::Percent: {
                     output->kind = Api::ValueKind::Integer;
-                    output->integerValue = std::clamp<std::int64_t>(std::llround(Number(stored.value_or(""), row->fallback)),
+                    const double number = Number(stored.value_or(""), row->fallback);
+                    output->integerValue = std::clamp<std::int64_t>(std::llround(row->negate ? -number : number),
                         row->minimum, row->maximum);
                     break;
+                }
                 case Kind::Axis:
                 case Kind::Button:
                     output->kind = Api::ValueKind::String;
-                    Copy(output->stringValue, BindingLabel(stored.value_or(""), row->kind == Kind::Axis));
+                    // A look axis is bound to the head tracker until set otherwise; its target
+                    // holds that default.
+                    Copy(output->stringValue, BindingLabel(stored.value_or(row->target), row->kind == Kind::Axis));
                     break;
                 case Kind::Text:
                     output->kind = Api::ValueKind::String;
@@ -452,7 +521,7 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
                     page.draft[row->id] = value->booleanValue ? "true" : "false";
                 } else if (row->kind == Kind::Percent && value->kind == Api::ValueKind::Integer &&
                     integer >= row->minimum && integer <= row->maximum) {
-                    page.draft[row->id] = std::format("{}", integer);
+                    page.draft[row->id] = std::format("{}", row->negate ? -integer : integer);
                 } else if (row->kind == Kind::Choice && value->kind == Api::ValueKind::Integer &&
                     integer >= 0 && static_cast<std::size_t>(integer) < row->choices.size()) {
                     page.draft[row->id] = row->choices[static_cast<std::size_t>(integer)].first;
@@ -806,6 +875,68 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
             }
             return rows;
         }
+        // Looking around the cockpit: a head tracker, a stick, or both on each axis.
+        std::vector<Row> LookRows()
+        {
+            std::vector<Row> rows;
+            rows.push_back(Header("look-about", "Look",
+                "Turn the cockpit camera with a head tracker, a mini stick, or both. Each axis takes two inputs and adds them. "
+                "A tracker axis turns the view by the angle you turn your head; a stick's full travel reaches the limit. "
+                "Run OpenTrack with its freetrack 2.0 Enhanced output and it works without binding anything. "
+                "Remove the old Absolute Head Tracking mod: with it installed, this page does nothing."));
+            rows.push_back({ Kind::Toggle, "look-enabled", "Enabled", "Turn looking around off without losing its bindings.", "Look", "Enabled", 1.0 });
+            struct Axis
+            {
+                std::string_view id, title, about, section, tracker, lowLabel, highLabel;
+                double low, high;
+            };
+            constexpr std::array<Axis, 3> kAxes{ {
+                { "look-yaw", "Look left and right", "Turning your head, or a stick's left and right.", "LookYaw", "OpenTrack@Yaw",
+                  "Limit right (degrees)", "Limit left (degrees)", -85, 85 },
+                { "look-pitch", "Look up and down", "Tilting your head, or a stick's forward and back.", "LookPitch", "OpenTrack@Pitch",
+                  "Limit down (degrees)", "Limit up (degrees)", -60, 60 },
+                { "look-roll", "Lean", "Tilting your head to the side.", "LookRoll", "OpenTrack@Roll",
+                  "Limit right (degrees)", "Limit left (degrees)", -45, 45 },
+            } };
+            for (const auto& axis : kAxes) {
+                const std::string name(axis.id), where(axis.section);
+                rows.push_back(Header(name + "-group", std::string(axis.title), std::string(axis.about)));
+                rows.push_back({ Kind::Toggle, name + "-enabled", "Enabled", "Turn this axis off without losing its bindings.", where, "Enabled", 1.0 });
+                Row first{ Kind::Axis, name + "-axis", "Axis", "Turn your head or move the axis you want to use. Delete clears it.", where, "Axis" };
+                first.target = std::string(axis.tracker);
+                rows.push_back(std::move(first));
+                rows.push_back({ Kind::Toggle, name + "-invert", "Invert", "Swap the axis's direction.", where, "Invert" });
+                rows.push_back({ Kind::Percent, name + "-sensitivity", "Sensitivity (%)",
+                    "Scales the axis. For a tracker, 100 turns the view as far as you turn your head; 200 turns it twice as far.",
+                    where, "Sensitivity", 100, 10, 400, 5 });
+                rows.push_back({ Kind::Axis, name + "-second", "Second axis", "Another axis added to the first, such as a mini stick. Delete clears it.",
+                    where, "SecondAxis" });
+                rows.push_back({ Kind::Toggle, name + "-second-invert", "Second axis invert", "Swap the second axis's direction.", where, "SecondAxisInvert" });
+                rows.push_back({ Kind::Percent, name + "-second-deadzone", "Second axis deadzone (%)", "A stick's travel around the centre that does nothing.",
+                    where, "SecondAxisDeadzone", 10, 0, 50, 1 });
+                Row low{ Kind::Percent, name + "-low", std::string(axis.lowLabel), "How far the view can turn this way.",
+                    where, "Minimum", axis.low, 0, 180, 5 };
+                low.negate = true;
+                rows.push_back(std::move(low));
+                rows.push_back({ Kind::Percent, name + "-high", std::string(axis.highLabel), "How far the view can turn this way.",
+                    where, "Maximum", axis.high, 0, 180, 5 });
+            }
+            rows.push_back(Header("look-shared", "Tracking", "Shared by every axis."));
+            rows.push_back({ Kind::Percent, "look-tracker-deadzone", "Tracker deadzone (degrees)", "Head movement around the centre that does nothing.",
+                "Look", "TrackerDeadzone", 0, 0, 30, 1 });
+            rows.push_back({ Kind::Percent, "look-smoothing", "Smoothing (%)", "Eases the view after your head. More is smoother but lags.",
+                "Look", "Smoothing", 15, 0, 95, 5 });
+            rows.push_back({ Kind::Button, "look-recentre", "Recentre button",
+                "Where your head is now becomes straight ahead. Ctrl+Alt+C does the same unless changed in the file.", "Look", "RecentreButton" });
+            rows.push_back({ Kind::Button, "look-toggle", "On and off button",
+                "Switches looking around off and on. Ctrl+Alt+T does the same unless changed in the file.", "Look", "ToggleButton" });
+            rows.push_back(Header("look-fire", "Field of fire", "With the view turned, your guns fire where you look, but only within a cone around the ship's nose."));
+            rows.push_back({ Kind::Percent, "look-cone", "Firing cone (degrees)",
+                "How far either side of the nose the guns can follow your view. Past it, they fire at the cone's edge, shown by the lead circle. 0 lifts the limit.",
+                "Look", "FiringCone", 30, 0, 90, 5 });
+            return rows;
+        }
+
         Row Line(std::string id, std::string label, std::string description, std::string text)
         {
             Row row{ Kind::Text, std::move(id), std::move(label), std::move(description) };
@@ -922,17 +1053,20 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
             static Page reticle{ "reticle", "Reticle", "Choose what moves the aiming reticle.", "Flight", ReticleRows() };
             static Page buttons{ "ship-buttons", "Ship Buttons", "Bind buttons and hats to ship actions.", "Flight", ButtonRows() };
             static Page settings{ "settings-file", "Settings File", "Where your settings came from, and how to start fresh.", "Setup", SettingsRows() };
-            g_pages = { &throttle, &axes, &reticle, &buttons, &settings };
+            static Page look{ "look", "Look", "Head tracking and looking around the cockpit.", "Look and Aim", LookRows() };
+            g_pages = { &throttle, &axes, &reticle, &buttons, &look, &settings };
             RegisterPage(*api, throttle);
             RegisterPage(*api, axes);
             RegisterPage(*api, reticle);
             RegisterPage(*api, buttons);
+            RegisterPage(*api, look);
             RegisterPage(*api, settings);
             {
-                const std::scoped_lock lock{ throttle.mutex, axes.mutex, reticle.mutex };
+                const std::scoped_lock lock{ throttle.mutex, axes.mutex, reticle.mutex, look.mutex };
                 SyncViews(throttle);
                 SyncViews(axes);
                 SyncViews(reticle);
+                SyncViews(look);
             }
 
             // Live graphs: the lever with its zones, pinned above the Throttle page, and a
@@ -966,6 +1100,10 @@ namespace AbsoluteControlPanelResearch::Ui::FlightPages
             addGraph("throttle", "lever", "Lever travel", 0, ThrottleRange(), &ReadThrottleFrame, nullptr, Live::kLivePresentationPinned);
             for (auto& stick : g_sticks) {
                 addGraph(stick.page, std::string(stick.prefix) + "-bar", stick.title, -100, StickRange(stick), &ReadStickFrame, &stick,
+                    Live::kLivePresentationNone);
+            }
+            for (auto& view : g_looks) {
+                addGraph("look", std::string(view.prefix) + "-bar", view.title, -100, LookRange(view), &ReadLookFrame, &view,
                     Live::kLivePresentationNone);
             }
         } catch (...) {

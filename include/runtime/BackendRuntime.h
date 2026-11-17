@@ -8,6 +8,8 @@
 #include <mutex>
 #include <thread>
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace AbsoluteControl::Runtime
 {
@@ -42,4 +44,23 @@ namespace AbsoluteControl::Runtime
 
     [[nodiscard]] BackendRuntime& NativeBackend();
     [[nodiscard]] std::unique_ptr<InputProvider> MakeDirectInputProvider();
+
+    // A head tracker, through OpenTrack's freetrack output. It is always listed, so a
+    // binding to it resolves before the tracker starts; it reports valid only while tracking.
+    namespace OpenTrackChannels
+    {
+        inline constexpr std::string_view kProvider = "absolute.control.opentrack";
+        inline constexpr std::string_view kPhysical = "opentrack";
+        inline constexpr std::string_view kDisplayName = "OpenTrack";
+        inline constexpr std::string_view kYaw = "axis/yaw";
+        inline constexpr std::string_view kPitch = "axis/pitch";
+        inline constexpr std::string_view kRoll = "axis/roll";
+    }
+    [[nodiscard]] std::unique_ptr<InputProvider> MakeOpenTrackProvider();
+
+    // Runs several sources on the backend's one thread. The first is the main one: if it
+    // fails to start, so does the whole. Any other that fails, at start or later, is
+    // dropped on its own and the rest carry on.
+    [[nodiscard]] std::unique_ptr<InputProvider> MakeCombinedProvider(
+        std::vector<std::unique_ptr<InputProvider>> providers);
 }

@@ -1,6 +1,7 @@
 #include "runtime/ControlSettings.h"
 
 #include "runtime/SettingsImport.h"
+#include "runtime/LookAxes.h"
 
 #include <algorithm>
 #include <chrono>
@@ -59,7 +60,7 @@ namespace AbsoluteControl::Runtime
     }
 
     void ControlSettings::Load(std::filesystem::path file, const std::vector<std::filesystem::path>& hotasFiles,
-        const std::filesystem::path& walkSpeedFile, bool alwaysImport)
+        const std::filesystem::path& walkSpeedFile, bool alwaysImport, const std::filesystem::path& headTrackingFile)
     {
         const std::scoped_lock lock{ mutex_ };
         merged_ = {};
@@ -82,6 +83,22 @@ namespace AbsoluteControl::Runtime
             });
             return copied;
         };
+        // Head tracking was its own mod. Its settings come across once, when this file has no
+        // look settings yet; after that its file is never read.
+        const auto importHeadTracking = [&] {
+            const bool present = std::ranges::any_of(entries_, [](const SettingEntry& entry) {
+                return SameText(entry.section, "Look") || SameText(entry.section, "LookYaw");
+            });
+            const auto text = present ? std::nullopt : ReadText(headTrackingFile);
+            if (!text) return false;
+            IniValues headTracking;
+            headTracking.Merge(*text);
+            for (const auto& entry : WriteLookConfig(LoadHeadTrackingLookConfig(headTracking))) {
+                SetLocked(entry.section, entry.key, entry.value);
+            }
+            SetLocked("Import", "HeadTracking", headTrackingFile.filename().string());
+            return true;
+        };
 
         if (!alwaysImport) {
             if (const auto text = ReadText(file_)) {
@@ -89,7 +106,8 @@ namespace AbsoluteControl::Runtime
                     SetLocked(section, key, value);
                 });
                 origin_ = "file";
-                if (importWalkSpeed()) static_cast<void>(SaveLocked());
+                const bool walk = importWalkSpeed();
+                if (importHeadTracking() || walk) static_cast<void>(SaveLocked());
                 return;
             }
         }
@@ -104,8 +122,10 @@ namespace AbsoluteControl::Runtime
             }
         }
         if (from.empty()) {
-            // Nothing from HOTAS. The file is only written if walk speed had settings to keep.
-            if (importWalkSpeed()) static_cast<void>(SaveLocked());
+            // Nothing from HOTAS. The file is only written if walk speed or head tracking had
+            // settings to keep.
+            const bool walk = importWalkSpeed();
+            if (importHeadTracking() || walk) static_cast<void>(SaveLocked());
             return;
         }
 
@@ -119,6 +139,7 @@ namespace AbsoluteControl::Runtime
         }
         origin_ = "imported";
         importWalkSpeed();
+        importHeadTracking();
         // Written straight away, so the import happens once even if nothing is changed.
         static_cast<void>(SaveLocked());
     }

@@ -66,6 +66,15 @@ namespace AbsoluteControl::Runtime
             return {};
         }
 
+        std::optional<std::string> NamedAxisChannel(std::string_view control)
+        {
+            const auto name = Lower(control);
+            for (const auto axis : kNamedAxes) {
+                if (name == axis) return std::format("axis/{}", axis);
+            }
+            return {};
+        }
+
         ConfiguredBinding ParseBinding(std::string_view actionId, std::string_view token, bool axis)
         {
             ConfiguredBinding result;
@@ -98,7 +107,9 @@ namespace AbsoluteControl::Runtime
                 return result;
             }
             const auto value = ParseNumber(control);
-            const auto channel = !value ? std::nullopt : axis ? AxisChannelForValue(*value) : ChannelForValue(*value);
+            auto channel = !value ? std::nullopt : axis ? AxisChannelForValue(*value) : ChannelForValue(*value);
+            // A head tracker's axes go by name: OpenTrack@Yaw.
+            if (!channel && axis) channel = NamedAxisChannel(control);
             if (!channel) return result;
             if (device.starts_with("guid:")) {
                 const auto id = std::string(Trim(device.substr(5)));
@@ -186,6 +197,22 @@ namespace AbsoluteControl::Runtime
     ConfiguredBinding ParseAxisBinding(std::string_view actionId, std::string_view token)
     {
         return ParseBinding(actionId, token, true);
+    }
+
+    std::optional<std::string> AxisTokenControl(std::string_view channel)
+    {
+        if (!channel.starts_with("axis/")) return {};
+        channel.remove_prefix(5);
+        for (const auto axis : kNamedAxes) {
+            if (channel == axis) {
+                std::string name(axis);
+                name.front() = static_cast<char>(name.front() - 'a' + 'A');
+                return name;
+            }
+        }
+        const auto number = ParseNumber(channel);
+        if (!number || *number > 7 || channel.starts_with("0x")) return {};
+        return std::format("0x{:02X}", 0x30 + *number);
     }
 
     std::string_view ShipSettingKey(std::size_t actionIndex) noexcept

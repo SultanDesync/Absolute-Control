@@ -2,7 +2,9 @@
 
 #include "EvidenceLog.h"
 #include "ShipActionCatalog.h"
+#include "runtime/AimRestriction.h"
 #include "runtime/BackendRuntime.h"
+#include "runtime/CameraLook.h"
 #include "runtime/ControlMapReader.h"
 #include "runtime/ControlSettings.h"
 #include "runtime/CooperativeService.h"
@@ -10,6 +12,7 @@
 #include "runtime/FlightOutput.h"
 #include "runtime/FlightTelemetry.h"
 #include "runtime/FlightSignals.h"
+#include "runtime/LookAxes.h"
 #include "runtime/ShipControlCore.h"
 #include "runtime/ShipOutputs.h"
 #include "runtime/WalkSpeedRuntime.h"
@@ -118,6 +121,20 @@ namespace AbsoluteControl::Runtime
             return process == ::GetCurrentProcessId();
         }
 
+        // A keyboard shortcut, held exactly: Ctrl+Alt+C isn't also Ctrl+Alt+Shift+C.
+        bool ChordDown(const std::optional<KeyChord>& chord)
+        {
+            if (!chord) return false;
+            const auto down = [](int key) { return (::GetAsyncKeyState(key) & 0x8000) != 0; };
+            return down(chord->key) && down(VK_CONTROL) == chord->control && down(VK_MENU) == chord->alt &&
+                down(VK_SHIFT) == chord->shift;
+        }
+
+        // Look axes take axis slots 10 to 15, two per axis; its buttons take button slots 0 and 1.
+        constexpr std::size_t kLookSlot = 10;
+        constexpr std::size_t kRecentreButton = 0;
+        constexpr std::size_t kToggleButton = 1;
+
         void SendOutput(const ShipActionOutputSpec& output, bool down)
         {
             INPUT input{};
@@ -176,16 +193,17 @@ namespace AbsoluteControl::Runtime
                         if (sample.validity != D::Validity::Valid) continue;
                         const std::string_view id{ description.channels[index].identity.channel };
                         auto& state = states[index];
-                        if (sample.shape == D::Shape::Scalar && id.starts_with("axis/")) {
+                        const auto control = AxisTokenControl(id);
+                        if (sample.shape == D::Shape::Scalar && control) {
                             const double value = sample.value[0];
+                            // Half a stick's travel, or a head turned about 36 degrees.
+                            const double deliberate = control->starts_with("0x") ? 0.5 : 0.2;
                             if (!state.seen) {
                                 state.seen = true;
                                 state.value = value;
-                            } else if (std::abs(value - state.value) >= 0.5) {
-                                // Half the travel since it was last named: a deliberate move.
+                            } else if (std::abs(value - state.value) >= deliberate) {
                                 state.value = value;
-                                const auto number = Number(id.substr(5));
-                                Log::Event("input_moved", std::format("token={}@0x{:02X} value={:.2f}", name, 0x30 + number, value));
+                                Log::Event("input_moved", std::format("token={}@{} value={:.2f}", name, *control, value));
                             }
                         } else if (id.starts_with("button/")) {
                             const bool down = sample.value[0] != 0;
@@ -242,17 +260,22 @@ namespace AbsoluteControl::Runtime
             auto targetCycle = std::make_shared<TargetCycle>(TargetCycle::PowerButtons);
             // AbsoluteZero steers pitch and yaw through the same aim point.
             const bool mouseSteeringOwned = ::GetModuleHandleW(L"AbsoluteZero.dll") != nullptr;
+            // The old Head Tracking plugin turns the same camera; with it loaded, it keeps doing so.
+            const bool headTrackingPlugin = ::GetModuleHandleW(L"AbsoluteHeadTracking.dll") != nullptr;
 
             struct Loaded
             {
                 std::shared_ptr<ShipControlCore> core;
                 std::shared_ptr<const FlightConfig> flight;
                 bool flightOutput{};
+                std::shared_ptr<const LookConfig> look;
+                bool lookOutput{};
+                std::optional<KeyChord> recentreKey, toggleKey;
             };
             // Everything that comes from the settings and the game's key bindings. Run again
             // whenever either changes, so the menu and the game's own rebind screen both take
             // effect without a restart.
-            const auto load = [held, outputs, boostButton, targeting, targetCycle, mouseSteeringOwned]() {
+            const auto load = [held, outputs, boostButton, targeting, targetCycle, mouseSteeringOwned, headTrackingPlugin]() {
                 const auto ini = ControlSettings::Instance().Merged();
                 *outputs = LoadOutputs(ini);
                 *targetCycle = LoadTargetCycle(ini);
@@ -301,6 +324,29 @@ namespace AbsoluteControl::Runtime
                     installed.sharedGate ? 1 : 0, installed.storeHooks, installed.splitHook ? 1 : 0,
                     ReticleModeName(flight->reticle), mouseSteeringOwned ? 1 : 0, flight->ignored.size()));
                 loaded.flight = flight;
+
+                // Looking around: each axis has two inputs, added together.
+                const auto look = std::make_shared<const LookConfig>(LoadLookConfig(ini));
+                bool anyLook{};
+                for (std::size_t axis = 0; axis < kLookAxes; ++axis) {
+                    const auto& config = look->axes[axis];
+                    loaded.core->SetAxisBinding(kLookSlot + axis * 2, config.input.binding);
+                    loaded.core->SetAxisBinding(kLookSlot + axis * 2 + 1, config.second.binding);
+                    anyLook = anyLook || (config.enabled && (config.input.binding.status == BindingStatus::Bound ||
+                        config.second.binding.status == BindingStatus::Bound));
+                }
+                loaded.core->SetButtonBinding(kRecentreButton, look->recentreButton);
+                loaded.core->SetButtonBinding(kToggleButton, look->toggleButton);
+                loaded.recentreKey = ParseKeyChord(look->recentreKey);
+                loaded.toggleKey = ParseKeyChord(look->toggleKey);
+                AimRestriction::SetFiringCone(look->firingCone);
+                // Never under the old Head Tracking plugin, which patches the same camera. The
+                // game's code is patched later, the first time a look input reports: the tracker
+                // is bound by default, and someone without one shouldn't get the hooks.
+                loaded.lookOutput = look->enabled && anyLook && !headTrackingPlugin;
+                Log::Event("look_config", std::format("enabled={} axes={} output={} cone={:.0f} head_tracking_plugin={}",
+                    look->enabled ? 1 : 0, anyLook ? 1 : 0, loaded.lookOutput ? 1 : 0, look->firingCone, headTrackingPlugin ? 1 : 0));
+                loaded.look = look;
                 return loaded;
             };
 
@@ -338,6 +384,13 @@ namespace AbsoluteControl::Runtime
                     std::optional<std::string> axisToken;
                     bool flightLive{};
                     InputIdentifier identifier;
+                    LookMixer look;
+                    auto& lookTelemetry = FlightTelemetry::Look();
+                    bool lookOn = true;
+                    bool lookTurning{};
+                    bool lookInstallTried{};
+                    bool recentreWasDown{}, toggleWasDown{};
+                    std::uint64_t lastLookTick{};
                     while (!stop.stop_requested()) {
                         const auto now = BackendRuntime::Now();
                         // The game saves a rebind to its file; the menu bumps the generation.
@@ -355,6 +408,8 @@ namespace AbsoluteControl::Runtime
                             held->ReleaseAll();
                             targetPulse.reset();
                             FlightOutput::Suspend();
+                            CameraLook::Clear();
+                            lookTurning = false;
                             *boostButton = false;
                             flightLive = false;
                             current = load();
@@ -381,6 +436,64 @@ namespace AbsoluteControl::Runtime
                         core->Tick(devices, observation, now);
                         identifier.Tick(devices, now);
                         WalkSpeedRuntime::Tick(signals, core->AxisValue(), now);
+
+                        // Looking around. Worked out every tick so the menu can show it; the
+                        // camera only turns while piloting from the cockpit.
+                        {
+                            const bool focus = GameHasFocus();
+                            const bool recentreDown = core->ButtonDown(kRecentreButton) || (focus && ChordDown(current.recentreKey));
+                            const bool toggleDown = core->ButtonDown(kToggleButton) || (focus && ChordDown(current.toggleKey));
+                            if (recentreDown && !recentreWasDown) {
+                                look.Recentre();
+                                AimRestriction::ResetSpatialState();
+                                Log::Event("look_recentre", "");
+                            }
+                            if (toggleDown && !toggleWasDown) {
+                                lookOn = !lookOn;
+                                if (lookOn) {
+                                    look.Recentre();
+                                    AimRestriction::ResetSpatialState();
+                                }
+                                Log::Event("look_toggle", std::format("on={}", lookOn ? 1 : 0));
+                            }
+                            recentreWasDown = recentreDown;
+                            toggleWasDown = toggleDown;
+
+                            std::array<std::array<LookReading, 2>, kLookAxes> readings{};
+                            for (std::size_t axis = 0; axis < kLookAxes; ++axis) {
+                                for (std::size_t input = 0; input < 2; ++input) {
+                                    const auto slot = kLookSlot + axis * 2 + input;
+                                    if (const auto value = core->AxisValue(slot)) {
+                                        const bool angle = core->AxisIsAngle(slot);
+                                        readings[axis][input] = { angle ? *value * 180.0 : *value, angle };
+                                    }
+                                }
+                            }
+                            const float seconds = lastLookTick ? static_cast<float>(now - lastLookTick) / 1e9F : 0.0F;
+                            lastLookTick = now;
+                            const auto lookFrame = look.Tick(*current.look, readings, seconds, lookOn);
+                            if (current.lookOutput && lookFrame.active && !lookInstallTried) {
+                                // Once per process; a failed check leaves the camera the game's own.
+                                lookInstallTried = true;
+                                CameraLook::Install();
+                                lookTelemetry.ready.store(CameraLook::Ready(), std::memory_order_relaxed);
+                            }
+                            const bool turning = current.lookOutput && lookFrame.active && CameraLook::Ready() &&
+                                core->GateOpen() && signals && signals->cam != 0xA;
+                            if (turning) CameraLook::Publish(LookRotation(lookFrame.degrees));
+                            else if (lookTurning) CameraLook::Clear();
+                            if (turning != lookTurning) {
+                                lookTurning = turning;
+                                Log::Event("look_camera", std::format("turning={}", turning ? 1 : 0));
+                            }
+                            for (std::size_t axis = 0; axis < kLookAxes; ++axis) {
+                                lookTelemetry.tracker[axis].store(lookFrame.tracker[axis], std::memory_order_relaxed);
+                                lookTelemetry.output[axis].store(lookFrame.degrees[axis], std::memory_order_relaxed);
+                            }
+                            lookTelemetry.reporting.store(lookFrame.active, std::memory_order_relaxed);
+                            lookTelemetry.on.store(lookOn, std::memory_order_relaxed);
+                            lookTelemetry.turning.store(turning, std::memory_order_relaxed);
+                        }
 
                         // Worked out every tick, piloting or not, so the menu can show an axis
                         // responding while it is being set up.
@@ -458,6 +571,7 @@ namespace AbsoluteControl::Runtime
                         if (!InterruptibleWait(stop, kTickInterval)) break;
                     }
                     FlightOutput::Suspend();
+                    CameraLook::Clear();
                     held->ReleaseAll();
                 });
             Log::Event(started ? "control_loop_started" : "control_loop_failed", "output=sendinput");

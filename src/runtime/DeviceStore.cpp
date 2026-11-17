@@ -104,6 +104,36 @@ namespace AbsoluteControl::Runtime
 
     DeviceDraft::Result DeviceStore::ReplaceInventory(std::span<const DeviceDescription> devices)
     {
+        return Replace({}, devices);
+    }
+
+    DeviceDraft::Result DeviceStore::ReplaceProviderInventory(std::string_view provider,
+        std::span<const DeviceDescription> devices)
+    {
+        if (provider.empty()) return Result::InvalidArgument;
+        return Replace(provider, devices);
+    }
+
+    DeviceDraft::Result DeviceStore::Replace(std::string_view provider, std::span<const DeviceDescription> incoming)
+    {
+        if (incoming.size() > kDeviceLimit) return Result::BufferTooSmall;
+        for (const auto& item : incoming) {
+            if (!provider.empty() && provider != item.device.provider) return Result::InvalidArgument;
+        }
+        std::lock_guard lock(mutex_);
+        if (!ready_) return Result::NotReady;
+        // One source's replacement keeps every other source's devices. Sorting by source keeps
+        // the order steady, so sources taking turns don't read as an inventory change.
+        std::vector<DeviceDescription> devices;
+        if (!provider.empty()) {
+            for (const auto& entry : entries_) {
+                if (provider != entry.description.device.provider) devices.push_back(entry.description);
+            }
+        }
+        devices.insert(devices.end(), incoming.begin(), incoming.end());
+        std::stable_sort(devices.begin(), devices.end(), [](const auto& a, const auto& b) {
+            return std::strcmp(a.device.provider, b.device.provider) < 0;
+        });
         if (devices.size() > kDeviceLimit) return Result::BufferTooSmall;
         for (std::size_t i = 0; i < devices.size(); ++i) {
             if (!Valid(devices[i])) return Result::InvalidArgument;
@@ -111,8 +141,6 @@ namespace AbsoluteControl::Runtime
                 if (SameDevice(devices[i].device, devices[j].device)) return Result::InvalidArgument;
             }
         }
-        std::lock_guard lock(mutex_);
-        if (!ready_) return Result::NotReady;
         const bool changed = devices.size() != entries_.size() ||
             !std::equal(devices.begin(), devices.end(), entries_.begin(), entries_.end(),
                 [](const auto& device, const auto& entry) {

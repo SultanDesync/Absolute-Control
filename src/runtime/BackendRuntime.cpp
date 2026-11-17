@@ -84,6 +84,66 @@ namespace AbsoluteControl::Runtime
         return *runtime;
     }
 
+    namespace
+    {
+        class CombinedProvider final : public InputProvider
+        {
+        public:
+            explicit CombinedProvider(std::vector<std::unique_ptr<InputProvider>> providers) :
+                providers_(std::move(providers))
+            {}
+
+            bool Start() override
+            {
+                if (providers_.empty() || !providers_.front() || !providers_.front()->Start()) return false;
+                started_.assign(providers_.size(), false);
+                started_[0] = true;
+                for (std::size_t index = 1; index < providers_.size(); ++index) {
+                    try {
+                        started_[index] = providers_[index] && providers_[index]->Start();
+                    } catch (...) {
+                        started_[index] = false;
+                    }
+                }
+                return true;
+            }
+
+            void Poll(DeviceStore& store, std::uint64_t now) override
+            {
+                // The main source's failure stops the backend, as it did on its own.
+                providers_.front()->Poll(store, now);
+                for (std::size_t index = 1; index < providers_.size(); ++index) {
+                    if (!started_[index]) continue;
+                    try {
+                        providers_[index]->Poll(store, now);
+                    } catch (...) {
+                        started_[index] = false;
+                        providers_[index]->Stop();
+                    }
+                }
+            }
+
+            void Stop() noexcept override
+            {
+                for (std::size_t index = 0; index < providers_.size(); ++index) {
+                    if (index < started_.size() && started_[index] && providers_[index]) providers_[index]->Stop();
+                }
+                // Stop is also called after a failed Start, before anything was marked started.
+                if (started_.empty() && !providers_.empty() && providers_.front()) providers_.front()->Stop();
+                started_.clear();
+            }
+
+        private:
+            std::vector<std::unique_ptr<InputProvider>> providers_;
+            std::vector<bool> started_;
+        };
+    }
+
+    std::unique_ptr<InputProvider> MakeCombinedProvider(std::vector<std::unique_ptr<InputProvider>> providers)
+    {
+        return std::make_unique<CombinedProvider>(std::move(providers));
+    }
+
     std::string BackendRuntime::Failure() const
     {
         std::lock_guard lock(failureMutex_);

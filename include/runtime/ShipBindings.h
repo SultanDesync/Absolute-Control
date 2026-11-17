@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <functional>
 #include <map>
 #include <optional>
@@ -56,7 +57,12 @@ namespace AbsoluteControl::Runtime
     // tokens depend on enumeration order or a default device, so they stay Unsupported.
     [[nodiscard]] ConfiguredBinding ParseShipBinding(std::string_view actionId, std::string_view token);
     // The same forms for an axis: Device Name@0x32, {GUID}@axis:0x32 and guid:{GUID}@0x32.
+    // A head tracker's axes are named instead of numbered: OpenTrack@Yaw is channel axis/yaw.
     [[nodiscard]] ConfiguredBinding ParseAxisBinding(std::string_view actionId, std::string_view token);
+    inline constexpr std::array<std::string_view, 3> kNamedAxes{ "yaw", "pitch", "roll" };
+    // How an axis channel is written after the @ in a token: 0x32 for axis/2, Yaw for
+    // axis/yaw. Nothing for a channel that isn't an axis.
+    [[nodiscard]] std::optional<std::string> AxisTokenControl(std::string_view channel);
     // Absolute Control's own file: [ShipButtons] Enabled, and one key per action.
     [[nodiscard]] ShipBindingConfig LoadShipBindings(const IniValues& ini);
     [[nodiscard]] std::vector<SettingEntry> WriteShipBindings(const ShipBindingConfig& config);

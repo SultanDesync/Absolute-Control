@@ -301,7 +301,7 @@ namespace AbsoluteControl::Runtime
                         for (const auto& control : c.controls) description.channels.push_back(control.descriptor);
                         inventory.push_back(std::move(description));
                     }
-                    if (store.ReplaceInventory(inventory) != D::Result::Ok) throw std::runtime_error("native device inventory rejected");
+                    if (store.ReplaceProviderInventory(kProvider, inventory) != D::Result::Ok) throw std::runtime_error("native device inventory rejected");
                     inventoryDirty_ = false;
                 }
                 for (const auto& frame : frames) {

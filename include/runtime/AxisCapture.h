@@ -21,6 +21,8 @@ namespace AbsoluteControl::Runtime
 
         // On a -1 to 1 axis this is about 12% of travel, the same as HOTAS's flight axis capture.
         static constexpr double kMovement = 0.25;
+        // A head tracker's axis covers a whole turn, so this is a turn of about 18 degrees.
+        static constexpr double kTrackerMovement = 0.1;
         static constexpr std::uint64_t kHoldNanoseconds = 80'000'000;
         static constexpr std::uint64_t kTimeoutNanoseconds = 8'000'000'000;
 

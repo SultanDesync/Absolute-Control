@@ -34,9 +34,12 @@ namespace AbsoluteControl::Runtime
 
         // walkSpeedFile is the file walk speed used to keep to itself: its [WalkSpeed]
         // section is copied in once, when this file has none. alwaysImport is for test
-        // runs, which start from the same HOTAS-style files each time.
+        // runs, which start from the same HOTAS-style files each time. headTrackingFile is
+        // Absolute Head Tracking's own file, imported the same way: once, when this file has no
+        // look settings.
         void Load(std::filesystem::path file, const std::vector<std::filesystem::path>& hotasFiles,
-            const std::filesystem::path& walkSpeedFile = {}, bool alwaysImport = false);
+            const std::filesystem::path& walkSpeedFile = {}, bool alwaysImport = false,
+            const std::filesystem::path& headTrackingFile = {});
 
         [[nodiscard]] IniValues Merged() const;
         [[nodiscard]] std::optional<std::string> Get(std::string_view section, std::string_view key) const;

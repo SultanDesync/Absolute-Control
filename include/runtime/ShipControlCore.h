@@ -30,15 +30,28 @@ namespace AbsoluteControl::Runtime
         void Tick(const DeviceStore& devices, const PilotObservation& observation, std::uint64_t now);
         [[nodiscard]] bool GateOpen() const noexcept { return gateOpen_; }
 
-        // Axes read off the bus each tick. Slot 0 is the walk speed axis and the rest are
-        // flight axes. Nothing is read for a slot that's unbound.
-        static constexpr std::size_t kAxisSlots = 10;
+        // Axes read off the bus each tick. Slot 0 is the walk speed axis, 1 to 9 the flight
+        // axes and 10 to 15 the look axes. Nothing is read for a slot that's unbound.
+        static constexpr std::size_t kAxisSlots = 16;
         void SetAxisBinding(ConfiguredBinding binding) { SetAxisBinding(0, std::move(binding)); }
         void SetAxisBinding(std::size_t slot, ConfiguredBinding binding);
         // -1 to 1, or nothing if the axis is unbound, missing, stale or has no known range.
         [[nodiscard]] std::optional<double> AxisValue(std::size_t slot = 0) const noexcept
         {
             return slot < axes_.size() ? axes_[slot].value : std::nullopt;
+        }
+        // The axis reports an angle, such as a head tracker's: -1 to 1 is then -180 to 180 degrees.
+        [[nodiscard]] bool AxisIsAngle(std::size_t slot) const noexcept
+        {
+            return slot < axes_.size() && axes_[slot].resolved.angle;
+        }
+
+        // Buttons that aren't ship actions, read off the bus each tick whether piloting or not.
+        static constexpr std::size_t kButtonSlots = 2;
+        void SetButtonBinding(std::size_t slot, ConfiguredBinding binding);
+        [[nodiscard]] bool ButtonDown(std::size_t slot) const noexcept
+        {
+            return slot < buttons_.size() && buttons_[slot].down;
         }
 
     private:
@@ -47,6 +60,7 @@ namespace AbsoluteControl::Runtime
             BindingStatus status{ BindingStatus::Unbound };
             std::size_t deviceSlot{};
             std::size_t channelIndex{};
+            bool angle{};
         };
         [[nodiscard]] Resolved Resolve(const ConfiguredBinding& binding, const DeviceSnapshot& snapshot);
         void Reconcile(const DeviceStore& devices);
@@ -59,6 +73,13 @@ namespace AbsoluteControl::Runtime
             std::optional<double> value;
         };
         std::array<AxisSlot, kAxisSlots> axes_;
+        struct ButtonSlot
+        {
+            ConfiguredBinding binding;
+            Resolved resolved;
+            bool down{};
+        };
+        std::array<ButtonSlot, kButtonSlots> buttons_;
         ShipBindingConfig config_;
         ActionSink sink_;
         ControlLog log_;

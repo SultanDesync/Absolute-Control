@@ -176,10 +176,41 @@ namespace
         CHECK(!failed);
         return true;
     }
+    // Two sources share the store: each replaces only its own devices, and the order stays
+    // the same whichever replaced last, so taking turns isn't an inventory change.
+    bool SeveralSources()
+    {
+        DeviceStore store;
+        store.Start();
+        auto stick = Description();
+        auto tracker = Description();
+        strcpy_s(tracker.device.provider, "mock.tracker");
+        strcpy_s(tracker.device.physical, "tracker");
+        strcpy_s(tracker.channels[0].identity.provider, "mock.tracker");
+        strcpy_s(tracker.channels[0].identity.physical, "tracker");
+        CHECK(store.ReplaceProviderInventory("mock.tracker", std::span(&tracker, 1)) == D::Result::Ok);
+        CHECK(store.ReplaceProviderInventory("mock.native", std::span(&stick, 1)) == D::Result::Ok);
+        auto snapshot = store.Snapshot();
+        CHECK(snapshot.devices.size() == 2);
+        CHECK(!std::strcmp(snapshot.devices[0].device.provider, "mock.native"));
+        CHECK(!std::strcmp(snapshot.devices[1].device.provider, "mock.tracker"));
+        const auto cursor = snapshot.cursor;
+        CHECK(store.ReplaceProviderInventory("mock.tracker", std::span(&tracker, 1)) == D::Result::Ok);
+        CHECK(store.ReplaceProviderInventory("mock.native", std::span(&stick, 1)) == D::Result::Ok);
+        CHECK(store.Snapshot().cursor == cursor);
+        // A source's devices must be its own.
+        CHECK(store.ReplaceProviderInventory("mock.tracker", std::span(&stick, 1)) == D::Result::InvalidArgument);
+        // A source with no devices left takes only its own away.
+        CHECK(store.ReplaceProviderInventory("mock.tracker", std::span<const DeviceDescription>{}) == D::Result::Ok);
+        snapshot = store.Snapshot();
+        CHECK(snapshot.devices.size() == 1 && !std::strcmp(snapshot.devices[0].device.provider, "mock.native"));
+        CHECK(snapshot.cursor == cursor + 1);
+        return true;
+    }
 }
 
 int main()
 {
-    if (!Reconciliation() || !Overflow() || !ConcurrentSnapshots()) return 1;
-    std::cout << "Device lifecycle: coherent reconciliation, bounded cursors, loss detection and concurrent copies passed.\n";
+    if (!Reconciliation() || !Overflow() || !ConcurrentSnapshots() || !SeveralSources()) return 1;
+    std::cout << "Device lifecycle: coherent reconciliation, bounded cursors, loss detection, concurrent copies and several sources passed.\n";
 }

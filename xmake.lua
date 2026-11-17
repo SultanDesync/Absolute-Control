@@ -14,6 +14,8 @@ set_defaultmode("releasedbg")
 
 add_rules("mode.debug", "mode.release", "mode.releasedbg")
 
+add_requires("minhook")
+
 -- Keep compiler-expanded source paths and PE debug records portable in any
 -- distributable build. This maps the checkout root to a stable relative path
 -- without hard-coding a developer name or workstation layout.
@@ -94,6 +96,10 @@ local release_sources = {
     "src/runtime/ControlSettings.cpp",
     "src/runtime/DeviceStore.cpp",
     "src/runtime/DirectInputProvider.cpp",
+    "src/runtime/AimRestriction.cpp",
+    "src/runtime/CameraLook.cpp",
+    "src/runtime/LookAxes.cpp",
+    "src/runtime/OpenTrackProvider.cpp",
     "src/runtime/FlightAxes.cpp",
     "src/runtime/FlightOutput.cpp",
     "src/runtime/FlightSignals.cpp",
@@ -140,6 +146,8 @@ local function configure_control_panel_plugin(plugin_name, description)
     })
 
     add_control_panel_core_sources()
+    -- Function hooks for the weapon field-of-fire limit, as Absolute Head Tracking used.
+    add_packages("minhook")
     add_links("dinput8", "dxguid")
     add_syslinks("user32", "shell32", "ole32")
     add_headerfiles("include/(**.h)")
@@ -225,11 +233,28 @@ target("ship_control_test", function()
     add_includedirs("include")
     add_files("src/runtime/ButtonCapture.cpp", "src/runtime/ControlMapReader.cpp",
         "src/runtime/ControlSettings.cpp", "src/runtime/DeviceStore.cpp",
-        "src/runtime/FlightAxes.cpp", "src/runtime/LegacyHotasToken.cpp",
+        "src/runtime/FlightAxes.cpp", "src/runtime/LegacyHotasToken.cpp", "src/runtime/LookAxes.cpp",
         "src/runtime/SettingsImport.cpp", "src/runtime/ShipBindings.cpp",
         "src/runtime/ShipControlCore.cpp", "src/runtime/ShipOutputs.cpp",
         "tests/ShipControlTests.cpp")
     add_syslinks("user32")
+end)
+
+target("look_axes_test", function()
+    set_kind("binary")
+    set_default(false)
+    add_tests("mixing_config_import_and_tokens")
+    add_includedirs("include")
+    add_files("src/runtime/LookAxes.cpp", "src/runtime/LegacyHotasToken.cpp",
+        "src/runtime/ShipBindings.cpp", "tests/LookAxesTests.cpp")
+end)
+
+target("aim_restriction_policy_test", function()
+    set_kind("binary")
+    set_default(false)
+    add_tests("cone_rim_and_targets")
+    add_includedirs("include")
+    add_files("tests/AimRestrictionPolicyTests.cpp")
 end)
 
 target("flight_axes_test", function()

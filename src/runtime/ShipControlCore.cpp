@@ -44,6 +44,13 @@ namespace AbsoluteControl::Runtime
         reconciled_ = false;
     }
 
+    void ShipControlCore::SetButtonBinding(std::size_t slot, ConfiguredBinding binding)
+    {
+        if (slot >= buttons_.size()) return;
+        buttons_[slot] = { std::move(binding), {}, {} };
+        reconciled_ = false;
+    }
+
     ShipControlCore::Resolved ShipControlCore::Resolve(const ConfiguredBinding& binding, const DeviceSnapshot& snapshot)
     {
         Resolved next{ binding.status };
@@ -68,6 +75,7 @@ namespace AbsoluteControl::Runtime
             if (channel == match->channels.end()) next.status = BindingStatus::ChannelMissing;
             else {
                 next.channelIndex = static_cast<std::size_t>(channel - match->channels.begin());
+                next.angle = channel->rawUnits == D::Units::Radians;
                 const auto slot = std::ranges::find_if(slots_, [&](const D::Device& device) {
                     return !std::strcmp(device.physical, match->device.physical);
                 });
@@ -126,12 +134,21 @@ namespace AbsoluteControl::Runtime
             }
             axis.resolved = next;
         }
+        for (auto& button : buttons_) {
+            const auto next = Resolve(button.binding, snapshot);
+            if (next.status != button.resolved.status) {
+                log_("control_button", std::format("button={} status={} token={}", button.binding.actionId,
+                    ToString(next.status), button.binding.token));
+            }
+            button.resolved = next;
+        }
     }
 
     void ShipControlCore::SampleButtons(const DeviceStore& devices, std::uint64_t now)
     {
         std::ranges::fill(samples_, ButtonSample{});
         for (auto& axis : axes_) axis.value.reset();
+        for (auto& button : buttons_) button.down = false;
         for (std::size_t slot = 0; slot < slots_.size(); ++slot) {
             D::Frame frame;
             std::uint32_t required{};
@@ -153,6 +170,14 @@ namespace AbsoluteControl::Runtime
                 if (sample.validity == D::Validity::Valid && sample.shape == D::Shape::Scalar &&
                     (sample.flags & D::kCalibrationRangeKnown) && axis.binding.channel == sample.channel) {
                     axis.value = sample.value[0];
+                }
+            }
+            for (auto& button : buttons_) {
+                if (button.resolved.status != BindingStatus::Bound || button.resolved.deviceSlot != slot ||
+                    button.resolved.channelIndex >= required) continue;
+                const auto& sample = buffer_[button.resolved.channelIndex];
+                if (sample.validity == D::Validity::Valid && button.binding.channel == sample.channel) {
+                    button.down = sample.value[0] != 0;
                 }
             }
         }

@@ -6,6 +6,7 @@
 #include <deque>
 #include <mutex>
 #include <span>
+#include <string_view>
 #include <vector>
 
 namespace AbsoluteControl::Runtime
@@ -57,6 +58,10 @@ namespace AbsoluteControl::Runtime
         void Start();
         void Stop();
         [[nodiscard]] DeviceDraft::Result ReplaceInventory(std::span<const DeviceDescription> devices);
+        // Replaces one source's devices and keeps every other source's, so several sources
+        // can share the store. Every device given must belong to that source.
+        [[nodiscard]] DeviceDraft::Result ReplaceProviderInventory(std::string_view provider,
+            std::span<const DeviceDescription> devices);
         [[nodiscard]] DeviceDraft::Result Publish(const DeviceFrame& frame);
         [[nodiscard]] DeviceDraft::Result CopyDevices(DeviceDraft::Device* records,
             std::uint32_t capacity, std::uint32_t* required) const;
@@ -78,6 +83,8 @@ namespace AbsoluteControl::Runtime
         struct Entry { DeviceDescription description; std::deque<DeviceFrame> history; };
         [[nodiscard]] DeviceDraft::Result Find(const DeviceDraft::Device& expected,
             const Entry*& entry) const;
+        [[nodiscard]] DeviceDraft::Result Replace(std::string_view provider,
+            std::span<const DeviceDescription> devices); // Empty provider: replace everything.
         void RecordChange(DeviceChangeKind kind); // mutex_ held; no allocation.
         mutable std::mutex mutex_;
         bool ready_{};

@@ -33,7 +33,12 @@ namespace
 #if defined(ACP_ENABLE_RESEARCH_TOOLS)
         if (UseTestInput()) return AbsoluteControlPanelResearch::TestInput::MakeProvider();
 #endif
-        return AbsoluteControl::Runtime::MakeDirectInputProvider();
+        // Joysticks, plus a head tracker when OpenTrack is running. The old Head Tracking
+        // plugin reads the same tracker itself, so the tracker is left to it while it's loaded.
+        std::vector<std::unique_ptr<AbsoluteControl::Runtime::InputProvider>> providers;
+        providers.push_back(AbsoluteControl::Runtime::MakeDirectInputProvider());
+        if (!GetModuleHandleW(L"AbsoluteHeadTracking.dll")) providers.push_back(AbsoluteControl::Runtime::MakeOpenTrackProvider());
+        return AbsoluteControl::Runtime::MakeCombinedProvider(std::move(providers));
     }
 
     [[nodiscard]] std::vector<std::filesystem::path> ShipBindingFiles()
@@ -79,7 +84,8 @@ namespace
                 AbsoluteControl::Runtime::ControlSettings::Instance().Load(testInput ?
                     "Data/SFSE/Plugins/AbsoluteControlTest.saved.ini" : "Data/SFSE/Plugins/AbsoluteControl.ini",
                     ShipBindingFiles(), testInput ? "Data/SFSE/Plugins/AbsoluteControlTestWalkSpeed.ini" :
-                    "Data/SFSE/Plugins/AbsoluteControlWalkSpeed.ini", testInput);
+                    "Data/SFSE/Plugins/AbsoluteControlWalkSpeed.ini", testInput,
+                    testInput ? "" : "Data/SFSE/Plugins/AbsoluteHeadTracking.ini");
                 AbsoluteControl::Runtime::WalkSpeedRuntime::Install();
                 AbsoluteControlPanelResearch::Ui::WalkSpeedPage::Register();
                 AbsoluteControlPanelResearch::Ui::WalkGaugeMenu::Register();
